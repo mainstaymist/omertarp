@@ -1,0 +1,40 @@
+# Omertà RP
+
+A from-scratch Garry's Mod gamemode simulating organized crime in a compact city — built around information, trust, institutions, consequences, investigation, and social play rather than grinding or arcade PvP.
+
+> **Guiding rule:** a player should never know information their character could not reasonably know.
+
+Omertà RP is not a DarkRP derivative. There is no global chat, no scoreboard, no kill feed, no player list, and no omniscient UI. Identity is learned through introductions; events are learned through newspapers, witnesses, police work, rumor, and observation. Seasons last roughly four weeks; institutions (crime families, the police department) persist while characters, ranks, and wealth reset. Confirmed character death is permanent.
+
+## Project status
+
+**Pre-implementation.** The specification has been reviewed, the roadmap approved, and the first milestone (M0 — Foundation Skeleton) is in design review awaiting approval. No gameplay code exists yet.
+
+## Documentation index
+
+| Document | Role |
+|---|---|
+| [`docs/design/1_Brainstorm_Archive.md`](docs/design/1_Brainstorm_Archive.md) | Historical creative record. Preserved verbatim; **predates the decision log** and is superseded where they conflict. |
+| [`docs/design/2_Game_Design_Document.md`](docs/design/2_Game_Design_Document.md) | Defines gameplay. |
+| [`docs/design/3_Technical_Design.md`](docs/design/3_Technical_Design.md) | Defines architecture and implementation. |
+| [`docs/design/DECISIONS.md`](docs/design/DECISIONS.md) | Canonical log of project-lead rulings. |
+| [`docs/review/01_project_review.md`](docs/review/01_project_review.md) | Phase 1 specification review: strengths, weaknesses, contradictions, missing decisions, risks. |
+| [`docs/review/02_development_roadmap.md`](docs/review/02_development_roadmap.md) | Phase 2 milestone roadmap with dependencies. |
+| [`docs/review/03_portrait_evaluation.md`](docs/review/03_portrait_evaluation.md) | Newspaper-portrait pipeline evaluation and recommendation. |
+| [`docs/review/04_justice_system_proposals.md`](docs/review/04_justice_system_proposals.md) | Justice-loop design proposals (awaiting selection). |
+| [`docs/design-reviews/M0_foundation.md`](docs/design-reviews/M0_foundation.md) | Design review for the first implementation milestone (awaiting approval). |
+
+## Document precedence
+
+When documents disagree:
+
+1. `DECISIONS.md` (explicit project-lead rulings)
+2. Technical Design
+3. Game Design Document
+4. Brainstorm Archive
+
+Review documents (`docs/review/`) analyze and recommend; they carry no design authority until a recommendation is accepted into the decision log or a design document.
+
+## Development process
+
+Work proceeds one milestone at a time. Each milestone receives a written design review (purpose, responsibilities, public API, data model, networking, persistence, security, dependencies, extension points) and is implemented only after that review is approved. See the roadmap for milestone ordering.
