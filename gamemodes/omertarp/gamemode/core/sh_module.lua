@@ -72,37 +72,93 @@ local function callLifecycle(hookName)
     end
 end
 
--- Includes every module directory under basePath with realm-correct handling,
--- verifies registration, then runs OnLoad in dependency order.
+-- Pure planning half of module discovery: decides what to do with a directory
+-- listing without touching the engine, so the headless tests can cover the
+-- realm-routing rules that actually break in practice.
+--
+-- fileNames may be nil (file.Find returns nil, not an empty table, when a path
+-- does not resolve — notably on the client, where gamemode Lua lives in the
+-- Lua cache rather than on disk).
+--
+-- Returns an ordered array of { path, file, realm } where realm is
+-- "shared" | "server" | "client", or nil + reason for an unprefixed file.
+function Omerta.Module.PlanIncludes(basePath, dirName, fileNames)
+    local sorted = {}
+    for _, f in ipairs(fileNames or {}) do sorted[#sorted + 1] = f end
+    table.sort(sorted)
+
+    local plan = {}
+    for _, f in ipairs(sorted) do
+        local realm
+        if f:find("^sh_") then realm = "shared"
+        elseif f:find("^sv_") then realm = "server"
+        elseif f:find("^cl_") then realm = "client"
+        else
+            return nil, string.format(
+                "module file '%s/%s' has no realm prefix (sh_/sv_/cl_)", dirName, f)
+        end
+        plan[#plan + 1] = {
+            path = basePath .. "/" .. dirName .. "/" .. f,
+            file = f,
+            realm = realm,
+        }
+    end
+    return plan
+end
+
+-- Engine edge: include a planned file with the realm rules applied.
+-- sv_ files are never AddCSLuaFile'd, so server logic cannot reach a client.
+local function executePlanEntry(entry)
+    if not file.Exists(entry.path, "LUA") then
+        -- A precise error beats GMod's generic "Couldn't include file" followed
+        -- by a cascade of nil-index errors from half-loaded core.
+        error(string.format("module file '%s' not found in the LUA search path (%s realm)",
+            entry.path, SERVER and "server" or "client"))
+    end
+    if entry.realm == "shared" then
+        if SERVER then AddCSLuaFile(entry.path) end
+        include(entry.path)
+    elseif entry.realm == "server" then
+        if SERVER then include(entry.path) end
+    elseif entry.realm == "client" then
+        if SERVER then AddCSLuaFile(entry.path) else include(entry.path) end
+    end
+end
+
+-- Discovers every module directory under basePath, includes its files with
+-- realm-correct handling, verifies registration, then runs OnLoad in
+-- dependency order.
 -- Engine-only: the headless tests register modules directly and call
 -- FinishLoading() themselves.
 function Omerta.Module.IncludeAll(basePath)
     if not Omerta.InEngine then return end
 
+    -- file.Find returns nil rather than an empty table when the path does not
+    -- resolve; normalize at the edge so discovery can never crash the boot.
     local _, dirs = file.Find(basePath .. "/*", "LUA")
+    dirs = dirs or {}
     table.sort(dirs)
 
+    if #dirs == 0 then
+        Omerta.Log.Warn("module",
+            "no module directories found under '%s' (%s realm) — nothing will load",
+            basePath, SERVER and "server" or "client")
+    else
+        Omerta.Log.Debug("module", "discovered %d directory/ies under '%s': %s",
+            #dirs, basePath, table.concat(dirs, ", "))
+    end
+
     for _, dir in ipairs(dirs) do
-        local before = defs[dir] ~= nil
-        if before then
+        if defs[dir] then
             error("module directory '" .. dir .. "' collides with an already-registered module")
         end
 
         local files = file.Find(basePath .. "/" .. dir .. "/*.lua", "LUA")
-        table.sort(files)
-        for _, f in ipairs(files) do
-            local path = basePath .. "/" .. dir .. "/" .. f
-            if f:find("^sh_") then
-                if SERVER then AddCSLuaFile(path) end
-                include(path)
-            elseif f:find("^sv_") then
-                if SERVER then include(path) end -- never AddCSLuaFile'd
-            elseif f:find("^cl_") then
-                if SERVER then AddCSLuaFile(path) else include(path) end
-            else
-                error(string.format(
-                    "module file '%s/%s' has no realm prefix (sh_/sv_/cl_)", dir, f))
-            end
+        local plan, why = Omerta.Module.PlanIncludes(basePath, dir, files)
+        if not plan then error(why) end
+
+        for _, entry in ipairs(plan) do
+            executePlanEntry(entry)
         end
 
         if not defs[dir] then

@@ -7,6 +7,14 @@ GM.Author = "Omertà RP project"
 
 DeriveGamemode("base")
 
+-- Paths are rooted at the gamemode folder because that is what the "LUA"
+-- search path expects for gamemode content (gamemodes/ is a search root).
+-- Fail with a clear message rather than concatenating nil into every path.
+if not GM.FolderName or GM.FolderName == "" then
+    error("Omertà RP: GM.FolderName is unset — the gamemode folder must be " ..
+        "installed as garrysmod/gamemodes/<name>/ with a matching <name>.txt")
+end
+
 local prefix = GM.FolderName .. "/gamemode/"
 
 -- Core load order is explicit and must stay minimal: each file may depend only
