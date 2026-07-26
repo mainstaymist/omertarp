@@ -11,7 +11,7 @@ DeriveGamemode("base")
 -- search path expects for gamemode content (gamemodes/ is a search root).
 -- Fail with a clear message rather than concatenating nil into every path.
 if not GM.FolderName or GM.FolderName == "" then
-    error("Omertà RP: GM.FolderName is unset — the gamemode folder must be " ..
+    error("Omertà RP: the gamemode folder name is unset — the gamemode must be " ..
         "installed as garrysmod/gamemodes/<name>/ with a matching <name>.txt")
 end
 
@@ -35,11 +35,19 @@ end
 
 Omerta.Module.IncludeAll(prefix .. "modules")
 
+-- IMPORTANT for every hook in this project: the `GM` global is only valid
+-- while the gamemode files are being included. Once loading finishes the
+-- engine clears it, so inside a hook body use `self` (or GAMEMODE) — never
+-- `GM`, which is nil by then.
 function GM:Initialize()
     Omerta.Config.Finalize()
     Omerta.Module.EnableAll()
     Omerta.Log.Info("core", "%s %s initialized (%s realm)",
-        GM.Name, Omerta.Version, SERVER and "server" or "client")
+        self.Name, Omerta.Version, SERVER and "server" or "client")
+
+    if self.BaseClass and self.BaseClass.Initialize then
+        self.BaseClass.Initialize(self)
+    end
 end
 
 -- Lua auto-refresh reruns the whole gamemode load (all registries rebuild),
