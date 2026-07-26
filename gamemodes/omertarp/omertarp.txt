@@ -1,0 +1,8 @@
+"omertarp"
+{
+	"base"			"base"
+	"title"			"Omertà RP"
+	"category"		"rp"
+	"maps"			"^rp_|^gm_"
+	"menusystem"	"1"
+}

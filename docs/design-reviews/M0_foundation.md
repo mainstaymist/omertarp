@@ -1,6 +1,6 @@
 # Design Review — M0: Gamemode Skeleton and Core Framework
 
-Status: **AWAITING APPROVAL — no implementation until approved.**
+Status: **APPROVED 2026-07-26 — IMPLEMENTED.** See §13 for implementation notes.
 Milestone: M0 (roadmap Track A). Depends on: nothing. Everything depends on it.
 
 ## 1. Purpose
@@ -131,4 +131,15 @@ Nothing exists yet — M0 *is* the integration point. The concrete handoffs it m
 
 ---
 
-**Requesting approval to implement M0 as specified.** On approval: implementation, then the standard post-implementation report (what was built, why, extension points, integration points, test results) before M1's design review begins.
+## 13. Implementation Notes (post-implementation)
+
+Implemented as specified in `gamemodes/omertarp/` with a headless test suite in `tests/` (35 checks, all passing under Lua 5.1 — the same Lua version GMod's LuaJIT targets). Notes and small clarifications, none altering the approved semantics:
+
+- **Config file overrides are server-scope only**, exactly as §4/§6 implied: a file override of a shared-scope key is a boot error with a message pointing at the config-replication milestone. Shared keys are code-defined defaults until then. The one core key, `log.level`, is server-scope.
+- **Config files** live at `data/omertarp/config/server.txt` as a sandboxed Lua chunk (`setfenv(chunk, {})`) returning a table — no engine access, no globals. Malformed files, unknown keys, and type errors all fail the boot loudly per §4.
+- **Module lifecycle vs. inclusion**: `depends` orders lifecycle calls only; file inclusion never depends on order. Include-time code defines, `OnEnable` connects — documented in `core/sh_module.lua`'s header.
+- **Testability seam**: engine touchpoints are gated behind `Omerta.InEngine` (false under `tests/shim.lua`), and the pure halves of config validation, net schema/value validation, topological sort, and token-bucket math are exposed as plain functions the suite drives directly. `Omerta.Module.FinishLoading()` exists so tests can run the lifecycle without `file.Find`.
+- **Demo module** (`modules/demo/`) ships disabled (`demo.enabled = false`, server scope) as the in-engine smoke test from §11 and the reference for module authors: one lifecycle of each hook, one config key, one audited client→server message, one targeted server→client reply, one client concommand (`omerta_demo_ping`).
+- **Auto-refresh**: `GM:OnReloaded` re-finalizes config, re-enables the rebuilt registry, then dispatches `OnReload` — the registry-reset behavior §3 required.
+
+In-engine acceptance (boot on empty map, three-module chain, flood test, client Lua cache check) still needs a live GMod server — listed in the M0 report as the remaining manual step for the project lead's environment.

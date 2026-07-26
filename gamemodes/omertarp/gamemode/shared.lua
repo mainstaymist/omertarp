@@ -1,0 +1,45 @@
+-- Omertà RP — shared bootstrap.
+-- Thin by design: establishes the gamemode table, includes the core in a fixed
+-- order, then hands everything else to the module loader (core/sh_module.lua).
+
+GM.Name   = "Omertà RP"
+GM.Author = "Omertà RP project"
+
+DeriveGamemode("base")
+
+local prefix = GM.FolderName .. "/gamemode/"
+
+-- Core load order is explicit and must stay minimal: each file may depend only
+-- on the ones above it. Everything beyond core is a module under modules/.
+local CORE_FILES = {
+    "core/sh_core.lua",
+    "core/sh_util.lua",
+    "core/sh_log.lua",
+    "core/sh_config.lua",
+    "core/sh_net.lua",
+    "core/sh_module.lua",
+}
+
+for _, f in ipairs(CORE_FILES) do
+    if SERVER then AddCSLuaFile(prefix .. f) end
+    include(prefix .. f)
+end
+
+Omerta.Module.IncludeAll(prefix .. "modules")
+
+function GM:Initialize()
+    Omerta.Config.Finalize()
+    Omerta.Module.EnableAll()
+    Omerta.Log.Info("core", "%s %s initialized (%s realm)",
+        GM.Name, Omerta.Version, SERVER and "server" or "client")
+end
+
+-- Lua auto-refresh reruns the whole gamemode load (all registries rebuild),
+-- but GM:Initialize does not run again — so finalize/enable must be repeated
+-- here before modules get their OnReload.
+function GM:OnReloaded()
+    Omerta.Config.Finalize()
+    Omerta.Module.EnableAll()
+    Omerta.Module.ReloadAll()
+    Omerta.Log.Info("core", "reloaded")
+end

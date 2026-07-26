@@ -8,7 +8,13 @@ Omertà RP is not a DarkRP derivative. There is no global chat, no scoreboard, n
 
 ## Project status
 
-**Pre-implementation.** The specification has been reviewed, the roadmap approved, and the first milestone (M0 — Foundation Skeleton) is in design review awaiting approval. No gameplay code exists yet.
+**M0 (Foundation Skeleton) implemented.** The gamemode boots as a from-scratch skeleton: module loader, schema-validated configuration, logging/audit envelope, and a validated, rate-limited networking wrapper. No gameplay systems exist yet; next milestone is M1 (database abstraction layer), pending its design review.
+
+## Repository layout
+
+- `gamemodes/omertarp/` — the gamemode (mount or symlink into your server's `garrysmod/gamemodes/`)
+- `tests/` — headless core tests: `lua tests/run_tests.lua` (plain Lua 5.1, no engine required)
+- `docs/` — design documents, reviews, roadmap, and per-milestone design reviews
 
 ## Documentation index
 
