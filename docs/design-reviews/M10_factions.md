@@ -1,6 +1,6 @@
 # Design Review — M10: Factions Core (Families and the Police Department)
 
-Status: **APPROVED 2026-07-27 — IMPLEMENTED** (§4a, §4b and §4c all ruled (a); logged as D-022, D-023 and D-021). See §13.
+Status: **APPROVED 2026-07-27 — IMPLEMENTED AND VERIFIED IN-ENGINE** (`omerta_org_selftest` 10/10 on MySQL/MariaDB). §4a, §4b and §4c all ruled (a); logged as D-022, D-023 and D-021. See §13.
 Milestone: M10 (roadmap Track B — the first milestone that is not a foundation). Depends on: M0–M5, M9. Consumed by: M11 (treasuries belong to organizations), M12 (private lines are bought by them), M13 (businesses are owned by them), M14 (crews commit robberies), M17/M18 (the PD is an institution with authority), M20 (a confirmed kill triggers succession), M21 (the newspaper names institutions, not people).
 
 > **Three rulings needed** (§4): the season bootstrap Q-1 left open, what being inducted actually *teaches* you, and whether the police department is the same system with a different ladder or a deliberately different one.

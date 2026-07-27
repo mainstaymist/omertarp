@@ -14,7 +14,9 @@ Omertà RP is not a DarkRP derivative. There is no global chat, no scoreboard, n
 
 That completes Track A.
 
-**M10 (factions core) is implemented; in-engine verification pending** (`omerta_org_selftest`, run in the server console). Four crime families and a police department exist as season-scoped instances of code-defined institutions, with rank ladders, cumulative rank permissions, sponsorship and induction, and authority that descends the chain when a leader is away. Two families are active at launch and staff open the rest as the population justifies it (D-022). Joining teaches you only the people who were in the room (D-023), and the one thing a stranger can read off you is a police uniform — the rank, not the name (D-021).
+**M10 (factions core) is implemented and verified in-engine.** Four crime families and a police department exist as season-scoped instances of code-defined institutions, with rank ladders, cumulative rank permissions, sponsorship and induction, and authority that descends the chain when a leader is away. Two families are active at launch and staff open the rest as the population justifies it (D-022). Joining teaches you only the people who were in the room (D-023), and the one thing a stranger can read off you is a police uniform — the rank, not the name (D-021).
+
+**M11 (treasury and procurement) is in design review and awaiting approval** — the milestone where M9's decision to make money physical either pays off or is quietly abandoned.
 
 ## Repository layout
 
@@ -44,7 +46,8 @@ That completes Track A.
 | [`docs/design-reviews/M7_communication.md`](docs/design-reviews/M7_communication.md) | M7 design review — approved, implemented, verified in-engine. |
 | [`docs/design-reviews/M8_hud.md`](docs/design-reviews/M8_hud.md) | M8 design review — approved, implemented, verified in-engine (rules D-016/D-017). |
 | [`docs/design-reviews/M9_inventory.md`](docs/design-reviews/M9_inventory.md) | M9 design review — approved and implemented (rules D-018/D-019/D-020). |
-| [`docs/design-reviews/M10_factions.md`](docs/design-reviews/M10_factions.md) | M10 design review — approved and implemented (rules D-021/D-022/D-023). |
+| [`docs/design-reviews/M10_factions.md`](docs/design-reviews/M10_factions.md) | M10 design review — approved, implemented, verified in-engine (rules D-021/D-022/D-023). |
+| [`docs/design-reviews/M11_treasury.md`](docs/design-reviews/M11_treasury.md) | M11 design review — **awaiting approval**; requests three rulings. |
 | [`docs/rules/metagaming.md`](docs/rules/metagaming.md) | Player-facing metagaming policy (ships with M6). |
 | [`docs/GLOSSARY.md`](docs/GLOSSARY.md) | Plain-language definitions of the engineering terms used in the design reviews. |
 
