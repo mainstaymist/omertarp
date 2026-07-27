@@ -139,6 +139,26 @@ function Internal.GetTableDef(name)
     return tables[name]
 end
 
+-- Guards against the one mistake Lua cannot otherwise catch: a nil value in a
+-- row table is indistinguishable from an absent key, so `{ season_id = nil }`
+-- silently drops the column and the database substitutes a default (0, or an
+-- error). Registered tables know which columns are mandatory, so check.
+-- Returns true, or false + reason. Unregistered tables are not validated.
+function Internal.ValidateInsertRow(tableName, row)
+    local def = tables[tableName]
+    if not def then return true end
+    for _, col in ipairs(def.columns) do
+        local required = col.type ~= "id" and col.null == false and col.default == nil
+        if required and row[col.name] == nil then
+            return false, string.format(
+                "insert into '%s' is missing required column '%s' " ..
+                "(a nil value drops the column silently — use Omerta.DB.NULL for a real NULL)",
+                tableName, col.name)
+        end
+    end
+    return true
+end
+
 function Internal.CoercionClass(columnName)
     local class = coercion[columnName]
     if class == false then return nil end

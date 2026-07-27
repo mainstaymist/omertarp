@@ -11,7 +11,7 @@ local function buildSteps()
     local steps = {}
     local accountId = nil
 
-    steps[#steps + 1] = { name = "database ready", fn = function(pass, fail)
+    steps[#steps + 1] = { name = "database ready", required = true, fn = function(pass, fail)
         if Omerta.DB.IsReady() then pass(Omerta.DB.Status().backend .. " backend")
         else fail("phase=" .. Omerta.DB.Status().phase) end
     end }
@@ -123,7 +123,8 @@ local function buildSteps()
         end)
     end }
 
-    steps[#steps + 1] = { name = "cleanup (all synthetic rows)", fn = function(pass, fail)
+    steps[#steps + 1] = { name = "cleanup (all synthetic rows)", always = true, fn = function(pass, fail)
+        if not accountId then pass("nothing to clean") return end
         Repo.DeleteAccountData(accountId, FAKE_SID, function(ok, err)
             if not ok then fail(tostring(err)) return end
             Repo.FetchBySteamID64(FAKE_SID, function(account, ferr)

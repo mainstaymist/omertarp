@@ -19,7 +19,7 @@ local function buildSteps()
     local setupSeasonId
     local accountA, accountB -- synthetic account objects (never cached, no ply)
 
-    steps[#steps + 1] = { name = "database ready", fn = function(pass, fail)
+    steps[#steps + 1] = { name = "database ready", required = true, fn = function(pass, fail)
         if not Omerta.DB.IsReady() then fail("phase=" .. Omerta.DB.Status().phase) return end
         if Omerta.Seasons.Internal.Failed then fail("seasons module is in failed state") return end
         pass()
@@ -142,7 +142,7 @@ local function buildSteps()
         end)
     end) }
 
-    steps[#steps + 1] = { name = "cleanup (all synthetic rows)", fn = function(pass, fail)
+    steps[#steps + 1] = { name = "cleanup (all synthetic rows)", always = true, fn = function(pass, fail)
         SRepo.DeleteSelftestSeason(SELFTEST_LABEL, function(ok, err)
             if not ok then fail(tostring(err)) return end
             local function cleanAccount(account, sid, done)

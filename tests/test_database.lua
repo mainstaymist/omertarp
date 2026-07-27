@@ -138,6 +138,35 @@ check("table substitution applies the prefix", function()
     assert(S("no braces here ? {}", "omerta_") == "no braces here ? {}")
 end)
 
+-- Regression: a nil value in a row table is indistinguishable from an absent
+-- key, so `{ season_id = nil }` silently dropped the column and the database
+-- substituted 0. Registered tables now declare what is mandatory.
+check("inserts missing a mandatory column are refused", function()
+    loadDB()
+    Omerta.DB.DefineTable("guarded", {
+        columns = {
+            { name = "id",       type = "id" },                                  -- auto
+            { name = "owner_id", type = "ref", null = false },                   -- required
+            { name = "label",    type = "text", length = 16, null = false },     -- required
+            { name = "count",    type = "int", null = false, default = 0 },      -- has default
+            { name = "note",     type = "text", length = 16 },                   -- nullable
+        },
+    })
+    local V = Omerta.DB.Internal.ValidateInsertRow
+    assert(V("guarded", { owner_id = 1, label = "x" }), "minimal valid row should pass")
+
+    local ok, why = V("guarded", { label = "x" })
+    assert(not ok and why:find("owner_id", 1, true), tostring(why))
+    ok, why = V("guarded", { owner_id = 1 })
+    assert(not ok and why:find("label", 1, true), tostring(why))
+
+    -- Unregistered tables are not second-guessed.
+    assert(V("unknown_table", { anything = 1 }))
+
+    -- And the guard fires through the builder every insert path uses.
+    assert(not pcall(Omerta.DB.Internal.BuildInsert, "guarded", { label = "x" }))
+end)
+
 check("insert builds sorted deterministic SQL", function()
     loadDB()
     local sqlStr, params = Omerta.DB.Internal.BuildInsert("things", {

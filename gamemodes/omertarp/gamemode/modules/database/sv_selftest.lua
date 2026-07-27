@@ -30,7 +30,7 @@ local function buildSteps()
     local steps = {}
     local insertedId = nil
 
-    steps[#steps + 1] = { name = "database ready", fn = function(pass, fail)
+    steps[#steps + 1] = { name = "database ready", required = true, fn = function(pass, fail)
         local s = Omerta.DB.Status()
         if not s.ready then
             fail("phase=" .. s.phase .. (s.lastError and (" lastError=" .. s.lastError) or ""))
@@ -186,7 +186,7 @@ local function buildSteps()
         end)
     end }
 
-    steps[#steps + 1] = { name = "cleanup (drop table)", fn = function(pass, fail)
+    steps[#steps + 1] = { name = "cleanup (drop table)", always = true, fn = function(pass, fail)
         Omerta.DB.Query("DROP TABLE {selftest}", {}, function(_, err)
             if err then fail(err) else pass() end
         end)

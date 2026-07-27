@@ -107,6 +107,12 @@ local function sortedColumns(row)
 end
 
 function Internal.BuildInsert(tableName, row)
+    -- Every insert path (Insert, Upsert, UpsertIncrement, tx:Insert) funnels
+    -- through here, so this is the one place a missing mandatory column can be
+    -- caught before it becomes a wrong row.
+    local ok, why = Internal.ValidateInsertRow(tableName, row)
+    if not ok then error(why, 3) end
+
     local cols = sortedColumns(row)
     local marks, params = {}, {}
     for i, c in ipairs(cols) do

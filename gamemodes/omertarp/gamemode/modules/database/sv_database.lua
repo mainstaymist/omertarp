@@ -201,8 +201,16 @@ end
 -- cb(insertedId, err)
 function Omerta.DB.Insert(tableName, row, cb)
     cb = cb or defaultCb
-    local sqlStr, params = Internal.BuildInsert(tableName, row)
-    Omerta.DB.Query(sqlStr, params, function(rows, err, insertId)
+    -- Build failures (a missing mandatory column, a bad value) are reported
+    -- through the callback like any other error, rather than thrown at an
+    -- async call site that cannot handle them.
+    local ok, sqlOrErr, params = pcall(Internal.BuildInsert, tableName, row)
+    if not ok then
+        Omerta.Log.Error("db", "insert rejected: %s", tostring(sqlOrErr))
+        Internal.Defer(function() cb(nil, tostring(sqlOrErr)) end)
+        return
+    end
+    Omerta.DB.Query(sqlOrErr, params, function(rows, err, insertId)
         cb(err == nil and insertId or nil, err)
     end)
 end

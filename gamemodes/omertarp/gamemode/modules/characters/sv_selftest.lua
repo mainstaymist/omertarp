@@ -17,7 +17,7 @@ local function buildSteps()
     local account, seasonId, characterId
     local base64 = util.Base64Encode(FAKE_JPEG, true)
 
-    steps[#steps + 1] = { name = "database and season ready", fn = function(pass, fail)
+    steps[#steps + 1] = { name = "database and season ready", required = true, fn = function(pass, fail)
         if not Omerta.DB.IsReady() then fail("db phase=" .. Omerta.DB.Status().phase) return end
         local season = Omerta.Seasons.GetActive()
         if not season then
@@ -130,7 +130,8 @@ local function buildSteps()
         end)
     end }
 
-    steps[#steps + 1] = { name = "cleanup (all synthetic rows)", fn = function(pass, fail)
+    steps[#steps + 1] = { name = "cleanup (all synthetic rows)", always = true, fn = function(pass, fail)
+        if not account then pass("nothing to clean") return end
         Repo.DeleteForAccount(account.id, function(ok, err)
             if not ok then fail(tostring(err)) return end
             ARepo.DeleteAccountData(account.id, SID, function(ok2, err2)
