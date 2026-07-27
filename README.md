@@ -8,7 +8,7 @@ Omertà RP is not a DarkRP derivative. There is no global chat, no scoreboard, n
 
 ## Project status
 
-**M3 (seasons + path selection) implemented; in-engine verification pending (`omerta_seasons_selftest`).** M0–M2 are verified in-engine on MySQL/MariaDB, the backend of record (D-008). The server now has persistent accounts with a live audit trail, and a season lifecycle with server-enforced allegiance tracks (D-009/D-010). No gameplay systems exist yet; M4 (characters) is next, pending its design review — where the portrait pipeline (P-001) and characters-per-account (Q-3) decisions come due.
+**M4 (characters) implemented; in-engine verification pending (`omerta_characters_selftest`).** M0–M3 are verified in-engine on MySQL/MariaDB, the backend of record (D-008). Players now create a season-unique named character with a creation-time mugshot (D-011), one living character per account (D-012), on a server-enforced seasonal track (D-009), retired automatically at season end (D-010). Next: M5 (interaction framework, identity and introductions) — the system the whole design pivots on.
 
 ## Repository layout
 
@@ -26,12 +26,13 @@ Omertà RP is not a DarkRP derivative. There is no global chat, no scoreboard, n
 | [`docs/design/DECISIONS.md`](docs/design/DECISIONS.md) | Canonical log of project-lead rulings. |
 | [`docs/review/01_project_review.md`](docs/review/01_project_review.md) | Phase 1 specification review: strengths, weaknesses, contradictions, missing decisions, risks. |
 | [`docs/review/02_development_roadmap.md`](docs/review/02_development_roadmap.md) | Phase 2 milestone roadmap with dependencies. |
-| [`docs/review/03_portrait_evaluation.md`](docs/review/03_portrait_evaluation.md) | Newspaper-portrait pipeline evaluation and recommendation. |
+| [`docs/review/03_portrait_evaluation.md`](docs/review/03_portrait_evaluation.md) | Newspaper-portrait pipeline evaluation — superseded by D-011 (Option C). |
 | [`docs/review/04_justice_system_proposals.md`](docs/review/04_justice_system_proposals.md) | Justice-loop design proposals (awaiting selection). |
 | [`docs/design-reviews/M0_foundation.md`](docs/design-reviews/M0_foundation.md) | M0 design review — approved and implemented. |
 | [`docs/design-reviews/M1_database.md`](docs/design-reviews/M1_database.md) | M1 design review — approved and implemented; MySQL verified in-engine. |
 | [`docs/design-reviews/M2_accounts.md`](docs/design-reviews/M2_accounts.md) | M2 design review — approved, implemented, verified in-engine. |
-| [`docs/design-reviews/M3_seasons.md`](docs/design-reviews/M3_seasons.md) | M3 design review — approved and implemented (rules D-009/D-010). |
+| [`docs/design-reviews/M3_seasons.md`](docs/design-reviews/M3_seasons.md) | M3 design review — approved, implemented, verified in-engine. |
+| [`docs/design-reviews/M4_characters.md`](docs/design-reviews/M4_characters.md) | M4 design review — approved and implemented (rules D-011/D-012). |
 | [`docs/GLOSSARY.md`](docs/GLOSSARY.md) | Plain-language definitions of the engineering terms used in the design reviews. |
 
 ## Document precedence

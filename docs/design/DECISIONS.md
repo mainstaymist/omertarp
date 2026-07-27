@@ -92,9 +92,27 @@ Resolves Q-4. Ending a season automatically retires every living character ("lea
 
 ---
 
-## P-001 — Newspaper portrait pipeline (RECOMMENDED, 2026-07-26)
+## D-012 — One living character per account per season (DECIDED, 2026-07-27; resolves Q-3)
 
-Evaluation of five options delivered in `docs/review/03_portrait_evaluation.md`. **Recommendation: Option E (composite portrait rendered client-side from archived appearance data), with Option B (silhouette) as the degraded fallback, and Option C (creation-time mugshot capture) as a possible post-MVP enhancement.** Awaiting project-lead confirmation.
+Each account may have exactly one character with status `alive` in the active season. A new character becomes possible only once the current one is `retired` or `dead`, and inherits nothing beyond the account's seasonal track (D-009).
+
+**Rationale:** a second character would let one player hold two positions, launder knowledge between them, and hedge against permadeath — gutting the consequence design (GDD §19).
+
+**Affects:** M4 creation flow; `docs/design-reviews/M4_characters.md` §4.
+
+## D-011 — Newspaper portraits are creation-time mugshots (DECIDED, 2026-07-27; resolves P-001)
+
+**Option C selected**: each character's portrait is a real image captured client-side in a controlled photo booth during character creation, uploaded once, and stored server-side. Option B (silhouette) remains the fallback when no portrait exists.
+
+Engineering correction on the record: the P-001 evaluation overstated Option C's cost by framing distribution as "a small custom CDN." At newspaper size (128×128 JPEG ≈ 3–8 KB) a portrait fits in a single net message and is fetched on demand when a paper is read, then cached client-side — materially cheaper than evaluated. The decision is sound on those corrected facts.
+
+Binding implementation constraints (from the risks the evaluation did identify):
+- **One-shot and immutable**: captured at creation only; no re-upload path, so the upload surface exists for one moment per character.
+- **Untrusted pixels**: server validates byte cap and JPEG magic bytes, audits every upload against the uploading account, and staff can wipe a portrait. Offensive *content* is a rules/staff matter, as with metagaming (Tech §4).
+- **Base64 in a text column**, not a binary blob: the SQL layer rejects NUL bytes by design (M1 §7), and text keeps portraits inside normal database backups and multi-server setups.
+- **Appearance snapshot is stored regardless**, both as the booth's reproducible input and as a graceful fallback.
+
+**Affects:** `docs/review/03_portrait_evaluation.md` (recommendation superseded); Tech §20; M4 (capture + storage); M21 (display).
 
 ## P-002 — Justice loop (RECOMMENDED, 2026-07-26)
 
