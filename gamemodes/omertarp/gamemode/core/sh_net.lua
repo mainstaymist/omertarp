@@ -74,15 +74,25 @@ function Omerta.Net.ValidateValue(field, value)
     return true
 end
 
+-- Validation is a SEPARATE pass, run before net.Start rather than during the
+-- write. Erroring halfway through a started message leaves it open, and the
+-- engine then discards the next unrelated message to make room — so one bad
+-- payload used to break a second system that had done nothing wrong.
+-- Write-side failures are OUR bugs, so this still errors at the call site.
+local function assertPayload(def, payload)
+    payload = payload or {}
+    for _, field in ipairs(def.schema) do
+        local ok, why = Omerta.Net.ValidateValue(field, payload[field.name])
+        if not ok then
+            error(string.format("net '%s': bad value for '%s': %s", def.name, field.name, why), 4)
+        end
+    end
+end
+
 local function writePayload(def, payload)
     payload = payload or {}
     for _, field in ipairs(def.schema) do
         local value = payload[field.name]
-        local ok, why = Omerta.Net.ValidateValue(field, value)
-        if not ok then
-            -- Write-side failures are OUR bugs; fail loudly at the call site.
-            error(string.format("net '%s': bad value for '%s': %s", def.name, field.name, why), 3)
-        end
         if field.type == "bool" then net.WriteBool(value)
         elseif field.type == "uint" then net.WriteUInt(value, field.bits)
         elseif field.type == "int" then net.WriteInt(value, field.bits)
@@ -199,6 +209,7 @@ function Omerta.Net.Send(name, payload, targets)
     if targets == nil then
         error("Omerta.Net.Send requires explicit targets (no implicit broadcast)", 2)
     end
+    assertPayload(def, payload)
     net.Start(PREFIX .. name)
     writePayload(def, payload)
     net.Send(targets)
@@ -211,6 +222,7 @@ function Omerta.Net.Request(name, payload)
     if not def or def.realm ~= "client_to_server" then
         error("'" .. tostring(name) .. "' is not a registered client_to_server message", 2)
     end
+    assertPayload(def, payload)
     net.Start(PREFIX .. name)
     writePayload(def, payload)
     net.SendToServer()

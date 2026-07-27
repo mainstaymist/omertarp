@@ -178,6 +178,14 @@ Implemented as `modules/treasury/`. The headless suite grew from 200 to 221 chec
 
 **A correction I owe the record:** M10's review claimed per-rank permissions were "overridable through the config file without touching Lua". They were not, and are not. Tech §10 does require it. What exists today is a `treasury.limit_multiplier` that scales every ceiling server-wide; the ladders themselves are code. That is a real gap against Tech §10 rather than a design decision, and it belongs on the list — the config layer is scalar-typed and a nested permission table needs a schema type it does not have yet.
 
+**Three defects found on the first in-engine run, all fixed — and two of them were older than this milestone.**
+
+- **The ledger going negative was unsendable.** Money put into a safe by hand (through the container, not through `Deposit`) is never written down, so spending against it drives the books below zero — which is not a corrupt state, it is exactly the discrepancy §4a exists to produce. `treasury.state.ledger` was `uint`, so the first purchase after an unrecorded deposit failed validation and took the whole message with it. Now signed, with the crashing value pinned in a test.
+- **`Omerta.Chat.Notice` had a latent crash since M7.** A channel's wire index is assigned by `GetOrdered()`, and `GetChannel()` returned the definition without ensuring that had ever run — so the *first* code path to speak got a nil index and errored inside `net.Send`. Chat itself never hit it because ordinary speech ordered the channels first. M11 was simply the first system to send a notice before anyone had spoken.
+- **A failed write left a half-open net message.** `Omerta.Net.Send` called `net.Start` and then validated field by field while writing, so an invalid payload aborted mid-message and the engine discarded the *next, unrelated* message to make room — one bad payload breaking a second system that had done nothing wrong. Validation is now a separate pass that runs before `net.Start`.
+
+The middle two are core-layer faults that M11 only happened to surface; both are now covered by tests in `test_chat.lua` and `test_net.lua` rather than in the treasury's own suite, because that is where they live.
+
 In-engine acceptance (user-side): pull, restart, then **`omerta_treasury_selftest` in the SERVER console** — expect 9/9. Then, standing where you want the family's safe:
 
 ```

@@ -34,7 +34,15 @@ function Omerta.Chat.RegisterChannel(id, def)
     return def
 end
 
-function Omerta.Chat.GetChannel(id) return registry[id] end
+-- GetOrdered is what assigns `index`, and the index is what goes on the wire.
+-- Returning a channel before that has ever run hands the caller a definition
+-- with a nil index, which then fails validation inside net.Send — a crash that
+-- waits for whichever code path happens to speak first. Ordering here makes a
+-- channel always fully formed.
+function Omerta.Chat.GetChannel(id)
+    Omerta.Chat.GetOrdered()
+    return registry[id]
+end
 
 -- Deterministic ordering so the wire can carry a small index rather than a
 -- channel name, computed identically in both realms.

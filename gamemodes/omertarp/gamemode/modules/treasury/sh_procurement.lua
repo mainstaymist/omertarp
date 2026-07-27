@@ -172,7 +172,10 @@ Omerta.Net.Register("treasury.state", {
     realm = "server_to_client",
     schema = {
         { name = "counted",   type = "uint", bits = 32 },  -- cash actually present
-        { name = "ledger",    type = "uint", bits = 32 },  -- what the books say
+        -- SIGNED, and it has to be: money that enters the safe without being
+        -- written down and is then spent drives the books negative. That is
+        -- not a corrupt state, it is the discrepancy D-024 exists to show.
+        { name = "ledger",    type = "int",  bits = 32 },  -- what the books say
         { name = "limit",     type = "uint", bits = 32 },  -- yours; 0 means none allowed
         { name = "unlimited", type = "bool" },
         { name = "may_view",  type = "bool" },
@@ -222,7 +225,7 @@ Omerta.Net.Register("treasury.line", {
     schema = {
         { name = "at",       type = "uint", bits = 32 },
         { name = "delta",    type = "int",  bits = 32 },
-        { name = "balance",  type = "uint", bits = 32 },
+        { name = "balance",  type = "int",  bits = 32 },  -- signed, as above
         { name = "who",      type = "string", maxlen = 56 },
         { name = "approver", type = "string", maxlen = 56 },
         { name = "reason",   type = "string", maxlen = 64 },

@@ -322,9 +322,9 @@ function Internal.SendState(ply)
         Omerta.Config.Get("treasury.limit_multiplier"))
 
     Omerta.Net.Send("treasury.state", {
-        counted = mayView and Omerta.Treasury.Count(member.organization_id) or 0,
-        ledger = mayView and Omerta.Treasury.LedgerBalance(member.organization_id) or 0,
-        limit = limit or 0,
+        counted = mayView and math.floor(Omerta.Treasury.Count(member.organization_id)) or 0,
+        ledger = mayView and math.floor(Omerta.Treasury.LedgerBalance(member.organization_id)) or 0,
+        limit = math.floor(limit or 0),
         unlimited = limit == nil,
         may_view = mayView,
     }, ply)
@@ -353,8 +353,8 @@ function Internal.SendHistory(ply, organizationId)
                 if IsValid(ply) then
                     Omerta.Net.Send("treasury.line", {
                         at = math.max(0, math.floor(row.at)),
-                        delta = row.delta,
-                        balance = math.max(0, math.floor(row.balance_after)),
+                        delta = math.floor(row.delta),
+                        balance = math.floor(row.balance_after),
                         who = resolved[row.character_id] or "someone",
                         approver = row.approver_character_id
                             and (resolved[row.approver_character_id] or "someone") or "",

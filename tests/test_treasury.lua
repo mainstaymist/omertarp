@@ -367,6 +367,35 @@ check("the wire tells a client only what its rank has earned", function()
     end
 end)
 
+-- Money that enters a safe without being written down and is then spent drives
+-- the books negative. That is the discrepancy D-024 exists to show, so the wire
+-- has to be able to carry it — an unsigned field made a legitimate state
+-- unsendable and took the whole message with it.
+check("the wire can carry books that have gone negative", function()
+    loadModules()
+    Omerta.Module.FinishLoading()
+    local registry = Omerta.Net.GetRegistry()
+
+    local function fieldOf(message, name)
+        for _, field in ipairs(registry[message].schema) do
+            if field.name == name then return field end
+        end
+    end
+
+    assert(fieldOf("treasury.state", "ledger").type == "int",
+        "the ledger balance must be signed")
+    assert(fieldOf("treasury.line", "balance").type == "int",
+        "a line's resulting balance must be signed")
+    assert(fieldOf("treasury.line", "delta").type == "int",
+        "a movement must be signed")
+    -- What is physically in the safe never goes below zero, so it stays
+    -- unsigned and keeps the extra bit.
+    assert(fieldOf("treasury.state", "counted").type == "uint")
+
+    assert(Omerta.Net.ValidateValue(fieldOf("treasury.state", "ledger"), -35200),
+        "the exact value that crashed a live server")
+end)
+
 check("container access refuses by default when a provider errors", function()
     loadModules()
     -- A provider that throws must lock the container rather than accidentally

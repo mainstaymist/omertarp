@@ -42,6 +42,19 @@ check("type and range validation", function()
     assert(not Omerta.Net.ValidateValue(boolField, 1))
 end)
 
+-- A signed field has to accept the sign. The treasury's ledger balance goes
+-- negative whenever money enters a safe without being written down and is then
+-- spent, which is a state the design wants rather than a corruption.
+check("int carries negatives and uint refuses them", function()
+    local signed = { name = "n", type = "int", bits = 32 }
+    assert(Omerta.Net.ValidateValue(signed, -35200), "int must accept a negative")
+    assert(Omerta.Net.ValidateValue(signed, 0))
+    assert(Omerta.Net.ValidateValue(signed, 35200))
+
+    local unsigned = { name = "n", type = "uint", bits = 32 }
+    assert(not Omerta.Net.ValidateValue(unsigned, -1), "uint must refuse a negative")
+end)
+
 suite("net.register")
 
 check("registration validates and stores definitions headless", function()

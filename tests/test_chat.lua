@@ -100,6 +100,23 @@ check("default channels exist with sane, widening ranges", function()
     assert(Omerta.Chat.GetChannel("system").system == true, "system is not player-usable")
 end)
 
+-- The index is what goes on the wire, and GetOrdered is what assigns it. A
+-- channel fetched before anything had ever ordered them carried a nil index,
+-- which then failed validation inside net.Send — a crash lying in wait for
+-- whichever code path happened to speak first. M11's treasury found it.
+check("a channel is fully formed the first time it is asked for", function()
+    loadModules()
+    local system = Omerta.Chat.GetChannel("system")
+    assert(system, "the system channel is missing")
+    assert(type(system.index) == "number",
+        "a channel must carry its wire index before anything else runs")
+
+    -- True for every channel, not just the one that happened to be first.
+    for _, id in ipairs({ "whisper", "say", "yell", "me", "system" }) do
+        assert(type(Omerta.Chat.GetChannel(id).index) == "number", id .. " has no index")
+    end
+end)
+
 check("indices are stable and reversible", function()
     loadModules()
     local list = Omerta.Chat.GetOrdered()
