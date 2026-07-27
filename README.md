@@ -8,7 +8,7 @@ Omertà RP is not a DarkRP derivative. There is no global chat, no scoreboard, n
 
 ## Project status
 
-**M5 (interaction, identity, introductions) implemented; in-engine verification pending (`omerta_identity_selftest`).** M0–M4 are verified in-engine on MySQL/MariaDB, the backend of record (D-008). Everyone is now Unknown until introduced: knowledge is stored per observer–subject pair, introductions are one-way with reciprocation offered (D-013), a concealed face defeats recognition without erasing knowledge (D-014), and the identity map never leaves the server. Next: M6 (hidden population hardening).
+**M5 (interaction, identity, introductions) implemented; in-engine verification pending (`omerta_identity_selftest`).** M0–M4 are verified in-engine on MySQL/MariaDB, the backend of record (D-008). Everyone is now Unknown until introduced: knowledge is stored per observer–subject pair, introductions are one-way with reciprocation offered (D-013), a concealed face defeats recognition without erasing knowledge (D-014), and the identity map never leaves the server. **M6 (hidden population) is in design review** — see `docs/design-reviews/M6_hidden_population.md`.
 
 ## Repository layout
 
@@ -33,7 +33,8 @@ Omertà RP is not a DarkRP derivative. There is no global chat, no scoreboard, n
 | [`docs/design-reviews/M2_accounts.md`](docs/design-reviews/M2_accounts.md) | M2 design review — approved, implemented, verified in-engine. |
 | [`docs/design-reviews/M3_seasons.md`](docs/design-reviews/M3_seasons.md) | M3 design review — approved, implemented, verified in-engine. |
 | [`docs/design-reviews/M4_characters.md`](docs/design-reviews/M4_characters.md) | M4 design review — approved, implemented, verified in-engine (rules D-011/D-012). |
-| [`docs/design-reviews/M5_identity.md`](docs/design-reviews/M5_identity.md) | M5 design review — approved and implemented (rules D-013/D-014). |
+| [`docs/design-reviews/M5_identity.md`](docs/design-reviews/M5_identity.md) | M5 design review — approved, implemented, verified in-engine (rules D-013/D-014). |
+| [`docs/design-reviews/M6_hidden_population.md`](docs/design-reviews/M6_hidden_population.md) | M6 design review (hidden population) — awaiting approval. |
 | [`docs/GLOSSARY.md`](docs/GLOSSARY.md) | Plain-language definitions of the engineering terms used in the design reviews. |
 
 ## Document precedence

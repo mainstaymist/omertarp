@@ -251,20 +251,64 @@ function MODULE:OnEnable()
     end)
 
     -- Staff: inspect who knows a character, for investigating metagaming.
-    concommand.Add("omerta_identity_who_knows", function(ply, _, args)
-        if IsValid(ply) and not ply:IsSuperAdmin() then return end
-        local id = tonumber(args[1])
-        if not id then
-            Omerta.Log.Error("identity", "usage: omerta_identity_who_knows <characterId>")
-            return
-        end
-        Internal.Repo.WhoKnows(id, function(rows, err)
+    -- Accepts a character id or a SteamID64, because a staff member holding a
+    -- suspect has the latter, not the former.
+    local function report(characterId)
+        Internal.Repo.WhoKnows(characterId, function(rows, err)
             if err then Omerta.Log.Error("identity", "lookup failed: %s", err) return end
-            Omerta.Log.Info("identity", "%d character(s) know #%d:", #(rows or {}), id)
+            Omerta.Log.Info("identity", "%d character(s) know #%d:", #(rows or {}), characterId)
             for _, row in ipairs(rows or {}) do
                 Omerta.Log.Info("identity", "  character #%s knows them as '%s' (%s)",
                     tostring(row.observer_id), row.learned_name, row.source)
             end
         end)
+    end
+
+    concommand.Add("omerta_identity_who_knows", function(ply, _, args)
+        if IsValid(ply) and not ply:IsSuperAdmin() then return end
+        local arg = args[1]
+        if not arg then
+            Omerta.Log.Error("identity",
+                "usage: omerta_identity_who_knows <characterId|steamID64>")
+            return
+        end
+
+        -- SteamID64s are matched as TEXT: 17 digits exceed what Lua's integer
+        -- formatting round-trips, so tonumber() would silently mangle them
+        -- into a plausible-looking character id and answer the wrong question.
+        if arg:find("^7656%d%d%d%d%d%d%d%d%d%d%d%d%d$") then
+            local season = Omerta.Seasons.GetActive()
+            if not season then
+                Omerta.Log.Error("identity", "no active season — look the character up by id")
+                return
+            end
+            Omerta.Accounts.GetBySteamID64(arg, function(account, aerr)
+                if aerr then Omerta.Log.Error("identity", "lookup failed: %s", aerr) return end
+                if not account then
+                    Omerta.Log.Error("identity", "no account for SteamID64 %s", arg)
+                    return
+                end
+                Omerta.Characters.Internal.Repo.GetActiveFor(account.id, season.id,
+                    function(character)
+                    if not character then
+                        Omerta.Log.Error("identity",
+                            "account #%d has no living character this season", account.id)
+                        return
+                    end
+                    Omerta.Log.Info("identity", "%s is character #%d (%s %s)",
+                        arg, character.id, character.first_name, character.last_name)
+                    report(character.id)
+                end)
+            end)
+            return
+        end
+
+        local id = tonumber(arg)
+        if not id or id % 1 ~= 0 or id < 1 then
+            Omerta.Log.Error("identity",
+                "'%s' is neither a character id nor a SteamID64", arg)
+            return
+        end
+        report(id)
     end)
 end
