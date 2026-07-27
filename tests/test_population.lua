@@ -21,6 +21,7 @@ local MODULE_FILES = {
     "gamemodes/omertarp/gamemode/modules/identity/sh_identity.lua",
     "gamemodes/omertarp/gamemode/modules/identity/sv_repository.lua",
     "gamemodes/omertarp/gamemode/modules/identity/sv_identity.lua",
+    "gamemodes/omertarp/gamemode/modules/chat/sh_chat.lua",
     "gamemodes/omertarp/gamemode/modules/population/sh_population.lua",
     "gamemodes/omertarp/gamemode/modules/population/sv_population.lua",
 }
@@ -77,6 +78,7 @@ check("the real registry's outbound name fields are all accounted for", function
         ["identity.name"] = true,
         ["identity.introduce_prompt"] = true,
         ["characters.self"] = true,
+        ["chat.message"] = true,
     }
     for _, f in ipairs(findings) do
         local msg = f.what:match("net '([^']+)'")

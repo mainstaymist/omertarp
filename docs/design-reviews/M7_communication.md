@@ -1,6 +1,6 @@
 # Design Review — M7: Local Text and Voice
 
-Status: **AWAITING APPROVAL — no implementation until approved.**
+Status: **APPROVED 2026-07-27 — IMPLEMENTED.** See §13.
 Milestone: M7 (roadmap Track A). Depends on: M0–M6. Consumed by: M11 (radios register a channel), M12 (telephony registers call channels), M13 (businesses as social space), every social system thereafter.
 
 ## 1. Purpose
@@ -114,4 +114,17 @@ M0 (net, config, log), M1 (migration 6), M3 (season scoping), M4 (characters), M
 
 ---
 
-**Requesting approval to implement M7 as specified.** No ruling is needed this time — the open questions (§4 resolution strategy, three ranges, separate chat log, deferred occlusion) all have clear recommendations, but say the word if you would prefer different ranges or a single one.
+## 13. Implementation Notes (post-implementation)
+
+Implemented as `modules/chat/`. Suite grew to 134 checks. Notes:
+
+- **The `chat.say` client→server message was not built.** GMod's chat box already delivers text to the server through `PlayerSay`, so parsing happens there and returning `""` suppresses the default global broadcast. That removes an inbound message, an attack surface, and a custom input UI from a milestone that does not own UI — same semantics, fewer moving parts than §5 specified.
+- **Colours are `{r,g,b}` tables, not `Color` objects**, because the channel registry lives in a shared file that must stay loadable headless, where `Color` does not exist. The client converts at render time.
+- **An unrecognised `/command` is refused rather than spoken.** Without that, a mistyped `/wanted dead or alive` becomes a shout heard by the whole room — a small parser decision with a loud failure mode. Covered by a test.
+- **A `system` channel** carries direct feedback ("You have no character; you cannot speak.") down the same pipe rather than adding a second message type. It is flagged `system` so no player can select it.
+- **Rate limiting reuses M0's token bucket** (4 messages over 6 seconds): ordinary conversation is unimpeded, flooding is not.
+- **The speaker always hears themselves**, bypassing the range check — `ResolveDisplayName`'s self-case gives them their own name.
+- Position and recipient count are logged with every line, so "who else was in the room" is answerable later without reconstruction.
+- **M6's audit allowlist gained `chat.message`**, as the review anticipated; the headless test pins it.
+
+In-engine acceptance (user-side): pull, restart (watch for `applying migration 6: chat log`), then `omerta_chat_selftest` (expect 7/7). The real test needs **two clients**: stand together, both unacquainted — each sees `Unknown says "…"`. Introduce one way, and the recipient now sees the speaker's name while the introducer still sees `Unknown` until reciprocated. Walk out of range and the lines stop arriving entirely. Try `/w`, `/y`, `/me`, and a bogus `/xyz`.
