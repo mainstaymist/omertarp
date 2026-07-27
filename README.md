@@ -8,7 +8,7 @@ Omertà RP is not a DarkRP derivative. There is no global chat, no scoreboard, n
 
 ## Project status
 
-**M2 (accounts + audit) implemented; in-engine verification pending (`omerta_accounts_selftest`).** M0 (foundation) and M1 (database layer) are verified in-engine on MySQL/MariaDB, the backend of record (D-008 — the SQLite driver remains as an unsupported development convenience). Every connecting player now gets a persistent account (SteamID64-keyed; flags, career stats, playtime), and all audit events persist to the database. No gameplay systems exist yet; M3 (seasons) is next, pending its design review.
+**M0–M2 implemented and verified in-engine on MySQL/MariaDB** (the backend of record, D-008): foundation skeleton, database layer, and persistent accounts with a live audit trail. No gameplay systems exist yet. **M3 (seasons) is in design review** — see `docs/design-reviews/M3_seasons.md`; approving it also rules on seasonal-allegiance semantics (Q-2) and season-end character handling (Q-4).
 
 ## Repository layout
 
@@ -30,7 +30,8 @@ Omertà RP is not a DarkRP derivative. There is no global chat, no scoreboard, n
 | [`docs/review/04_justice_system_proposals.md`](docs/review/04_justice_system_proposals.md) | Justice-loop design proposals (awaiting selection). |
 | [`docs/design-reviews/M0_foundation.md`](docs/design-reviews/M0_foundation.md) | M0 design review — approved and implemented. |
 | [`docs/design-reviews/M1_database.md`](docs/design-reviews/M1_database.md) | M1 design review — approved and implemented; MySQL verified in-engine. |
-| [`docs/design-reviews/M2_accounts.md`](docs/design-reviews/M2_accounts.md) | M2 design review — approved and implemented. |
+| [`docs/design-reviews/M2_accounts.md`](docs/design-reviews/M2_accounts.md) | M2 design review — approved, implemented, verified in-engine. |
+| [`docs/design-reviews/M3_seasons.md`](docs/design-reviews/M3_seasons.md) | M3 design review (seasons + path selection) — awaiting approval. |
 | [`docs/GLOSSARY.md`](docs/GLOSSARY.md) | Plain-language definitions of the engineering terms used in the design reviews. |
 
 ## Document precedence
