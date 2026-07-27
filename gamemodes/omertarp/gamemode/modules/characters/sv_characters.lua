@@ -154,14 +154,20 @@ function Omerta.Characters.Create(ply, spec, cb)
             }
 
             -- The path choice runs through M3, so D-009's matrix validates it.
-            -- A rejection (e.g. picking police mid-season) is logged but does
-            -- not undo the character: the account simply keeps its path.
-            Omerta.Seasons.SetPath(ply, validated.path, function(ok, perr)
-                if not ok then
-                    Omerta.Log.Warn("characters", "path '%s' refused for %s: %s",
-                        validated.path, account.steamid64, tostring(perr))
-                end
-            end)
+            -- Picking the path the account already holds is a no-op, not a
+            -- refusal: a replacement character inherits its account's track
+            -- (D-009), so only an actual change is worth attempting.
+            if Omerta.Seasons.GetPath(ply) ~= validated.path then
+                -- A genuine rejection (e.g. a criminal picking police) is
+                -- logged but does not undo the character: the account simply
+                -- keeps the track it already had.
+                Omerta.Seasons.SetPath(ply, validated.path, function(ok, perr)
+                    if not ok then
+                        Omerta.Log.Warn("characters", "path '%s' refused for %s: %s",
+                            validated.path, account.steamid64, tostring(perr))
+                    end
+                end)
+            end
 
             Omerta.Log.Audit("character.created", {
                 actor = account.steamid64, account_id = account.id,

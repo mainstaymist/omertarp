@@ -223,6 +223,30 @@ check("creation validates, persists, sets the path, and caches", function()
     assert(Omerta.Seasons.GetPath(ply) == "independent", tostring(Omerta.Seasons.GetPath(ply)))
 end)
 
+-- Regression: a replacement character picking the track its account already
+-- holds logged a "path refused" warning, which reads as a fault when it is
+-- simply D-009 inheritance doing its job.
+check("re-picking the account's existing path is silent, not a refusal", function()
+    local state = { value = "setup" }
+    local mock = boot(seasonResponder(state))
+    local ply = activeSeasonAndAccount(mock, "90000000000000016")
+
+    Omerta.Characters.Create(ply, { first = "Tony", last = "Marino",
+        modelIndex = 1, skin = 0, pathIndex = 1 }, function() end)
+    assert(Omerta.Seasons.GetPath(ply) == "criminal")
+
+    -- Second character on the same account, same path: no path write at all.
+    Omerta.Characters.Internal.Repo.SetStatus(1, "retired", os.time(), function() end)
+    local before = #mock.log
+    Omerta.Characters.Create(ply, { first = "Vincent", last = "Costa",
+        modelIndex = 1, skin = 0, pathIndex = 1 }, function() end)
+    for i = before + 1, #mock.log do
+        assert(not mock.log[i]:find("INSERT INTO omerta_account_seasons", 1, true),
+            "an unchanged path should not be rewritten")
+    end
+    assert(Omerta.Seasons.GetPath(ply) == "criminal", "path should be unchanged")
+end)
+
 check("a bad name never reaches the database", function()
     local state = { value = "setup" }
     local mock = boot(seasonResponder(state))
