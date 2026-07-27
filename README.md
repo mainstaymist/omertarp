@@ -8,7 +8,7 @@ Omertà RP is not a DarkRP derivative. There is no global chat, no scoreboard, n
 
 ## Project status
 
-**M0 (Foundation Skeleton) implemented and verified in-engine.** The gamemode boots clean: module loader, schema-validated configuration, logging/audit envelope, and a validated, rate-limited networking wrapper. No gameplay systems exist yet. M1 (database abstraction layer) is in design review awaiting approval.
+**M1 (database abstraction layer) implemented; in-engine dual-backend verification pending.** M0 (foundation skeleton) is verified in-engine. The database layer offers one async API over SQLite and MySQL/mysqloo — backend switched by a single config value — with a schema DSL, versioned migrations, transactions, and result-type normalization. Verify with `omerta_db_selftest` in the server console on each backend (see D-006). No gameplay systems exist yet; M2 (accounts) is next, pending its design review.
 
 ## Repository layout
 

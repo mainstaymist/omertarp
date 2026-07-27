@@ -36,6 +36,7 @@ local TEST_FILES = {
     "tests/test_config.lua",
     "tests/test_module.lua",
     "tests/test_net.lua",
+    "tests/test_database.lua",
     "tests/test_lint.lua",
 }
 

@@ -1,6 +1,6 @@
 # Design Review — M1: Database Abstraction Layer
 
-Status: **AWAITING APPROVAL — no implementation until approved.**
+Status: **APPROVED 2026-07-27 — IMPLEMENTED.** See §13 for implementation notes. In-engine dual-backend verification (D-006) pending on the project lead's server.
 Milestone: M1 (roadmap Track A). Depends on: M0. Everything that persists anything depends on this.
 
 > Unfamiliar terms (public API, driver, migration, transaction, async/callback, parameterized query) are defined in [`docs/GLOSSARY.md`](../GLOSSARY.md).
@@ -154,4 +154,21 @@ M1 is the first module: `modules/database/`, registered with `Omerta.Module.Regi
 
 ---
 
-**Requesting approval to implement M1 as specified.** On approval: implementation, then the standard post-implementation report before M2's design review.
+## 13. Implementation Notes (post-implementation)
+
+Implemented in `gamemodes/omertarp/gamemode/modules/database/` (six files: shared registration stub, schema DSL, SQL builder, two drivers, central layer, self-test). Headless suite grew to 65 checks, including a full boot-flow test against a scripted mock driver (queue → connect → migrate → ready → flush → coerce). Concrete mechanisms and small additions, none altering the approved semantics:
+
+- **`{table}` placeholders** are how "callers pass unprefixed names" works in raw SQL: `SELECT * FROM {accounts}` becomes `SELECT * FROM omerta_accounts`. Physical table names never appear in caller code.
+- **`Omerta.DB.NULL`** sentinel for NULL params and row values — a bare `nil` breaks a Lua array's length, so NULL must be explicit. Bare `nil` in a value position is an error.
+- **Storage conventions**: `timestamp` = unix epoch seconds (integer), `money` = integer cents. Floats never store money.
+- **MySQL specifics**: tables render `ENGINE=InnoDB DEFAULT CHARSET=utf8mb4` (InnoDB because MyISAM has no transactions; utf8mb4 because character names carry accents — it's *Omertà* RP), and the connection sets utf8mb4 to match.
+- **Coercion tiers**: registered columns coerce by declared class in both directions (SQLite strings → numbers/bools, MySQL `TINYINT` numbers → bools); on SQLite only, unregistered columns that look strictly numeric coerce too, so `COUNT(*) AS n` types identically on both backends. Caveat: don't alias text columns to unregistered names. A column name declared with conflicting classes across tables disables coercion for that name, with a boot-time warning.
+- **GMod NULL wart**: the engine's `sql` library returns SQL NULL as the literal string `"NULL"` with no way to distinguish a real `'NULL'` text value. Uniformly converted to `nil` (matching MySQL); the four-character corner case is accepted and documented here.
+- **Failed queries are never retried** after connection loss — a write may have applied before the drop, and re-running could double-execute. The connection rebuilds for future work only.
+- **Transactions are write-only in M1** (statements return no rows); the DSL gained a `primary` option (composite keys — the migrations table needs it now, IdentityKnowledge will later).
+- **`db.queue_max`** config key added (default 256) to make the bounded queue's bound configurable.
+- **Load-order rule reaffirmed**: module files never call sibling-file functions at include time (inclusion is alphabetical); the migrations table's `DefineTable` therefore lives inside `Start()`, and one violation of this rule was caught and fixed during implementation.
+- **Bug caught in self-review, now covered by tests**: on terminal failure the queue drained by *executing* pending operations instead of failing them; queue entries now carry both an execute path (ready) and a fail path (failed).
+- **Migration machinery** is exercised headless via the mock driver; the first real migration lands with M2's accounts table, as designed.
+
+Remaining acceptance step (D-006, user-side): run `omerta_db_selftest` on SQLite, flip `db.backend` to `mysql` in `data/omertarp/config/server.txt`, restart, run it again — identical pass required. The reconnect step self-skips on SQLite and on mysqloo builds without a disconnect method, and says so.
