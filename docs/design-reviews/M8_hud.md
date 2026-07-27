@@ -1,6 +1,6 @@
 # Design Review — M8: Contextual HUD Framework
 
-Status: **APPROVED 2026-07-27 — IMPLEMENTED** (§4a ruled *keep* hunger, inventory-only; §4b ruled (b); logged as D-016 and D-017). See §13.
+Status: **APPROVED 2026-07-27 — IMPLEMENTED AND VERIFIED IN-ENGINE** (`omerta_hud_selftest` 6/6, including the headline check that the screen is empty when idle; 7 elements registered). §4a ruled *keep* hunger, inventory-only; §4b ruled (b); logged as D-016 and D-017. See §13.
 Milestone: M8 (roadmap Track A). Depends on: M0–M7. Consumed by: M9 (inventory), M12 (telephony), M19 (injury), M21 (newspaper) — every system that ever needs to show the player something.
 
 > **Two things need your ruling** (§4): confirmation of Q-7 (no hunger mechanic), and the crosshair, which the GDD says to remove and which materially changes how the game feels to play.
