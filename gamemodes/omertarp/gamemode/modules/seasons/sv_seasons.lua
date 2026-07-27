@@ -73,6 +73,27 @@ function Internal.CanLifecycle(state, action)
     return true
 end
 
+-- Staff convenience: resolve "the season I obviously mean" when no id is
+-- given. Only unambiguous when exactly one season is in setup — otherwise
+-- refuse and let the operator look at the list.
+-- Returns id, or nil + reason.
+function Internal.PickSoleSetupSeason(rows)
+    local setup = {}
+    for _, row in ipairs(rows) do
+        if row.state == "setup" then setup[#setup + 1] = row end
+    end
+    if #setup == 0 then
+        return nil, "no season is waiting in setup — create one first"
+    end
+    if #setup > 1 then
+        local ids = {}
+        for _, row in ipairs(setup) do ids[#ids + 1] = row.id end
+        return nil, "several seasons are in setup (ids: " .. table.concat(ids, ", ") ..
+            ") — name the one you mean"
+    end
+    return setup[1].id
+end
+
 -- Boot invariant: at most one active season may exist in the table.
 function Internal.CheckActiveInvariant(rows)
     local active = {}
@@ -394,12 +415,44 @@ function MODULE:OnEnable()
         end)
     end)
 
+    concommand.Add("omerta_season_list", function(ply)
+        if not staffOnly(ply) then return end
+        Internal.Repo.GetAllSeasons(function(rows, err)
+            if err then Omerta.Log.Error("seasons", "list failed: %s", err) return end
+            if #rows == 0 then Omerta.Log.Info("seasons", "no seasons exist yet") return end
+            Omerta.Log.Info("seasons", "%d season(s):", #rows)
+            for _, row in ipairs(rows) do
+                local when = row.state == "active"
+                        and ("started " .. os.date("%Y-%m-%d", row.started_at or 0) ..
+                             ", planned end " .. os.date("%Y-%m-%d", row.ends_at or 0))
+                    or row.state == "ended"
+                        and ("ended " .. os.date("%Y-%m-%d", row.ended_at or 0))
+                    or ("created " .. os.date("%Y-%m-%d", row.created_at or 0))
+                Omerta.Log.Info("seasons", "  #%d  %-8s  %s  (%s)",
+                    row.id, row.state, row.label, when)
+            end
+        end)
+    end)
+
     concommand.Add("omerta_season_start", function(ply, _, args)
         if not staffOnly(ply) then return end
+        local function start(id)
+            Omerta.Seasons.Start(id, actorOf(ply), function(ok, err)
+                if not ok then Omerta.Log.Error("seasons", "start failed: %s", tostring(err)) end
+            end)
+        end
         local id = tonumber(args[1])
-        if not id then Omerta.Log.Error("seasons", "usage: omerta_season_start <id>") return end
-        Omerta.Seasons.Start(id, actorOf(ply), function(ok, err)
-            if not ok then Omerta.Log.Error("seasons", "start failed: %s", tostring(err)) end
+        if id then start(id) return end
+        -- No id given: start the sole season in setup, if there is exactly one.
+        Internal.Repo.GetAllSeasons(function(rows, err)
+            if err then Omerta.Log.Error("seasons", "start failed: %s", err) return end
+            local sole, why = Internal.PickSoleSetupSeason(rows)
+            if not sole then
+                Omerta.Log.Error("seasons", "%s (usage: omerta_season_start [id]; " ..
+                    "see omerta_season_list)", why)
+                return
+            end
+            start(sole)
         end)
     end)
 

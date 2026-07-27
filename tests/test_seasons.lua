@@ -105,6 +105,20 @@ check("lifecycle rules", function()
     assert(not Can("active", "explode"))
 end)
 
+check("sole-setup-season resolution for argument-less staff commands", function()
+    loadRules()
+    local Pick = Omerta.Seasons.Internal.PickSoleSetupSeason
+    assert(Pick({ { id = 3, state = "setup" } }) == 3)
+    -- ignores seasons that are not waiting in setup
+    assert(Pick({ { id = 1, state = "ended" }, { id = 2, state = "active" },
+                  { id = 3, state = "setup" } }) == 3)
+    local id, why = Pick({ { id = 1, state = "ended" } })
+    assert(id == nil and why:find("no season is waiting"), tostring(why))
+    id, why = Pick({ { id = 1, state = "setup" }, { id = 2, state = "setup" } })
+    assert(id == nil and why:find("several seasons"), tostring(why))
+    assert(why:find("1, 2", 1, true), "ambiguity message should name the ids: " .. why)
+end)
+
 check("one-active invariant checker", function()
     loadRules()
     local Check = Omerta.Seasons.Internal.CheckActiveInvariant
