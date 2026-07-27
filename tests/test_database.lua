@@ -393,6 +393,42 @@ check("transactions collect substituted statements and report once", function()
     assert(mock.txs[2].sql:find("UPDATE omerta_widgets", 1, true), mock.txs[2].sql)
 end)
 
+check("reconnect drill: outage queues work, rebuild flushes it", function()
+    loadDB()
+    local pendingConnect = nil
+    local first = true
+    local mock = { dialect = "sqlite", heuristic = true, log = {} }
+    function mock.Connect(_, cb)
+        if first then first = false; cb(nil) else pendingConnect = cb end
+    end
+    function mock.RunQuery(sqlStr, params, cb)
+        mock.log[#mock.log + 1] = sqlStr
+        if sqlStr:find("SELECT version") then cb({}, nil) else cb({ { one = "1" } }, nil, 1) end
+    end
+    function mock.RunTransaction(_, cb) cb(true, nil) end
+    Omerta.DB.Internal.Drivers = Omerta.DB.Internal.Drivers or {}
+    Omerta.DB.Internal.Drivers.sqlite = mock
+
+    Omerta.DB.Internal.Start()
+    assert(Omerta.DB.IsReady())
+
+    -- What a real disconnect error triggers (and what the in-engine drill
+    -- calls explicitly, since a manual close emits no error).
+    Omerta.DB.Internal.OnConnectionLost()
+    assert(not Omerta.DB.IsReady(), "should be rebuilding, phase: " .. Omerta.DB.Status().phase)
+
+    local outcome = nil
+    Omerta.DB.QueryOne("SELECT 1 AS one", {}, function(row, err)
+        outcome = err or (row and row.one)
+    end)
+    assert(outcome == nil, "query must queue during the outage")
+    assert(Omerta.DB.Status().queued == 1, "queued: " .. Omerta.DB.Status().queued)
+
+    pendingConnect(nil) -- the rebuild completes
+    assert(Omerta.DB.IsReady(), "should be ready after rebuild")
+    assert(outcome == 1, "outage-queued query should flush and coerce: " .. tostring(outcome))
+end)
+
 check("connect failure lands in down, not a crash", function()
     loadDB()
     mockDriver({ failConnect = true })

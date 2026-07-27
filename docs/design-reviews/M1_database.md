@@ -173,6 +173,8 @@ Implemented in `gamemodes/omertarp/gamemode/modules/database/` (six files: share
 
 Remaining acceptance step (D-006, user-side): run `omerta_db_selftest` on SQLite, flip `db.backend` to `mysql` in `data/omertarp/config/server.txt`, restart, run it again — identical pass required. The reconnect step self-skips on SQLite and on mysqloo builds without a disconnect method, and says so.
 
+**Field finding (first MariaDB run, 8/10):** mysqloo does not *fail* queries started on a manually closed connection — it parks them awaiting a `connect()` that never comes, so the original "disconnect, query, wait for the error to trigger recovery" step deadlocked itself and the cleanup step behind it. A *real* network loss produces query errors (`Lost connection…`, `gone away`) that the error-driven reconnect path catches; manual closure alone emits nothing. The step is now a **reconnect drill**: close the connection, deliver the notification a real loss would produce (`Internal.OnConnectionLost`), verify the layer leaves ready, queue a query during the outage, and require it to run after the rebuild — which exercises our actual recovery machinery (fresh connection object, outage queue, flush-on-ready) instead of mysqloo's closed-object semantics. The same drill is covered headless against the mock driver. The self-test also now drops leftovers from an aborted previous run before creating its table, so reruns are clean.
+
 ### Prerequisite: installing mysqloo
 
 `mysqloo` is a **binary module for the server**, not a Lua dependency the gamemode can ship. It must be installed separately:

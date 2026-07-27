@@ -39,10 +39,15 @@ local function buildSteps()
         end
     end }
 
-    steps[#steps + 1] = { name = "create table (schema DSL)", fn = function(pass, fail)
+    steps[#steps + 1] = { name = "reset + create table (schema DSL)", fn = function(pass, fail)
         local dialect = Omerta.DB.Status().backend
         local prefix = Omerta.Config.Get("db.table_prefix")
-        local stmts = Omerta.DB.Internal.RenderCreateTable(dialect, prefix, "selftest")
+        -- Drop leftovers first: an earlier aborted run leaves the table (and
+        -- its unique rows) behind, which would fail this run's inserts.
+        local stmts = { "DROP TABLE IF EXISTS " .. prefix .. "selftest" }
+        for _, s in ipairs(Omerta.DB.Internal.RenderCreateTable(dialect, prefix, "selftest")) do
+            stmts[#stmts + 1] = s
+        end
         local function runNext(i)
             if i > #stmts then pass(#stmts .. " statement(s)") return end
             Omerta.DB.Query(stmts[i], {}, function(_, err)
@@ -151,27 +156,33 @@ local function buildSteps()
         end)
     end }
 
-    steps[#steps + 1] = { name = "reconnect after forced disconnect", fn = function(pass, fail)
+    steps[#steps + 1] = { name = "reconnect drill (close and rebuild connection)", fn = function(pass, fail)
         local driver = Omerta.DB.Internal.Drivers[Omerta.DB.Status().backend]
         if not driver.ForceDisconnect then
-            pass("SKIPPED — not applicable to " .. driver.dialect)
+            pass("SKIPPED — single-connection backend (" .. driver.dialect .. ")")
             return
         end
         if not driver.ForceDisconnect() then
             pass("SKIPPED — this mysqloo build exposes no disconnect")
             return
         end
-        -- The next query fails (never retried — it may have half-applied),
-        -- which flips the layer into reconnect; queued work then flushes.
-        Omerta.DB.Query("SELECT 1 AS one", {}, function() end)
-        timer.Simple(5, function()
-            Omerta.DB.QueryOne("SELECT 1 AS one", {}, function(row, err)
-                if err or not row or row.one ~= 1 then
-                    fail("no recovery after 5s: " .. tostring(err))
-                else
-                    pass("recovered")
-                end
-            end)
+        -- A manual close emits no error: mysqloo parks queries started on a
+        -- closed connection instead of failing them, so nothing would ever
+        -- trigger the error-driven reconnect path (that path fires on real
+        -- network losses, whose queries DO error). Deliver the notification a
+        -- real loss would produce, then prove the layer rebuilds and flushes.
+        Omerta.DB.Internal.OnConnectionLost()
+        if Omerta.DB.IsReady() then
+            fail("layer still ready after connection loss")
+            return
+        end
+        -- Queues during the outage; must run after the rebuild completes.
+        Omerta.DB.QueryOne("SELECT 1 AS one", {}, function(row, err)
+            if err or not row or row.one ~= 1 then
+                fail("outage-queued query failed: " .. tostring(err))
+            else
+                pass("outage-queued query ran after rebuild")
+            end
         end)
     end }
 
