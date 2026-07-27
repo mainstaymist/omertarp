@@ -226,7 +226,14 @@ end
 
 function Internal.StorePortrait(ply, base64)
     local character = cachedFor(ply)
-    if not character then return end
+    if not character then
+        -- Silent drops here are indistinguishable from a capture that never
+        -- happened, which makes the whole pipeline undiagnosable.
+        Omerta.Log.Warn("characters",
+            "portrait upload arrived for %s with no loaded character — discarded",
+            IsValid(ply) and ply:SteamID64() or "?")
+        return
+    end
     if character.portrait_set then return end -- one-shot per session
 
     local account = Omerta.Accounts.Get(ply)

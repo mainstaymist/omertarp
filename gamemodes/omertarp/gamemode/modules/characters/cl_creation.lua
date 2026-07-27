@@ -52,7 +52,11 @@ hook.Add("PostRender", "omerta.characters.portrait_capture", function()
     end
 
     local encoded = util.Base64Encode(jpeg, true)
-    Omerta.Log.Debug("characters", "portrait captured (%d bytes base64)", #encoded)
+    -- Info, not debug: this fires exactly once per character, and it is the
+    -- only client-side evidence that the booth produced an image at all. The
+    -- client's log level cannot currently be raised in-game, so a debug line
+    -- here would be invisible precisely when it is needed.
+    Omerta.Log.Info("characters", "portrait captured (%d bytes base64), uploading", #encoded)
     Omerta.Net.Request("characters.portrait_upload", { data = encoded })
 end)
 
