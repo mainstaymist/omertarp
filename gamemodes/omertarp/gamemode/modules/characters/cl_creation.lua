@@ -11,8 +11,9 @@
 
 local STATE = Omerta.Characters.STATE
 
-local frame          -- creation window
-local pendingCapture -- set while a booth capture is queued for the next frame
+local frame            -- creation window
+local pendingCapture   -- booth rectangle queued for capture on the next frame
+local capturedPortrait -- base64 JPEG held until the character actually exists
 
 local PORTRAIT_SIZE = 128
 local PORTRAIT_QUALITY = 70
@@ -51,13 +52,17 @@ hook.Add("PostRender", "omerta.characters.portrait_capture", function()
         return
     end
 
-    local encoded = util.Base64Encode(jpeg, true)
+    -- Capture NOW (the booth is still on screen and will not be a moment
+    -- later), but do not upload yet: creating a character costs the server two
+    -- database round-trips, and an upload sent on this frame arrives before
+    -- the character exists to attach it to. Held until the server confirms.
+    capturedPortrait = util.Base64Encode(jpeg, true)
     -- Info, not debug: this fires exactly once per character, and it is the
     -- only client-side evidence that the booth produced an image at all. The
     -- client's log level cannot currently be raised in-game, so a debug line
     -- here would be invisible precisely when it is needed.
-    Omerta.Log.Info("characters", "portrait captured (%d bytes base64), uploading", #encoded)
-    Omerta.Net.Request("characters.portrait_upload", { data = encoded })
+    Omerta.Log.Info("characters", "portrait captured (%d bytes base64), awaiting character",
+        #capturedPortrait)
 end)
 
 --------------------------------------------------------------------------------
@@ -217,8 +222,23 @@ hook.Add("Omerta.CharactersState", "omerta.characters.ui", function(state)
         buildFrame()
     elseif state == STATE.ACTIVE then
         if IsValid(frame) then frame:Remove() end
+        -- The character now exists server-side (it is cached before this
+        -- message is sent), so the held mugshot has something to attach to.
+        -- On an ordinary reconnect there is nothing held and nothing happens.
+        if capturedPortrait then
+            Omerta.Log.Info("characters", "uploading portrait (%d bytes base64)",
+                #capturedPortrait)
+            Omerta.Net.Request("characters.portrait_upload", { data = capturedPortrait })
+            capturedPortrait = nil
+        end
     elseif state == STATE.NO_SEASON then
         showMessage("No season is running. The city is closed until an administrator " ..
             "starts one.")
     end
+end)
+
+-- A rejected creation (name taken, bad path) leaves no character to own the
+-- image, so discard it rather than attaching it to whatever comes next.
+hook.Add("Omerta.CharacterCreateFailed", "omerta.characters.discard_portrait", function()
+    capturedPortrait = nil
 end)
