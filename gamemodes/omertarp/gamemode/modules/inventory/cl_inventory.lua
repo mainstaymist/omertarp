@@ -151,6 +151,12 @@ function Omerta.Inventory.Show()
     frame:ShowCloseButton(true)
     frame:MakePopup()
 
+    -- While the window has keyboard focus the game's button hooks may not see
+    -- the key, so the same key closes it from in here.
+    frame.OnKeyCodePressed = function(self, key)
+        if key == GetConVar("omerta_inventory_key"):GetInt() then self:Close() end
+    end
+
     frame.Paint = function(_, w, h)
         draw.RoundedBox(4, 0, 0, w, h, COLOURS.panel)
         surface.SetDrawColor(COLOURS.line)
@@ -301,11 +307,18 @@ end
 
 concommand.Add("omerta_inventory", function() Omerta.Inventory.Toggle() end)
 
--- F3 by default, and rebindable like anything else. The interaction menu (M5)
--- is still how you reach things that are not yours.
-hook.Add("ShowSpare1", "omerta.inventory.open", function()
+-- The key is read directly rather than through GM:ShowSpare1, which only fires
+-- if the player happens to have F3 bound to gm_showspare1 — on a fresh install
+-- they frequently do not, and the inventory silently does nothing.
+CreateClientConVar("omerta_inventory_key", tostring(KEY_F3), true, false)
+
+hook.Add("PlayerButtonDown", "omerta.inventory.key", function(ply, button)
+    if ply ~= LocalPlayer() then return end
+    if button ~= GetConVar("omerta_inventory_key"):GetInt() then return end
+    -- Not while they are typing, in the menu, or in the console: a key that
+    -- opens a window mid-sentence is worse than no key at all.
+    if ply:IsTyping() or gui.IsGameUIVisible() or gui.IsConsoleVisible() then return end
     Omerta.Inventory.Toggle()
-    return true
 end)
 
 -- D-017's dot now lights up for things worth walking over to.

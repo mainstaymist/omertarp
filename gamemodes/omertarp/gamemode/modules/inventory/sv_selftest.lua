@@ -194,19 +194,24 @@ local function buildSteps()
     end }
 
     steps[#steps + 1] = { name = "hunger persists and reads back", fn = function(pass, fail)
-        Repo.SaveNeeds(FAKE_CHARACTER, 42, os.time(), function(ok, err)
+        -- 30 is below HUNGRY_BELOW (40) and above STARVING_BELOW (15), so it
+        -- exercises the middle state rather than a boundary.
+        Repo.SaveNeeds(FAKE_CHARACTER, 30, os.time(), function(ok, err)
             if not ok then fail(tostring(err)) return end
             Repo.GetNeeds(FAKE_CHARACTER, function(row, gerr)
                 if gerr then fail(tostring(gerr)) return end
                 if not row then fail("no needs row was written") return end
-                if row.hunger ~= 42 then fail("read back " .. tostring(row.hunger)) return end
-                if Omerta.Hunger.State(42) ~= Omerta.Hunger.STATE.HUNGRY then
-                    fail("42 should read as hungry") return
+                if row.hunger ~= 30 then fail("read back " .. tostring(row.hunger)) return end
+                if Omerta.Hunger.State(30) ~= Omerta.Hunger.STATE.HUNGRY then
+                    fail("30 should read as hungry") return
+                end
+                if Omerta.Hunger.State(50) ~= Omerta.Hunger.STATE.FED then
+                    fail("50 should read as fed") return
                 end
                 if Omerta.Hunger.State(9) ~= Omerta.Hunger.STATE.STARVING then
                     fail("9 should read as starving") return
                 end
-                pass("stored 42, hungry but not starving")
+                pass("stored 30, hungry but not starving")
             end)
         end)
     end }

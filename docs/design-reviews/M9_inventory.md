@@ -185,6 +185,12 @@ Implemented as `modules/inventory/` plus two entities. The headless suite grew f
 
 **`chat` is a declared dependency.** Every refusal the server issues ("there is no room for that") reaches the player through `Omerta.Chat.Notice`, because there is no error box to put it in. That is a real edge in the module graph and is declared as one.
 
+**Three defects found on the first in-engine run, all fixed:**
+
+- **Both entities derived from `base_gmodentity`**, which is defined by SANDBOX — and this gamemode derives `base`. The classes failed to load entirely ("Trying to derive entity omerta_item from non existant entity base_gmodentity"), which would have made dropping and containers silently do nothing. Now `base_anim`, with a lint check so it cannot come back.
+- **The self-test asserted 42 reads as hungry.** It does not: `HUNGRY_BELOW` is 40, so 42 is fed. The code was right and the expectation was wrong; the step now uses 30 and pins the boundary on both sides.
+- **F3 did nothing.** `GM:ShowSpare1` only fires if the player has F3 bound to `gm_showspare1`, which a fresh install frequently does not. The key is now read directly through `PlayerButtonDown` against `omerta_inventory_key` (default F3), guarded so it cannot fire while typing or in the menu.
+
 In-engine acceptance (user-side): pull, restart, then run **`omerta_inventory_selftest` in the SERVER console** — expect 10/10. Then, with a character loaded:
 
 ```

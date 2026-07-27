@@ -7,8 +7,11 @@
 
 AddCSLuaFile()
 
+-- base_anim, not base_gmodentity: the latter is defined by SANDBOX, and this
+-- gamemode derives base. Deriving from an entity that does not exist fails at
+-- load and takes the whole class with it.
 ENT.Type = "anim"
-ENT.Base = "base_gmodentity"
+ENT.Base = "base_anim"
 ENT.PrintName = "Item"
 ENT.Author = "Omertà RP"
 ENT.Spawnable = false

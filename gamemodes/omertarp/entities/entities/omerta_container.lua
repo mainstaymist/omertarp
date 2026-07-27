@@ -8,8 +8,9 @@
 
 AddCSLuaFile()
 
+-- base_anim, not base_gmodentity: see omerta_item.lua.
 ENT.Type = "anim"
-ENT.Base = "base_gmodentity"
+ENT.Base = "base_anim"
 ENT.PrintName = "Container"
 ENT.Author = "Omertà RP"
 ENT.Spawnable = false
