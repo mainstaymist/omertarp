@@ -55,6 +55,20 @@ Currency is **USD**, with **historical purchasing power as inspiration** rather 
 
 ---
 
+## D-006 — Dual-backend verification is a standing requirement (DECIDED, 2026-07-27)
+
+Both database backends are available in the project lead's environment (MySQL/MariaDB with the `mysqloo` binary module installed). Therefore the M1 acceptance bar — and a standing requirement for every later milestone that persists data — is that the **identical test suite passes against both backends unchanged**, verified by flipping `db.backend` and re-running the in-engine self-test.
+
+**Rationale:** the "zero gameplay code changes when switching backends" requirement is only meaningfully enforced if both paths are actually exercised. A MySQL path that is written but never run will drift.
+
+**Affects:** every milestone's definition of done from M1 onward; `docs/design-reviews/M1_database.md` §11.
+
+## D-007 — Repository history stays on one branch (DECIDED, 2026-07-27)
+
+Development continues on the single existing branch rather than adopting a `main` + per-milestone pull-request workflow. No pull requests are opened unless explicitly requested.
+
+---
+
 ## P-001 — Newspaper portrait pipeline (RECOMMENDED, 2026-07-26)
 
 Evaluation of five options delivered in `docs/review/03_portrait_evaluation.md`. **Recommendation: Option E (composite portrait rendered client-side from archived appearance data), with Option B (silhouette) as the degraded fallback, and Option C (creation-time mugshot capture) as a possible post-MVP enhancement.** Awaiting project-lead confirmation.

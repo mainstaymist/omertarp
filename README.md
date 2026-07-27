@@ -8,7 +8,7 @@ Omertà RP is not a DarkRP derivative. There is no global chat, no scoreboard, n
 
 ## Project status
 
-**M0 (Foundation Skeleton) implemented.** The gamemode boots as a from-scratch skeleton: module loader, schema-validated configuration, logging/audit envelope, and a validated, rate-limited networking wrapper. No gameplay systems exist yet; next milestone is M1 (database abstraction layer), pending its design review.
+**M0 (Foundation Skeleton) implemented and verified in-engine.** The gamemode boots clean: module loader, schema-validated configuration, logging/audit envelope, and a validated, rate-limited networking wrapper. No gameplay systems exist yet. M1 (database abstraction layer) is in design review awaiting approval.
 
 ## Repository layout
 
@@ -28,7 +28,9 @@ Omertà RP is not a DarkRP derivative. There is no global chat, no scoreboard, n
 | [`docs/review/02_development_roadmap.md`](docs/review/02_development_roadmap.md) | Phase 2 milestone roadmap with dependencies. |
 | [`docs/review/03_portrait_evaluation.md`](docs/review/03_portrait_evaluation.md) | Newspaper-portrait pipeline evaluation and recommendation. |
 | [`docs/review/04_justice_system_proposals.md`](docs/review/04_justice_system_proposals.md) | Justice-loop design proposals (awaiting selection). |
-| [`docs/design-reviews/M0_foundation.md`](docs/design-reviews/M0_foundation.md) | Design review for the first implementation milestone (awaiting approval). |
+| [`docs/design-reviews/M0_foundation.md`](docs/design-reviews/M0_foundation.md) | M0 design review — approved and implemented. |
+| [`docs/design-reviews/M1_database.md`](docs/design-reviews/M1_database.md) | M1 design review (database abstraction layer) — awaiting approval. |
+| [`docs/GLOSSARY.md`](docs/GLOSSARY.md) | Plain-language definitions of the engineering terms used in the design reviews. |
 
 ## Document precedence
 
