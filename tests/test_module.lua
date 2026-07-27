@@ -97,12 +97,20 @@ check("unprefixed files are rejected by name", function()
     assert(why:find("realm prefix", 1, true), why)
 end)
 
-check("ordering is deterministic regardless of input order", function()
-    local a = assert(Omerta.Module.PlanIncludes("base", "demo", { "sh_z.lua", "sh_a.lua", "cl_m.lua" }))
-    local b = assert(Omerta.Module.PlanIncludes("base", "demo", { "cl_m.lua", "sh_a.lua", "sh_z.lua" }))
+-- Regression: plain alphabetical ordering put cl_ before sh_, so on the
+-- client a UI file ran before the shared file defining its constants.
+check("shared files load first, then realm files, deterministically", function()
+    local input = { "sv_z.lua", "cl_m.lua", "sh_z.lua", "sh_a.lua", "sv_a.lua", "cl_a.lua" }
+    local a = assert(Omerta.Module.PlanIncludes("base", "demo", input))
+    local order = {}
+    for i, e in ipairs(a) do order[i] = e.file end
+    local got = table.concat(order, ",")
+    assert(got == "sh_a.lua,sh_z.lua,cl_a.lua,cl_m.lua,sv_a.lua,sv_z.lua", got)
+
+    -- Same set in a different input order yields the same plan.
+    local shuffled = { "cl_m.lua", "sv_a.lua", "sh_a.lua", "sv_z.lua", "cl_a.lua", "sh_z.lua" }
+    local b = assert(Omerta.Module.PlanIncludes("base", "demo", shuffled))
     for i = 1, #a do
         assert(a[i].file == b[i].file, "order differs at " .. i)
     end
-    assert(a[1].file == "cl_m.lua" and a[2].file == "sh_a.lua" and a[3].file == "sh_z.lua",
-        a[1].file .. "," .. a[2].file .. "," .. a[3].file)
 end)

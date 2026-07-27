@@ -9,9 +9,11 @@
 --   * files are realm-prefixed: sh_ (shared), sv_ (server-only, never sent to
 --     clients), cl_ (client). Any other prefix is a boot error — realm
 --     ambiguity is how server code leaks;
+--   * within a module, sh_ files are included BEFORE cl_/sv_ files, so realm
+--     files may use their module's shared definitions at include time;
 --   * `depends` orders LIFECYCLE calls, not file inclusion. Include-time code
---     must only define things; cross-module references belong in OnEnable and
---     later, by which point every module is loaded.
+--     must only define things; references to OTHER modules belong in OnEnable
+--     and later, by which point every module is loaded.
 --
 -- Lifecycle (each hook optional):
 --   OnLoad(self)   — after all modules' files are included, dependency order
@@ -82,13 +84,11 @@ end
 --
 -- Returns an ordered array of { path, file, realm } where realm is
 -- "shared" | "server" | "client", or nil + reason for an unprefixed file.
-function Omerta.Module.PlanIncludes(basePath, dirName, fileNames)
-    local sorted = {}
-    for _, f in ipairs(fileNames or {}) do sorted[#sorted + 1] = f end
-    table.sort(sorted)
+local REALM_ORDER = { shared = 1, client = 2, server = 3 }
 
+function Omerta.Module.PlanIncludes(basePath, dirName, fileNames)
     local plan = {}
-    for _, f in ipairs(sorted) do
+    for _, f in ipairs(fileNames or {}) do
         local realm
         if f:find("^sh_") then realm = "shared"
         elseif f:find("^sv_") then realm = "server"
@@ -103,6 +103,17 @@ function Omerta.Module.PlanIncludes(basePath, dirName, fileNames)
             realm = realm,
         }
     end
+
+    -- Shared files load FIRST, not alphabetically: sh_ files define the
+    -- contracts (constants, shared rules, net registrations) that cl_ and sv_
+    -- files legitimately use at include time. Plain alphabetical ordering put
+    -- cl_ before sh_ and broke exactly that on the client.
+    -- Alphabetical within each realm keeps the result deterministic.
+    table.sort(plan, function(a, b)
+        local ra, rb = REALM_ORDER[a.realm], REALM_ORDER[b.realm]
+        if ra ~= rb then return ra < rb end
+        return a.file < b.file
+    end)
     return plan
 end
 
