@@ -92,6 +92,38 @@ Resolves Q-4. Ending a season automatically retires every living character ("lea
 
 ---
 
+## D-026 — Procurement buys objects from an abstract supplier, never statistics (DECIDED, 2026-07-27)
+
+An institution orders from a **data-driven catalogue**. Money leaves the safe and the goods appear in it immediately; the fiction is that your people know a guy. Delivery goes through a single function so that a delay, a courier or a supplier NPC can replace it later without touching payment or authorisation.
+
+Purchased goods are **tagged to the institution**, not to whoever fetched them (M9 reserved `organization_id` on every item for this).
+
+Tech §10's guardrail — *"avoid directly modifying health, damage, speed, or armor through family wealth"* — is enforced by the registry as a **refusal**, not observed as a convention: an entry that sets any such field is rejected at registration. Money buys advantage through what it puts in your hands, never through a number attached to your character.
+
+**Affects:** Tech §10; `docs/design-reviews/M11_treasury.md` §4b; M12/M13/M14/M19 (each registers its own catalogue entries).
+
+## D-025 — Spending is limited by rank, and larger amounts need a second person (DECIDED, 2026-07-27)
+
+Each rung of a ladder carries a **spending limit**. Below it, a member spends alone and is their own approver on the record. Above it, a second member must be **physically present at the safe**, hold spending authority themselves, be able to cover the amount, and not be the person spending — and their name is written into the ledger, filling Tech §10's Approver column honestly.
+
+A limit is declared at its own rung and is **not** inherited upward the way permissions are: a rank declaring no limit has no ceiling. Limits are scaled server-wide by `treasury.limit_multiplier` without editing the ladder.
+
+**Rationale:** the alternative satisfies the column and nothing else. This produces the scene the design is actually for — two people standing at a safe, one of whom has to agree — without an approval inbox. A Thompson is deliberately priced above an Underboss's ceiling, so arming a crew is an argument rather than a click.
+
+**Affects:** Tech §10; `docs/design-reviews/M11_treasury.md` §4c; M10's ladders (spending limits added to both).
+
+## D-024 — A treasury is a safe, not a balance (DECIDED, 2026-07-27)
+
+An institution's money is **physical cash in a container with a location on the map**, held as ordinary M9 items. `Count()` is what is actually in the safe; the **ledger** is an append-only record of what should be there. **The two are allowed to disagree**, and that disagreement is not a bug — it is embezzlement, a robbery, or a Don who has been skimming. Every ledger line records the counted total beside the running balance, so a discrepancy has a date rather than merely being noticed one day.
+
+The safe is the **authority** on how much money exists. Every movement is an M9 transactional transfer of real notes and coins, so there is no second place money can be created and M9's duplication protections cover the treasury unchanged.
+
+The consequence, accepted: **procurement is a place you go**, not a menu you open anywhere.
+
+**Rationale:** money was made physical in M9 precisely so it could be stolen, hidden and counted. A balance column would be one integer and one afternoon, and it would delete the heist, the skim, and the point of the earlier decision at the exact moment it was supposed to pay off.
+
+**Affects:** D-018; Tech §10; `docs/design-reviews/M11_treasury.md` §4a; M9 (containers gain an access predicate); M14 (safes are worth robbing); M15 (embezzlement is investigable); M17 (seizure).
+
 ## D-023 — Induction is a formal introduction; the roster is rank-gated (DECIDED, 2026-07-27)
 
 Joining an institution grants **no identity knowledge by itself**. Being made is an *event in a room*: every member of that organization who is present when someone is inducted learns them, and they learn those members, through M5's ordinary introduction machinery. Members who were not there learn nothing.

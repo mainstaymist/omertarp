@@ -122,7 +122,9 @@ organization_members: organization_id ref NOT NULL, character_id ref NOT NULL,
 
 Organizations are **season-scoped instances of code-defined institutions**: the Marino family is a definition in version control, and each season gets a fresh row with a fresh roster and a fresh Don. That is what "institutions persist while characters, ranks and wealth reset" means in a schema.
 
-Rank ladders and permissions live in **code**, not the database, for the same reason item definitions do — they are balance, and balance belongs where it can be reviewed and rolled back. Per-rank permissions are overridable through the config file (Tech §10 requires them configurable) without touching Lua.
+Rank ladders and permissions live in **code**, not the database, for the same reason item definitions do — they are balance, and balance belongs where it can be reviewed and rolled back.
+
+> **Correction (recorded during M11):** an earlier version of this paragraph claimed per-rank permissions were overridable through the config file. They are not. Tech §10 does require it; what exists is `treasury.limit_multiplier`, which scales spending ceilings server-wide, while the ladders themselves stay in code. This is an open gap against Tech §10, not a decision — the config layer is scalar-typed and a nested permission table needs a schema type it does not have yet.
 
 Membership history is kept, not deleted: `status` and `left_at` mean "who was in this family in week two" stays answerable, which M15 and M21 will both want.
 

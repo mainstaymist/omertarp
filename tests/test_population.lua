@@ -30,6 +30,8 @@ local MODULE_FILES = {
     "gamemodes/omertarp/gamemode/modules/inventory/sh_items.lua",
     "gamemodes/omertarp/gamemode/modules/organizations/sh_ladders.lua",
     "gamemodes/omertarp/gamemode/modules/organizations/sh_organizations.lua",
+    "gamemodes/omertarp/gamemode/modules/treasury/sh_ledger.lua",
+    "gamemodes/omertarp/gamemode/modules/treasury/sh_procurement.lua",
     "gamemodes/omertarp/gamemode/modules/population/sh_population.lua",
     "gamemodes/omertarp/gamemode/modules/population/sv_population.lua",
 }
@@ -93,6 +95,9 @@ check("the real registry's outbound name fields are all accounted for", function
         -- recipient's own knowledge.
         ["org.roster_entry"] = true,
         ["org.invite"] = true,
+        -- M11. The ledger is the institution's own books, sent only to a
+        -- member standing at their own safe whose rank earns it.
+        ["treasury.line"] = true,
     }
     for _, f in ipairs(findings) do
         local msg = f.what:match("net '([^']+)'")

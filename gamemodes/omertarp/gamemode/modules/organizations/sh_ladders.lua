@@ -146,10 +146,15 @@ Omerta.Organizations.DefineLadder("family", {
     { key = "soldier",   name = "Soldier",    grants = { P.INVITE } },
     -- "Capos recommend formal advancement" — and a capo runs a crew, so a capo
     -- is the first rung that can read the roster (§4b).
-    { key = "capo",      name = "Caporegime", grants = { P.ROSTER, P.RECOMMEND, P.ACTING } },
-    { key = "underboss", name = "Underboss",  grants = { P.PROMOTE, P.DEMOTE, P.EXPEL,
+    { key = "capo",      name = "Caporegime", grants = { P.ROSTER, P.RECOMMEND, P.ACTING,
                                                           P.TREASURY_VIEW } },
-    { key = "don",       name = "Don",        grants = { P.LEAD, P.APPOINT, P.TREASURY_SPEND } },
+    -- spendLimit is in cents, and nil means no ceiling. Anything above a rung's
+    -- limit needs a second person present who can cover it (M11 §4c), which is
+    -- what puts two people at the safe arguing about money.
+    { key = "underboss", name = "Underboss",  grants = { P.PROMOTE, P.DEMOTE, P.EXPEL,
+                                                          P.TREASURY_SPEND },
+                                              spendLimit = 25000 },
+    { key = "don",       name = "Don",        grants = { P.LEAD, P.APPOINT } },
 })
 
 -- GDD §4.2. A police force is a bureaucracy: authority separates earlier and
@@ -159,8 +164,9 @@ Omerta.Organizations.DefineLadder("police", {
     { key = "senior",       name = "Senior Officer", grants = { P.INVITE } },
     { key = "detective",    name = "Detective",      grants = { P.ROSTER } },
     { key = "sergeant",     name = "Sergeant",       grants = { P.RECOMMEND, P.ACTING } },
-    { key = "lieutenant",   name = "Lieutenant",     grants = { P.PROMOTE, P.DEMOTE } },
-    { key = "captain",      name = "Captain",        grants = { P.EXPEL, P.TREASURY_VIEW } },
-    { key = "commissioner", name = "Commissioner",   grants = { P.LEAD, P.APPOINT,
-                                                                 P.TREASURY_SPEND } },
+    { key = "lieutenant",   name = "Lieutenant",     grants = { P.PROMOTE, P.DEMOTE,
+                                                                 P.TREASURY_VIEW } },
+    { key = "captain",      name = "Captain",        grants = { P.EXPEL, P.TREASURY_SPEND },
+                                                     spendLimit = 25000 },
+    { key = "commissioner", name = "Commissioner",   grants = { P.LEAD, P.APPOINT } },
 })

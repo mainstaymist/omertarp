@@ -195,6 +195,9 @@ function Internal.EnsureInstances(season, cb)
     Internal.Repo.ListForSeason(season.id, function(rows, err)
         if err then
             Omerta.Log.Error("organizations", "could not read institutions: %s", err)
+            -- Resolve anyway: a consumer left waiting forever is worse than one
+            -- told there is nothing to wait for.
+            Internal.MarkResolved()
             cb(false)
             return
         end
@@ -228,10 +231,45 @@ function Internal.EnsureInstances(season, cb)
     end)
 end
 
+--------------------------------------------------------------------------------
+-- Readiness
+--------------------------------------------------------------------------------
+-- The same shape as Omerta.Seasons.WhenReady, and for the same reason: this
+-- module's own startup is two queries deep, so anything that needs the season's
+-- institutions to EXIST cannot simply wait for the season. M11's treasuries are
+-- the first consumer; M13's businesses will be the second.
+
+local organizationsResolved = false
+local orgReadyCallbacks = {}
+
+function Omerta.Organizations.WhenReady(fn)
+    if organizationsResolved then
+        Omerta.DB.Internal.Defer(fn)
+        return
+    end
+    orgReadyCallbacks[#orgReadyCallbacks + 1] = fn
+end
+
+-- Exposed on Internal as well as captured locally, so the paths defined
+-- earlier in this file can resolve without depending on lexical order.
+local function organizationsResolvedNow()
+    organizationsResolved = true
+    local pending = orgReadyCallbacks
+    orgReadyCallbacks = {}
+    for _, fn in ipairs(pending) do
+        local ok, err = pcall(fn)
+        if not ok then
+            Omerta.Log.Error("organizations", "a readiness callback failed: %s", tostring(err))
+        end
+    end
+end
+
+Internal.MarkResolved = organizationsResolvedNow
+
 function Internal.LoadInstances(season, cb)
     cb = cb or function() end
     Internal.Repo.ListForSeason(season.id, function(rows, err)
-        if err then cb(false) return end
+        if err then organizationsResolvedNow() cb(false) return end
         instances, instancesById = {}, {}
         local active = 0
         for _, row in ipairs(rows) do
@@ -242,6 +280,7 @@ function Internal.LoadInstances(season, cb)
         Omerta.Log.Info("organizations", "%d institution(s) this season, %d active",
             #rows, active)
         refreshAllActing()
+        organizationsResolvedNow()
         cb(true)
     end)
 end
@@ -820,6 +859,7 @@ function MODULE:OnEnable()
         if not season then
             Omerta.Log.Info("organizations",
                 "no active season — institutions appear when one starts")
+            Internal.MarkResolved()
             return
         end
         Internal.EnsureInstances(season)

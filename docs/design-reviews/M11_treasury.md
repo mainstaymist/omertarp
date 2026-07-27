@@ -1,6 +1,6 @@
 # Design Review — M11: Treasury and Procurement
 
-Status: **AWAITING APPROVAL — no implementation until approved.**
+Status: **APPROVED 2026-07-27 — IMPLEMENTED** (§4a, §4b and §4c all ruled (a); logged as D-024, D-026 and D-025). See §13.
 Milestone: M11 (roadmap Track B). Depends on: M9 (money and items are physical), M10 (something has to own the money). Consumed by: M12 (private lines are bought), M13 (businesses feed the treasury and draw stock from it), M14 (robbery proceeds go somewhere and safes are worth robbing), M15 (marked bills), M17 (seizure), M19 (medical supplies).
 
 > **Three rulings needed** (§4): whether a treasury is a balance or a safe, where purchased goods come from, and how a withdrawal is authorised.
@@ -156,4 +156,37 @@ M0 (config, net, log), M1 (migration 9, transactions), M2 (audit), M3 (`Omerta.S
 
 ---
 
-**Requesting approval to implement M11 as specified**, with rulings on §4a (safe vs balance — recommend the safe), §4b (where goods come from — recommend an abstract supplier with a delivery seam), and §4c (authorisation — recommend per-rank limits with an approver above them).
+## 13. Implementation Notes (post-implementation)
+
+Implemented as `modules/treasury/`. The headless suite grew from 200 to 221 checks. All three rulings came back as recommended; what follows is what building it changed.
+
+**A third readiness signal, for the same reason as the second.** M10 needed `Omerta.Seasons.WhenReady` because the active season is loaded by a query. The treasury needs `Omerta.Organizations.WhenReady` because a safe belongs to an institution and M10's own startup is *two* queries deep. Waiting a fixed tick would have worked on a fast database and failed on a slow one — the worst kind of bug to own. Both readiness primitives now share the same contract, including firing when the answer is "there is nothing", so a consumer is never left waiting forever.
+
+**M10's ladders had to change for §4c to mean anything.** As shipped, `TREASURY_SPEND` sat only on the Don and the Commissioner — so the two-man rule had nobody to apply to. The Underboss and the Captain now hold spending authority with a $250 ceiling, the Capo and the Lieutenant can view the books, and the top rung declares no ceiling. A Thompson is priced at $340, deliberately above an Underboss's ceiling: arming a crew is an argument between two people rather than a click.
+
+**Limits are declared at their own rung, not inherited.** Permissions accumulate upward; limits must not, or a Don would inherit the Underboss's ceiling and the head of the family could spend less than he can authorise. The test suite pins both behaviours side by side, because the two rules living in the same table is exactly the kind of thing a future reader will "fix".
+
+**The approver is found server-side, never nominated.** The client sends an amount; the server looks for somebody from the same institution standing at the same safe who holds spending authority and is not the person spending. A client cannot name who signed for the money, which is the only version of an approval that means anything.
+
+**Everything is serialised per institution.** A withdrawal is a cash move followed by a ledger line, and two of them interleaving would write a balance computed from a stale read. An in-flight flag per organization prevents it, in the same shape as M9's per-item locks.
+
+**M9 gained a container access predicate**, as §12 anticipated. It ships refusing on error rather than allowing: a provider that throws locks the container, so a typo in somebody else's module can never open a family safe. Ordinary crates keep their old behaviour by having no opinion.
+
+**The `treasury.line` message was nearly shipped unused.** §5 listed it, the client had nowhere to show it, and it carries character names — meaning M6's audit would have flagged an outbound name field that nothing sent. It is now wired properly: the books render above the catalogue for members whose rank earns them, names are gathered before sending so the lines arrive in one burst rather than interleaved by lookup latency, and the message is in the reviewed allowlist alongside M10's roster. Reading the books teaches a name and never a face (D-023).
+
+**Safes persist in their own table** rather than as columns bolted onto `organizations`. Adding columns to an existing table means an `ALTER` in migration 9 that duplicates what migration 8 already creates on a fresh install — two paths that must agree forever. A separate table is one idempotent `CREATE TABLE IF NOT EXISTS` and no divergence.
+
+**A correction I owe the record:** M10's review claimed per-rank permissions were "overridable through the config file without touching Lua". They were not, and are not. Tech §10 does require it. What exists today is a `treasury.limit_multiplier` that scales every ceiling server-wide; the ladders themselves are code. That is a real gap against Tech §10 rather than a design decision, and it belongs on the list — the config layer is scalar-typed and a nested permission table needs a schema type it does not have yet.
+
+In-engine acceptance (user-side): pull, restart, then **`omerta_treasury_selftest` in the SERVER console** — expect 9/9. Then, standing where you want the family's safe:
+
+```
+omerta_treasury_place marino
+omerta_money_give 600 <your steamID64>
+```
+
+Walk to the safe and run `omerta_treasury` in the client console. Put $500 in, then try to take $400 out as an Underboss — refused, above your ceiling — and watch it succeed with a Don standing beside you. Order a revolver and confirm the cash falls and the gun appears *in the safe*, tagged to the family. Then the test that makes §4a worth building: open the safe as a container (hold **C** → Search), take cash out by hand, and reopen the treasury window — the books and the count now disagree, and it says by how much. `omerta_treasury_books marino` prints the same from the console.
+
+---
+
+**Delivered.** Rulings §4a, §4b and §4c all (a) as recommended; logged as D-024, D-026 and D-025.

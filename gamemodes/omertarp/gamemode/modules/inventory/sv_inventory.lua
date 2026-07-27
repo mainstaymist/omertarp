@@ -76,6 +76,28 @@ end
 
 function Omerta.Inventory.GetContainer(id) return containers[id] end
 
+-- Who may open what. M9 shipped with every container openable by anyone
+-- standing at it, which is fine for a crate in an alley and impossible for a
+-- family safe — so M11 registers a predicate here rather than forking the
+-- open path. fn(ply, containerId) returns true, or false + reason.
+local accessProviders = {}
+
+function Omerta.Inventory.RegisterContainerAccess(id, fn)
+    accessProviders[id] = fn
+end
+
+-- Returns true, or false + reason. A container with no opinion is open.
+function Omerta.Inventory.MayOpen(ply, containerId)
+    for _, fn in pairs(accessProviders) do
+        local ok, allowed, why = pcall(fn, ply, containerId)
+        -- A provider that errors refuses, rather than accidentally granting
+        -- access to a safe because of a typo in somebody else's module.
+        if not ok then return false, "that is locked" end
+        if allowed == false then return false, why or "that is not yours to open" end
+    end
+    return true
+end
+
 --------------------------------------------------------------------------------
 -- Capacity
 --------------------------------------------------------------------------------
@@ -685,6 +707,12 @@ function Internal.HandleOpen(ply, target)
 
     local containerId = ent.OmertaContainer
     if not containerId then return end
+
+    local allowed, why = Omerta.Inventory.MayOpen(ply, containerId)
+    if not allowed then
+        Omerta.Chat.Notice(ply, why)
+        return
+    end
 
     openContainer[sid] = { id = containerId, ent = ent }
     if Omerta.Inventory.IsLoaded({ type = OWNER.CONTAINER, id = containerId }) then
