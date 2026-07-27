@@ -214,9 +214,20 @@ function Internal.PlanMigrations(applied, known)
     local appliedSet = {}
     for _, v in ipairs(applied) do
         if not knownByVersion[v] then
+            -- Naming what the code DOES know turns this from a dead end into a
+            -- diagnosis. In practice it is almost never a real downgrade: it is
+            -- a module that failed to load, taking its migration with it, and
+            -- the gap between these two lists says which one.
+            local versions = {}
+            for _, m in ipairs(known) do versions[#versions + 1] = m.version end
+            table.sort(versions)
             return nil, string.format(
                 "database has applied migration %d which this code does not know — " ..
-                "refusing to start (downgrade?)", v)
+                "refusing to start. This code knows migration(s): %s. Either the server " ..
+                "is running older code than the database was migrated with, or the module " ..
+                "that registers migration %d did not load (check the 'loaded N module(s)' " ..
+                "line earlier in this log).",
+                v, #versions > 0 and table.concat(versions, ", ") or "none", v)
         end
         appliedSet[v] = true
     end
