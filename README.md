@@ -8,7 +8,7 @@ Omertà RP is not a DarkRP derivative. There is no global chat, no scoreboard, n
 
 ## Project status
 
-**M0–M2 implemented and verified in-engine on MySQL/MariaDB** (the backend of record, D-008): foundation skeleton, database layer, and persistent accounts with a live audit trail. No gameplay systems exist yet. **M3 (seasons) is in design review** — see `docs/design-reviews/M3_seasons.md`; approving it also rules on seasonal-allegiance semantics (Q-2) and season-end character handling (Q-4).
+**M3 (seasons + path selection) implemented; in-engine verification pending (`omerta_seasons_selftest`).** M0–M2 are verified in-engine on MySQL/MariaDB, the backend of record (D-008). The server now has persistent accounts with a live audit trail, and a season lifecycle with server-enforced allegiance tracks (D-009/D-010). No gameplay systems exist yet; M4 (characters) is next, pending its design review — where the portrait pipeline (P-001) and characters-per-account (Q-3) decisions come due.
 
 ## Repository layout
 
@@ -31,7 +31,7 @@ Omertà RP is not a DarkRP derivative. There is no global chat, no scoreboard, n
 | [`docs/design-reviews/M0_foundation.md`](docs/design-reviews/M0_foundation.md) | M0 design review — approved and implemented. |
 | [`docs/design-reviews/M1_database.md`](docs/design-reviews/M1_database.md) | M1 design review — approved and implemented; MySQL verified in-engine. |
 | [`docs/design-reviews/M2_accounts.md`](docs/design-reviews/M2_accounts.md) | M2 design review — approved, implemented, verified in-engine. |
-| [`docs/design-reviews/M3_seasons.md`](docs/design-reviews/M3_seasons.md) | M3 design review (seasons + path selection) — awaiting approval. |
+| [`docs/design-reviews/M3_seasons.md`](docs/design-reviews/M3_seasons.md) | M3 design review — approved and implemented (rules D-009/D-010). |
 | [`docs/GLOSSARY.md`](docs/GLOSSARY.md) | Plain-language definitions of the engineering terms used in the design reviews. |
 
 ## Document precedence

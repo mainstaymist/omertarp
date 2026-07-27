@@ -1,6 +1,6 @@
 # Design Review — M3: Seasons
 
-Status: **AWAITING APPROVAL — no implementation until approved.**
+Status: **APPROVED 2026-07-27 — IMPLEMENTED** (D-009 and D-010 logged). See §13 for implementation notes.
 Milestone: M3 (roadmap Track A). Depends on: M0, M1, M2. Consumed by: M4 (characters are season-scoped and creation requires an active season + chosen path), M10 (faction membership respects the path matrix), M23 (seasonal reset drives off the lifecycle hooks) — and ultimately everything, since all seasonal data keys on SeasonID from birth (Tech §2, §22).
 
 > **Approving this review also rules on two open design questions** — Q-2 (seasonal-allegiance semantics, §4a) and Q-4 (season-end character handling, §4b). On approval they are logged as D-009 and D-010. Amendments welcome before approval.
@@ -132,4 +132,16 @@ M0 (module/config/log/hooks), M1 (DB + migration 2), M2 (accounts — path recor
 
 ---
 
-**Requesting approval to implement M3 as specified — approval also logs D-009 (§4a) and D-010 (§4b).**
+## 13. Implementation Notes (post-implementation)
+
+Implemented in `modules/seasons/` (stub, repository, service, self-test). Headless suite grew to 85 checks, including the transition matrix exercised **exhaustively** — every from/to/reason combination, 60 cells, asserted against an independent statement of the D-009 rules. Notes:
+
+- **The matrix is one table** (`TRANSITIONS` in `sv_seasons.lua`); every path change funnels through `applyTransition` — there is no bypass primitive. Future transition kinds (witness protection, staff exceptions) are new rows, as designed.
+- **`ends_at` is computed at `Start`**, not `Create` (start time isn't known at creation; the design's "Create computes it" was off by one lifecycle step). Still a schedule, never a trigger.
+- **Idempotence-safe mutations:** `StartSeason`/`EndSeason` UPDATEs carry `AND state = ?` guards, so a duplicated or stale staff command cannot re-start an ended season.
+- **Invariant failure is a module-failed state** (loud boot error, all season APIs refuse), mirroring M1's database-failed posture — GMod offers no clean way to halt a booted server, so "refuse everything loudly" is the honest implementation of "refuse to start."
+- **Ending a season clears online players' cached paths**; historical `account_seasons` rows are deliberately kept — they are the season's history.
+- First consumer of `Omerta.AccountLoaded` works as designed: the player's current-season path rides on the cached account object.
+- **Self-test safety holds:** the suite's season never leaves `setup`, its delete is guarded by `label AND state = 'setup'`, and path steps self-skip with a clear message when no live season is active (start one and re-run for full coverage). Real `Start`/`End` are covered headless.
+
+In-engine acceptance (user-side): pull, restart (watch for `applying migration 2: seasons and path selection`), then `omerta_seasons_selftest`. For full coverage: `omerta_season_create Season One`, `omerta_season_start 1`, re-run the self-test (path steps now execute), and `omerta_season_status` at will. Leave the season running — M4 will need it.
