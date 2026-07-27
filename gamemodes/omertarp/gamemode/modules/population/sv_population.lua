@@ -67,11 +67,17 @@ function MODULE:OnEnable()
     if not Omerta.InEngine then return end
 
     team.SetUp(Omerta.Population.TEAM_CITIZEN, "Citizen", Color(170, 170, 170))
-    hook.Add("PlayerInitialSpawn", "omerta.population.team", assignTeam)
 
-    -- Also cover players already connected: after a Lua refresh
-    -- PlayerInitialSpawn never fires again, so without this they keep whatever
-    -- team they had (TEAM_UNASSIGNED, 1001) and the audit rightly complains.
+    -- Assigned on three occasions, because one is not enough:
+    --   PlayerInitialSpawn — the normal path, on join;
+    --   PlayerSpawn        — every respawn, and it re-asserts the team if any
+    --                        other code ever resets it;
+    --   here at OnEnable   — players already connected, since neither spawn
+    --                        hook fires again after a Lua refresh and they
+    --                        would otherwise keep TEAM_UNASSIGNED (1001).
+    -- SetTeam is idempotent and cheap, so over-applying costs nothing.
+    hook.Add("PlayerInitialSpawn", "omerta.population.team", assignTeam)
+    hook.Add("PlayerSpawn", "omerta.population.team_respawn", assignTeam)
     for _, ply in ipairs(player.GetAll()) do assignTeam(ply) end
 
     -- Suppress the base gamemode's join announcement. PlayerDisconnected is

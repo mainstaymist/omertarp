@@ -159,8 +159,10 @@ function Internal.AnalyzeTeams(teamsInUse)
         if teamId ~= Omerta.Population.TEAM_CITIZEN then
             findings[#findings + 1] = {
                 severity = "leak",
-                what = "players are split across teams (found team " .. tostring(teamId) ..
-                    ") — team membership is client-readable",
+                what = string.format(
+                    "player(s) on unexpected team %s, expected %d — team membership is " ..
+                    "client-readable, so team layout must never reflect faction",
+                    tostring(teamId), Omerta.Population.TEAM_CITIZEN),
             }
         end
     end
