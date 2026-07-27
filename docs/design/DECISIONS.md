@@ -92,6 +92,14 @@ Resolves Q-4. Ending a season automatically retires every living character ("lea
 
 ---
 
+## D-015 — `Player:Nick()` returns a neutral placeholder (DECIDED, 2026-07-27)
+
+`Nick()`, `Name()` and `GetName()` return `"Unknown"` for every player, except that on the client a player's own methods return their own character's name. The genuine Steam name remains available server-side as `Omerta.Population.RealName(ply)` for logs, audit rows and staff tools.
+
+**Rationale:** `Nick()` returns the Steam name, so any stray print — ours, an addon's, an admin mod's — leaks a real-world identity that can be correlated with a character. Overriding converts a permanent discipline problem into a structural one. It is not airtight: `Nick()` is a Lua method and the engine still knows the truth (see M6 §7 on engine-level residue).
+
+**Affects:** `docs/design-reviews/M6_hidden_population.md` §4; all future code, which must use `ResolveDisplayName` for player-facing names and `RealName`/SteamID64 for staff-facing ones.
+
 ## D-013 — Introductions are one-way, with reciprocation offered (DECIDED, 2026-07-27; overrides Tech §5)
 
 An introduction discloses **only the introducer's** name. The recipient immediately learns it and is offered a one-keypress prompt to introduce themselves back; declining or ignoring it is always permitted.

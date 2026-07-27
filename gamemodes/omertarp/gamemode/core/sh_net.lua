@@ -216,6 +216,16 @@ function Omerta.Net.Request(name, payload)
     net.SendToServer()
 end
 
+-- Read-only view of the registry, so the M6 leak audit can inspect what we
+-- send without being able to alter it.
+function Omerta.Net.GetRegistry()
+    local out = {}
+    for name, def in pairs(defs) do
+        out[name] = { name = name, realm = def.realm, schema = def.schema }
+    end
+    return out
+end
+
 if SERVER and Omerta.InEngine then
     hook.Add("PlayerDisconnected", "omerta.net.bucket_cleanup", function(ply)
         buckets[ply:SteamID64() or "unknown"] = nil

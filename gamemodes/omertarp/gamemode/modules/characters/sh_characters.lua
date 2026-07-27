@@ -155,6 +155,23 @@ Omerta.Net.Register("characters.state", {
     end,
 })
 
+-- A player's own character details. Safe to send: it is their own data, and
+-- D-015 needs it so their own Nick() can return their own name. Never carries
+-- anyone else's character.
+Omerta.Net.Register("characters.self", {
+    realm = "server_to_client",
+    schema = {
+        { name = "id",    type = "uint", bits = 32 },
+        { name = "first", type = "string", maxlen = 24 },
+        { name = "last",  type = "string", maxlen = 24 },
+    },
+    handler = function(payload)
+        Omerta.Characters.SetLocal({
+            id = payload.id, first_name = payload.first, last_name = payload.last,
+        })
+    end,
+})
+
 Omerta.Net.Register("characters.create_failed", {
     realm = "server_to_client",
     schema = { { name = "reason", type = "string", maxlen = 128 } },

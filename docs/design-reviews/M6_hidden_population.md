@@ -1,6 +1,6 @@
 # Design Review — M6: Hidden Population
 
-Status: **AWAITING APPROVAL — no implementation until approved.**
+Status: **APPROVED 2026-07-27 — IMPLEMENTED** (§4 ruled option (b); logged as D-015). See §13.
 Milestone: M6 (roadmap Track A). Depends on: M0–M5. Consumed by: nothing directly — it *removes* rather than adds, and every later milestone inherits its constraints.
 
 > One decision needs your ruling (§4): how aggressively to override `Player:Nick()`. It trades addon compatibility against leak-proofing.
@@ -98,4 +98,14 @@ A single `modules/population/` module plus a short rules document at `docs/rules
 
 ---
 
-**Requesting approval to implement M6 as specified**, and specifically a ruling on §4 (overriding `Player:Nick()` — recommendation: option b).
+## 13. Implementation Notes (post-implementation)
+
+Implemented as `modules/population/`, plus the rules document at `docs/rules/metagaming.md`. Suite grew to 123 checks. Notes:
+
+- **§4 ruled option (b)** (D-015). `Nick()`/`Name()`/`GetName()` return `"Unknown"`; on the client your own methods return your own character name. The original method is captured once as `PLAYER.OmertaSteamName`, guarded so a Lua refresh cannot overwrite it with our replacement and lose the real name permanently.
+- **Option (b) required networking players their own character name**, which nothing had done: a new `characters.self` message plus `Omerta.Characters.GetLocal()`. Safe by construction — it is the player's own data and never carries anyone else's.
+- **`PlayerDisconnected` is deliberately not hooked for suppression.** Returning a value from a `hook.Add` handler stops later handlers *and* the gamemode function, which would silently break the accounts, characters and identity handlers already sharing that event. The leave line is suppressed client-side through `ChatText` with `msgType == "joinleave"` instead — a case where the obvious implementation would have broken three earlier milestones.
+- **Audit analysis is pure and adversarially tested**: every check is driven with a clean fixture *and* a deliberately leaky one, so the audit is proven to catch leaks rather than merely to run. One check asserts that every outbound name-bearing net message is on a reviewed allowlist (`identity.name`, `identity.introduce_prompt`, `characters.self`) — so a future milestone adding a fourth fails the suite until it is justified.
+- **Also delivered here** (requested alongside): `omerta_character_retire <id> [reason]`, and the character gate refactored so a staff retirement re-gates a player who is still connected rather than leaving them walking around as nobody.
+
+In-engine acceptance (user-side): pull, restart, then `omerta_leak_audit` — expect three `review` lines for the allowlisted messages and **zero** `LEAK` lines. Manually: TAB does nothing, no join/leave chat lines, no kill feed, no name panel when speaking. Confirm `status` still lists Steam names — that is the documented engine residue, not a failure.

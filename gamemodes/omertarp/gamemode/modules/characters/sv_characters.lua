@@ -83,11 +83,36 @@ local function sendState(ply, state)
     Omerta.Net.Send("characters.state", { state = state }, ply)
 end
 
+-- Players without a character do not roam the map. Applied on spawn and on
+-- losing a character (staff retirement, death, season end) alike.
+local function gate(ply)
+    if not (Omerta.InEngine and IsValid(ply)) then return end
+    ply:Freeze(true)
+    ply:SetNoDraw(true)
+    ply:GodEnable()
+end
+
+local function ungate(ply)
+    if not (Omerta.InEngine and IsValid(ply)) then return end
+    ply:Freeze(false)
+    ply:SetNoDraw(false)
+    ply:GodDisable()
+end
+Internal.Gate, Internal.Ungate = gate, ungate
+
 local function loadInto(ply, character)
     local sid = ply:SteamID64()
     cache[sid] = character
     applyToPlayer(ply, character)
     sendState(ply, STATE.ACTIVE)
+    if Omerta.InEngine then
+        -- Their own name, so D-015's self-case can resolve it client-side.
+        Omerta.Net.Send("characters.self", {
+            id = character.id,
+            first = character.first_name,
+            last = character.last_name,
+        }, ply)
+    end
     Omerta.Log.Info("characters", "character #%d (%s %s) loaded for %s",
         character.id, character.first_name, character.last_name, sid)
     if Omerta.InEngine then hook.Run("Omerta.CharacterLoaded", ply, character) end
@@ -206,7 +231,12 @@ function Omerta.Characters.SetStatus(characterId, status, reason, cb)
         if Omerta.InEngine then
             hook.Run("Omerta.CharacterRetired", characterId, reason)
             local ply = sid and player.GetBySteamID64 and player.GetBySteamID64(sid)
-            if IsValid(ply) then sendState(ply, STATE.NEEDS_CREATION) end
+            if IsValid(ply) then
+                -- Losing a character mid-session must also re-apply the gate,
+                -- or a staff retirement leaves them walking around as nobody.
+                gate(ply)
+                sendState(ply, STATE.NEEDS_CREATION)
+            end
         end
         cb(true)
     end)
@@ -333,21 +363,40 @@ function MODULE:OnEnable()
         end)
     end)
 
-    -- Players without a character do not roam the map.
     hook.Add("PlayerSpawn", "omerta.characters.gate", function(ply)
         timer.Simple(0, function()
             if not IsValid(ply) then return end
-            if Omerta.Characters.IsLoaded(ply) then return end
-            ply:Freeze(true)
-            ply:SetNoDraw(true)
-            ply:GodEnable()
+            if not Omerta.Characters.IsLoaded(ply) then gate(ply) end
         end)
     end)
     hook.Add("Omerta.CharacterLoaded", "omerta.characters.ungate", function(ply)
-        if not IsValid(ply) then return end
-        ply:Freeze(false)
-        ply:SetNoDraw(false)
-        ply:GodDisable()
+        ungate(ply)
+    end)
+
+    -- Staff: retire a character. Real moderation tool, and it saves editing
+    -- SQL by hand to reset a test character.
+    concommand.Add("omerta_character_retire", function(ply, _, args)
+        if IsValid(ply) and not ply:IsSuperAdmin() then return end
+        local id = tonumber(args[1])
+        if not id or id % 1 ~= 0 or id < 1 then
+            Omerta.Log.Error("characters",
+                "usage: omerta_character_retire <characterId> [reason]")
+            return
+        end
+        local reason = table.concat(args, " ", 2)
+        if reason == "" then reason = "retired by staff" end
+
+        Omerta.Characters.Retire(id, reason, function(ok, err)
+            if ok then
+                Omerta.Log.Info("characters", "character #%d retired (%s)", id, reason)
+            else
+                -- SetStatus only touches living characters, so the usual
+                -- failure is "already retired or dead", not a fault.
+                Omerta.Log.Error("characters",
+                    "retire failed for #%d: %s", id, tostring(err) ~= "nil" and tostring(err)
+                        or "no living character with that id")
+            end
+        end)
     end)
 
     -- Staff: wipe an abusive portrait (D-011).
