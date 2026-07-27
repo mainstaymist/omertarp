@@ -39,9 +39,18 @@ function Omerta.Log.Info(channel, fmt, ...)  emit(LEVELS.INFO,  channel, fmt, ..
 function Omerta.Log.Warn(channel, fmt, ...)  emit(LEVELS.WARN,  channel, fmt, ...) end
 function Omerta.Log.Error(channel, fmt, ...) emit(LEVELS.ERROR, channel, fmt, ...) end
 
--- Audit sink stub (server-only). `info` may carry `actor` and `subject`
+-- Audit sink (server-only). `info` may carry `actor` and `subject`
 -- (SteamID64 / character identifiers once those exist) plus arbitrary event
--- data. M2 replaces the emit below with a database write of the same envelope.
+-- data. The console line always emits; a registered sink additionally
+-- persists the same envelope (M2's accounts module installs the database
+-- sink — the swap M0 promised, with zero call-site changes).
+local auditSink = nil
+
+function Omerta.Log.SetAuditSink(fn)
+    Omerta.AssertServer("Omerta.Log.SetAuditSink")
+    auditSink = fn
+end
+
 function Omerta.Log.Audit(event, info)
     Omerta.AssertServer("Omerta.Log.Audit")
     local envelope = {
@@ -52,5 +61,11 @@ function Omerta.Log.Audit(event, info)
         data = info,
     }
     emit(LEVELS.INFO, "audit", "%s %s", event, Omerta.Util.Serialize(envelope))
+    if auditSink then
+        local ok, err = pcall(auditSink, envelope)
+        if not ok then
+            emit(LEVELS.ERROR, "audit", "sink failed for '%s': %s", event, tostring(err))
+        end
+    end
     return envelope
 end

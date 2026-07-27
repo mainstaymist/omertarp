@@ -8,7 +8,7 @@ Omertà RP is not a DarkRP derivative. There is no global chat, no scoreboard, n
 
 ## Project status
 
-**M1 (database abstraction layer) implemented; MySQL/MariaDB verified in-engine 10/10 via `omerta_db_selftest` (SQLite baseline run still pending — D-006).** M0 (foundation skeleton) is verified in-engine. The database layer offers one async API over SQLite and MySQL/mysqloo — backend switched by a single config value — with a schema DSL, versioned migrations, transactions, and result-type normalization. No gameplay systems exist yet. **M2 (accounts + audit) is in design review** — see `docs/design-reviews/M2_accounts.md`.
+**M2 (accounts + audit) implemented; in-engine verification pending (`omerta_accounts_selftest`).** M0 (foundation) and M1 (database layer) are verified in-engine on MySQL/MariaDB, the backend of record (D-008 — the SQLite driver remains as an unsupported development convenience). Every connecting player now gets a persistent account (SteamID64-keyed; flags, career stats, playtime), and all audit events persist to the database. No gameplay systems exist yet; M3 (seasons) is next, pending its design review.
 
 ## Repository layout
 
@@ -30,7 +30,7 @@ Omertà RP is not a DarkRP derivative. There is no global chat, no scoreboard, n
 | [`docs/review/04_justice_system_proposals.md`](docs/review/04_justice_system_proposals.md) | Justice-loop design proposals (awaiting selection). |
 | [`docs/design-reviews/M0_foundation.md`](docs/design-reviews/M0_foundation.md) | M0 design review — approved and implemented. |
 | [`docs/design-reviews/M1_database.md`](docs/design-reviews/M1_database.md) | M1 design review — approved and implemented; MySQL verified in-engine. |
-| [`docs/design-reviews/M2_accounts.md`](docs/design-reviews/M2_accounts.md) | M2 design review (accounts + audit) — awaiting approval. |
+| [`docs/design-reviews/M2_accounts.md`](docs/design-reviews/M2_accounts.md) | M2 design review — approved and implemented. |
 | [`docs/GLOSSARY.md`](docs/GLOSSARY.md) | Plain-language definitions of the engineering terms used in the design reviews. |
 
 ## Document precedence

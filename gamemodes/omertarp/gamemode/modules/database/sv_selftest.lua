@@ -195,46 +195,9 @@ local function buildSteps()
     return steps
 end
 
-local function runSelftest()
-    ensureDefined()
-    local steps = buildSteps()
-    local passed, failed = 0, 0
-
-    local function runStep(i)
-        if i > #steps then
-            local level = failed == 0 and Omerta.Log.Info or Omerta.Log.Error
-            level("db.selftest", "==== RESULT: %d passed, %d failed (%s backend) ====",
-                passed, failed, Omerta.DB.Status().backend)
-            return
-        end
-        local step = steps[i]
-        local finished = false
-        local function once(ok, detail)
-            if finished then return end
-            finished = true
-            if ok then
-                passed = passed + 1
-                Omerta.Log.Info("db.selftest", "PASS %s%s", step.name,
-                    detail and (" — " .. detail) or "")
-            else
-                failed = failed + 1
-                Omerta.Log.Error("db.selftest", "FAIL %s — %s", step.name, tostring(detail))
-            end
-            runStep(i + 1)
-        end
-        -- 10s timeout per step so a lost callback cannot hang the suite.
-        timer.Simple(10, function() once(false, "timed out after 10s") end)
-        local ok, err = pcall(step.fn,
-            function(detail) once(true, detail) end,
-            function(reason) once(false, reason) end)
-        if not ok then once(false, "step crashed: " .. tostring(err)) end
-    end
-
-    Omerta.Log.Info("db.selftest", "==== starting (%s backend) ====", Omerta.DB.Status().backend)
-    runStep(1)
-end
-
 concommand.Add("omerta_db_selftest", function(ply)
     if IsValid(ply) and not ply:IsSuperAdmin() then return end
-    runSelftest()
+    ensureDefined()
+    Omerta.Log.Info("db.selftest", "backend: %s", Omerta.DB.Status().backend)
+    Omerta.SelfTest.Run("db.selftest", buildSteps())
 end)

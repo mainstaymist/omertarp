@@ -63,6 +63,17 @@ Both database backends are available in the project lead's environment (MySQL/Ma
 
 **Affects:** every milestone's definition of done from M1 onward; `docs/design-reviews/M1_database.md` §11.
 
+## D-008 — MySQL/MariaDB is the backend of record (DECIDED, 2026-07-27; supersedes D-006)
+
+SQLite support is deprioritized: **MySQL/MariaDB is the sole supported and in-engine-verified backend.** The M1 MariaDB self-test passed 10/10; no SQLite in-engine verification is required, now or per-milestone.
+
+Scope of the decision:
+- The SQLite driver and the abstraction layer **stay in the tree**: the code exists, is headless-tested, is useful for development without a MySQL server, and keeping it makes this decision cheaply reversible. It carries no support guarantee and no in-engine acceptance bar.
+- Headless tests continue to exercise both dialects (they cost nothing and keep the abstraction boundary honest).
+- Documentation and defaults may continue to name `sqlite` as the zero-setup development default; production guidance is MySQL/MariaDB.
+
+**Affects:** D-006 (superseded); M1 §11/§13 acceptance criteria; every future data milestone's definition of done (MySQL-only verification).
+
 ## D-007 — Repository history stays on one branch (DECIDED, 2026-07-27)
 
 Development continues on the single existing branch rather than adopting a `main` + per-milestone pull-request workflow. No pull requests are opened unless explicitly requested.

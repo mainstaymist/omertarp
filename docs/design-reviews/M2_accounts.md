@@ -1,6 +1,6 @@
 # Design Review — M2: Accounts and Audit Foundation
 
-Status: **AWAITING APPROVAL — no implementation until approved.**
+Status: **APPROVED 2026-07-27 — IMPLEMENTED.** See §13 for implementation notes. Verification is MySQL-only per D-008.
 Milestone: M2 (roadmap Track A). Depends on: M0, M1. Consumed by: M3 (seasonal path per account), M4 (characters belong to accounts), M24 (admin tooling), and every system that audits anything — which is all of them.
 
 > Terms are defined in [`docs/GLOSSARY.md`](../GLOSSARY.md). This milestone introduces the first **repository** — the pattern every later data-owning milestone copies.
@@ -129,4 +129,17 @@ M0 (module lifecycle, config, log, hooks), M1 (`WhenReady`, `Query`/`Insert`/`Up
 
 ---
 
-**Requesting approval to implement M2 as specified.** On approval: implementation, then the post-implementation report before M3's design review.
+## 13. Implementation Notes (post-implementation)
+
+Implemented in `modules/accounts/` (registration stub, `sv_repository.lua`, `sv_accounts.lua`, `sv_selftest.lua`). Headless suite grew to 78 checks. Notes:
+
+- **Two small core additions**, both in service of contracts M0 already promised rather than new design:
+  - `Omerta.Log.SetAuditSink(fn)` in `core/sh_log.lua` — the formal swap point for audit persistence (cleaner than monkey-wrapping `Audit`; console line always emits, sink errors are caught and logged, call sites unchanged).
+  - `Omerta.SelfTest.Run(name, steps)` in `core/sh_selftest.lua` — the sequential step runner extracted from the database self-test, which now uses it too; every milestone ships a self-test, and duplicating the runner per module would violate the no-duplication rule.
+- **Lifecycle contract established for all future data modules:** `OnLoad` declares schema and migrations (it runs before any module's `OnEnable`, so registration always precedes the database connecting); `OnEnable` does engine work, DB-gated behind `WhenReady`. Also reaffirmed: `modules/accounts/` sorts *before* `modules/database/` in include order, so sibling references only ever happen at call time — the loader's `depends` ordering, not include order, is the guarantee.
+- **Bots get no accounts** (no SteamID64); they are skipped with a debug-level note.
+- **Migration 1** is the first real migration through M1's runner — the headless flow test asserts all four `CREATE TABLE`s and the bookkeeping insert; in-engine it runs automatically at first boot after pulling.
+- **Self-test** (`omerta_accounts_selftest`, 10 steps) uses the synthetic SteamID64 `90000000000000001`, never a real player; it cleans up everything it creates, including leftovers from previously aborted runs, and its audit rows.
+- **Verification is MySQL-only** per D-008.
+
+In-engine acceptance (user-side): pull, restart (migration 1 applies on boot — watch for `applying migration 1: accounts and audit foundation`), run `omerta_accounts_selftest` (expect 10/10), and join the server once — the console should log `account N loaded for <steamid> (created)`, and disconnecting should audit `account.disconnect`. `omerta_db_selftest` should still pass.

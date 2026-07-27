@@ -225,6 +225,27 @@ function Omerta.DB.Upsert(tableName, row, keys, cb)
     end)
 end
 
+-- cb(ok, err) — atomic counter: insert with counter = delta, or add delta to
+-- the existing row's counter when keyRow collides (M2 addition; see the M1
+-- review §9 driver-boundary extension point). Requires a unique/primary
+-- constraint on keyRow's columns.
+function Omerta.DB.UpsertIncrement(tableName, keyRow, counter, delta, cb)
+    cb = cb or defaultCb
+    whenUsable(function()
+        local ok, sqlOrErr, params = pcall(Internal.BuildUpsertIncrement,
+            driver.dialect, tableName, keyRow, counter, delta)
+        if not ok then
+            Internal.Defer(function() cb(false, tostring(sqlOrErr)) end)
+            return
+        end
+        Omerta.DB.Query(sqlOrErr, params, function(_, err)
+            cb(err == nil, err)
+        end)
+    end, function(why)
+        Internal.Defer(function() cb(false, why) end)
+    end)
+end
+
 -- All-or-nothing writes (money, items, deaths, promotions, evidence —
 -- Tech §22). fn(tx) declares statements; cb(ok, err) reports once.
 -- Write-only in M1: tx statements return no rows.

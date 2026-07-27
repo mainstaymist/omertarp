@@ -10,6 +10,7 @@ local CORE_FILES = {
     "core/sh_core.lua",
     "core/sh_util.lua",
     "core/sh_log.lua",
+    "core/sh_selftest.lua",
     "core/sh_config.lua",
     "core/sh_net.lua",
     "core/sh_module.lua",

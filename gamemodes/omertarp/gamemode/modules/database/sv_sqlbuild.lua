@@ -156,6 +156,38 @@ function Internal.BuildUpsert(dialect, tableName, row, keys)
     return sqlStr, params
 end
 
+-- Atomic counter upsert (added by M2): insert the row with the counter at
+-- `delta`, or add `delta` to the existing counter when `keyRow` collides.
+-- Read-free, so two systems bumping the same counter in the same tick cannot
+-- race. Requires a unique/primary constraint on keyRow's columns.
+function Internal.BuildUpsertIncrement(dialect, tableName, keyRow, counter, delta)
+    if type(counter) ~= "string" or not counter:find("^[a-z_][a-z0-9_]*$") then
+        error("counter column name '" .. tostring(counter) .. "' is invalid", 2)
+    end
+    if type(delta) ~= "number" then error("delta must be a number", 2) end
+    if keyRow[counter] ~= nil then error("counter '" .. counter .. "' cannot also be a key", 2) end
+
+    local row, keys = {}, {}
+    for k, v in pairs(keyRow) do
+        row[k] = v
+        keys[#keys + 1] = k
+    end
+    if #keys == 0 then error("upsert-increment needs a non-empty keyRow", 2) end
+    table.sort(keys)
+    row[counter] = delta
+
+    local insertSql, params = Internal.BuildInsert(tableName, row)
+    local sqlStr
+    if dialect == "mysql" then
+        sqlStr = string.format("%s ON DUPLICATE KEY UPDATE %s = %s + VALUES(%s)",
+            insertSql, counter, counter, counter)
+    else
+        sqlStr = string.format("%s ON CONFLICT(%s) DO UPDATE SET %s = %s + excluded.%s",
+            insertSql, table.concat(keys, ", "), counter, counter, counter)
+    end
+    return sqlStr, params
+end
+
 --------------------------------------------------------------------------------
 -- Migration planning
 --------------------------------------------------------------------------------
