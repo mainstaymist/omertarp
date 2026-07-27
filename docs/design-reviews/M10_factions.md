@@ -177,7 +177,11 @@ D-009 is load-bearing here: **family recruitment is what performs the independen
 
 Implemented as `modules/organizations/`. The headless suite grew from 176 to 197 checks. All three rulings came back as recommended, so the design above stands; what follows is what building it changed or exposed.
 
-**A migration that would have failed on the backend of record.** `key` and `rank` are both reserved words in MySQL 8 — `CREATE TABLE ... (key VARCHAR(32), ...)` does not parse there, and neither does `SET rank = ?`. Every SQLite test would have passed and migration 8 would have died on the user's server. The columns are `org_key` and `rank_index`, aliased back to `key` and `rank` inside the repository, so nothing above that layer knows the database had an opinion about vocabulary. A test now walks every declared column in every table against a reserved-word list, because the next person to add a column will not be thinking about MySQL's keyword list either.
+**A migration that would have failed on the backend of record — and then a second helping of the same mistake.** `key` and `rank` are both reserved words — `CREATE TABLE ... (key VARCHAR(32), ...)` does not parse, and neither does `SET rank = ?`. Every SQLite test passed and migration 8 would have died on MySQL/MariaDB. The columns became `org_key` and `rank_index`.
+
+That fix was then made *half* correctly: the queries aliased them straight back with `SELECT org_key AS key`, and **a reserved word is just as reserved when it is an alias**. The DDL now succeeded and every read failed instead — which is worse, because it looked like the schema was fine. The translation happens in Lua now, which is dialect-proof and needs no quoting rules.
+
+Two lint checks came out of it: one walks every declared column in every table against a reserved-word list, the other refuses any SQL that aliases to one. Both matter because the next person to add a column will not be thinking about MySQL's keyword list either, and neither failure can be seen from a SQLite test run.
 
 **Acting authority is computed and cached, not stored.** §7 promised computed; the honest version is computed on every roster or connection change and cached, because `Can()` has to answer synchronously and reading the roster is a query. The cache is refreshed on membership change, on disconnect, and on a 30-second timer — the last because who is present changes without anybody calling anything.
 

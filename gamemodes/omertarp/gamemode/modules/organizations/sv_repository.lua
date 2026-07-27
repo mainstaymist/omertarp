@@ -7,10 +7,12 @@
 -- timestamp, never a DELETE.
 --
 -- STORAGE NAMES DIFFER FROM DOMAIN NAMES, deliberately and only here:
--- `key` and `rank` are reserved words in MySQL 8, so the columns are
--- `org_key` and `rank_index` and every query aliases them back. Confining the
--- translation to this file is exactly what a repository is for — nothing above
--- it ever learns that the database had an opinion about vocabulary.
+-- `key` and `rank` are reserved words, so the columns are `org_key` and
+-- `rank_index`. The translation back happens in LUA, not in SQL — a reserved
+-- word is just as reserved when it is an alias (`SELECT org_key AS key` is a
+-- syntax error on MariaDB), and mapping in Lua is dialect-proof besides.
+-- Confining the translation to this file is exactly what a repository is for:
+-- nothing above it ever learns the database had an opinion about vocabulary.
 
 Omerta.Organizations = Omerta.Organizations or {}
 Omerta.Organizations.Internal = Omerta.Organizations.Internal or {}
@@ -18,10 +20,27 @@ local Internal = Omerta.Organizations.Internal
 Internal.Repo = Internal.Repo or {}
 local Repo = Internal.Repo
 
-local ORG_COLUMNS = "id, season_id, org_key AS key, type, status, " ..
-    "leader_character_id, created_at"
-local MEMBER_COLUMNS = "organization_id, character_id, rank_index AS rank, joined_at, " ..
-    "sponsor_character_id, status, left_at"
+local function toOrg(row)
+    if not row then return nil end
+    row.key = row.org_key
+    return row
+end
+
+local function toOrgs(rows)
+    for _, row in ipairs(rows or {}) do toOrg(row) end
+    return rows or {}
+end
+
+local function toMember(row)
+    if not row then return nil end
+    row.rank = row.rank_index
+    return row
+end
+
+local function toMembers(rows)
+    for _, row in ipairs(rows or {}) do toMember(row) end
+    return rows or {}
+end
 
 --------------------------------------------------------------------------------
 -- Institutions
@@ -42,14 +61,13 @@ function Repo.Create(seasonId, key, orgType, status, now, cb)
 end
 
 function Repo.ListForSeason(seasonId, cb)
-    Omerta.DB.Query("SELECT " .. ORG_COLUMNS .. " FROM {organizations} " ..
-        "WHERE season_id = ? ORDER BY id",
-        { seasonId }, function(rows, err) cb(rows or {}, err) end)
+    Omerta.DB.Query("SELECT * FROM {organizations} WHERE season_id = ? ORDER BY id",
+        { seasonId }, function(rows, err) cb(toOrgs(rows), err) end)
 end
 
 function Repo.FindByKey(seasonId, key, cb)
-    Omerta.DB.QueryOne("SELECT " .. ORG_COLUMNS .. " FROM {organizations} " ..
-        "WHERE season_id = ? AND org_key = ?", { seasonId, key }, cb)
+    Omerta.DB.QueryOne("SELECT * FROM {organizations} WHERE season_id = ? AND org_key = ?",
+        { seasonId, key }, function(row, err) cb(toOrg(row), err) end)
 end
 
 function Repo.SetStatus(orgId, status, cb)
@@ -71,30 +89,31 @@ end
 -- characters belong to one season and so do organizations.
 function Repo.GetMembership(characterId, cb)
     Omerta.DB.QueryOne(
-        "SELECT m.organization_id, m.character_id, m.rank_index AS rank, m.joined_at, " ..
+        "SELECT m.organization_id, m.character_id, m.rank_index, m.joined_at, " ..
         "m.sponsor_character_id, m.status, m.left_at, " ..
-        "o.org_key AS org_key, o.type AS org_type, o.season_id AS season_id, " ..
-        "o.leader_character_id AS leader_character_id " ..
+        "o.org_key, o.type, o.season_id, o.leader_character_id " ..
         "FROM {organization_members} m " ..
         "JOIN {organizations} o ON o.id = m.organization_id " ..
         "WHERE m.character_id = ? AND m.status = ?",
-        { characterId, Omerta.Organizations.MEMBER_STATUS.ACTIVE }, cb)
+        { characterId, Omerta.Organizations.MEMBER_STATUS.ACTIVE },
+        function(row, err) cb(toMember(row), err) end)
 end
 
 function Repo.ListMembers(orgId, cb)
     Omerta.DB.Query(
-        "SELECT " .. MEMBER_COLUMNS .. " FROM {organization_members} " ..
+        "SELECT * FROM {organization_members} " ..
         "WHERE organization_id = ? AND status = ? ORDER BY rank_index DESC, joined_at",
         { orgId, Omerta.Organizations.MEMBER_STATUS.ACTIVE },
-        function(rows, err) cb(rows or {}, err) end)
+        function(rows, err) cb(toMembers(rows), err) end)
 end
 
 -- Any status, including those who have left. The self-test uses it to prove
 -- that an expulsion leaves history behind rather than a hole.
 function Repo.GetMemberRow(orgId, characterId, cb)
     Omerta.DB.QueryOne(
-        "SELECT " .. MEMBER_COLUMNS .. " FROM {organization_members} " ..
-        "WHERE organization_id = ? AND character_id = ?", { orgId, characterId }, cb)
+        "SELECT * FROM {organization_members} " ..
+        "WHERE organization_id = ? AND character_id = ?", { orgId, characterId },
+        function(row, err) cb(toMember(row), err) end)
 end
 
 -- cb(ok, err). Upsert rather than insert so a character who was expelled and
@@ -123,12 +142,12 @@ function Repo.SetRank(orgId, characterId, rank, expectedRank, cb)
         function(_, err)
             if err then cb(false, err) return end
             Omerta.DB.QueryOne(
-                "SELECT rank_index AS rank FROM {organization_members} " ..
+                "SELECT rank_index FROM {organization_members} " ..
                 "WHERE organization_id = ? AND character_id = ?",
                 { orgId, characterId },
                 function(row, rerr)
                     if rerr then cb(false, rerr) return end
-                    cb(row ~= nil and row.rank == rank, nil)
+                    cb(row ~= nil and row.rank_index == rank, nil)
                 end)
         end)
 end

@@ -635,6 +635,21 @@ function Internal.RegisterCommands()
         end
     end)
 
+    -- Creation happens once when the database comes up, and again when a season
+    -- starts. If either was missed — a season created later, a transient
+    -- database error at boot — this is the way back without a restart.
+    concommand.Add("omerta_org_sync", function(caller)
+        if IsValid(caller) and not caller:IsSuperAdmin() then return end
+        local season = Omerta.Seasons.GetActive()
+        if not season then
+            Omerta.Log.Error("organizations", "no active season to create institutions for")
+            return
+        end
+        Internal.EnsureInstances(season, function(ok)
+            if not ok then Omerta.Log.Error("organizations", "sync failed — see above") end
+        end)
+    end)
+
     concommand.Add("omerta_org_open", function(caller, _, args)
         if IsValid(caller) and not caller:IsSuperAdmin() then return end
         local row = instances[args[1] or ""]
@@ -658,10 +673,21 @@ function Internal.RegisterCommands()
     -- re-seed a running season.
     concommand.Add("omerta_org_seed", function(caller, _, args)
         if IsValid(caller) and not caller:IsSuperAdmin() then return end
+        -- Reported separately: "usage" for two different failures made the
+        -- caller guess which half was wrong.
         local row = instances[args[1] or ""]
+        if not row then
+            Omerta.Log.Error("organizations",
+                "no institution '%s' exists this season — run omerta_org_list " ..
+                "(if everything reads '(not created)', run omerta_org_sync)",
+                tostring(args[1]))
+            return
+        end
         local ply = findPlayer(args[2] or "")
-        if not (row and IsValid(ply)) then
-            Omerta.Log.Error("organizations", "usage: omerta_org_seed <key> <steamID64 of a connected player>")
+        if not IsValid(ply) then
+            Omerta.Log.Error("organizations",
+                "no connected player with SteamID64 '%s' — they must be in the server",
+                tostring(args[2]))
             return
         end
         local character = Omerta.Characters.Get(ply)
@@ -696,7 +722,8 @@ function Internal.RegisterCommands()
         if IsValid(caller) and not caller:IsSuperAdmin() then return end
         local row = instances[args[1] or ""]
         if not row then
-            Omerta.Log.Error("organizations", "usage: omerta_org_roster <key>")
+            Omerta.Log.Error("organizations",
+                "no institution '%s' exists this season — run omerta_org_list", tostring(args[1]))
             return
         end
         local def = definitionFor(row)
