@@ -85,13 +85,23 @@ check("the real registry's outbound name fields are all accounted for", function
     end
 end)
 
-check("networked variables on players are always a leak", function()
+check("networked variables: ours leak, GMod's own are ignored", function()
     loadModules()
     local A = Omerta.Population.Internal.AnalyzeNWVars
     assert(#A({}) == 0, "no vars means no findings")
+
+    -- A string value can carry identity, so it is a fault.
     local findings = A({ { player = "7656...", key = "CharName", value = "Tony Marino" } })
-    assert(#findings == 1 and findings[1].severity == "leak", "NW vars must be a leak")
+    assert(#findings == 1 and findings[1].severity == "leak", "string NW var must be a leak")
     assert(findings[1].what:find("Tony Marino", 1, true), findings[1].what)
+
+    -- Numbers rarely identify anyone, but are still worth a look.
+    findings = A({ { player = "x", key = "Wanted", value = 3 } })
+    assert(#findings == 1 and findings[1].severity == "review", "numeric var should be review")
+
+    -- GMod sets UserGroup itself; flagging it is noise, not signal.
+    assert(#A({ { player = "x", key = "UserGroup", value = "user" } }) == 0,
+        "engine-set vars must be ignored")
 end)
 
 check("missing suppressions are reported by name", function()
@@ -140,4 +150,18 @@ check("a fully leaky server produces findings from every check", function()
         for _, f in ipairs(list) do all[#all + 1] = f end
     end
     assert(countSeverity(all, "leak") == 8, "expected 8 leaks, got " .. countSeverity(all, "leak"))
+end)
+
+-- Regression: the split-name fields of characters.self slipped past the
+-- heuristic, so the one message carrying a real character name to a client was
+-- the one the audit did not mention.
+check("split name fields are caught by the heuristic", function()
+    loadModules()
+    local findings = Omerta.Population.Internal.AnalyzeNetRegistry({
+        ["x.self"] = { realm = "server_to_client", schema = {
+            { name = "first", type = "string", maxlen = 24 },
+            { name = "last",  type = "string", maxlen = 24 },
+        } },
+    })
+    assert(#findings == 2, "both halves of a split name should be flagged, got " .. #findings)
 end)

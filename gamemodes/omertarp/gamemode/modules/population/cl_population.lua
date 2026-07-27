@@ -33,3 +33,35 @@ local HIDDEN = {
 hook.Add("HUDShouldDraw", "omerta.population.hud", function(name)
     if HIDDEN[name] then return false end
 end)
+
+--------------------------------------------------------------------------------
+-- Client half of the leak audit
+--------------------------------------------------------------------------------
+-- The suppressions above are client-side hooks, so only a client can confirm
+-- they are still installed — an addon or a Lua refresh can displace them here
+-- without the server ever knowing.
+
+function Omerta.Population.ClientAudit()
+    local findings = {}
+    local function add(list)
+        for _, f in ipairs(list) do findings[#findings + 1] = f end
+    end
+
+    local hooks = hook.GetTable()
+    local present = {}
+    for event in pairs(Omerta.Population.SUPPRESSIONS) do
+        local installed = hooks[event]
+        present[event] = installed ~= nil and next(installed) ~= nil
+    end
+    add(Omerta.Population.Internal.AnalyzeSuppressions(present))
+
+    local PLAYER = FindMetaTable("Player")
+    add(Omerta.Population.Internal.AnalyzeNickOverride(
+        PLAYER.OmertaSteamName ~= nil and PLAYER.Nick ~= PLAYER.OmertaSteamName))
+
+    return findings
+end
+
+concommand.Add("omerta_leak_audit_client", function()
+    Omerta.Population.Report("population", Omerta.Population.ClientAudit(), "this client")
+end)
