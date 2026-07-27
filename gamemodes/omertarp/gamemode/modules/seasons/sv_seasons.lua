@@ -134,6 +134,46 @@ function Omerta.Seasons.GetActive()
     return activeSeason
 end
 
+--------------------------------------------------------------------------------
+-- Readiness
+--------------------------------------------------------------------------------
+-- Omerta.DB.WhenReady is not enough for anything that needs the ACTIVE SEASON
+-- at boot. This module's own WhenReady callback runs a query, so a module
+-- registering a later DB callback still sees GetActive() == nil — its callback
+-- runs first and the answer has not arrived yet. M10 hit exactly that and
+-- created no institutions; M11's treasuries and M13's businesses would have hit
+-- it next.
+--
+-- Callbacks fire once the season state is RESOLVED, which includes resolving to
+-- "there is no season" and to "the module failed" — a consumer left waiting
+-- forever is worse than one told there is nothing.
+
+local seasonsResolved = false
+local readyCallbacks = {}
+
+function Omerta.Seasons.WhenReady(fn)
+    if seasonsResolved then
+        -- Deferred rather than immediate, so a late registration behaves like
+        -- an early one and never runs re-entrantly inside its caller.
+        Omerta.DB.Internal.Defer(fn)
+        return
+    end
+    readyCallbacks[#readyCallbacks + 1] = fn
+end
+
+function Internal.Resolved()
+    if seasonsResolved then return end
+    seasonsResolved = true
+    local pending = readyCallbacks
+    readyCallbacks = {}
+    for _, fn in ipairs(pending) do
+        local ok, err = pcall(fn)
+        if not ok then
+            Omerta.Log.Error("seasons", "a readiness callback failed: %s", tostring(err))
+        end
+    end
+end
+
 function Omerta.Seasons.GetPath(ply)
     local account = Omerta.Accounts.Get(ply)
     return account and account.season_path or nil
@@ -350,12 +390,14 @@ function MODULE:OnEnable()
             if err then
                 Internal.Failed = true
                 Omerta.Log.Error("seasons", "SEASONS FAILED — could not load seasons: %s", err)
+                Internal.Resolved()
                 return
             end
             local ok, why = Internal.CheckActiveInvariant(rows)
             if not ok then
                 Internal.Failed = true
                 Omerta.Log.Error("seasons", "SEASONS FAILED — %s", why)
+                Internal.Resolved()
                 return
             end
             for _, row in ipairs(rows) do
@@ -369,6 +411,7 @@ function MODULE:OnEnable()
                     "no active season — character creation will be unavailable until one is started " ..
                     "(omerta_season_create / omerta_season_start)")
             end
+            Internal.Resolved()
         end)
     end)
 

@@ -811,7 +811,11 @@ end
 function MODULE:OnEnable()
     if not Omerta.InEngine then return end
 
-    Omerta.DB.WhenReady(function()
+    -- Seasons.WhenReady, not DB.WhenReady: the season is loaded by a query of
+    -- its own, so a DB callback registered here would run BEFORE the answer
+    -- arrived and find no active season. That is exactly what happened on the
+    -- first boot of this milestone, and no institutions were created.
+    Omerta.Seasons.WhenReady(function()
         local season = Omerta.Seasons.GetActive()
         if not season then
             Omerta.Log.Info("organizations",

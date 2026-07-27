@@ -132,6 +132,63 @@ end)
 suite("seasons.flow")
 --------------------------------------------------------------------------------
 
+-- Omerta.DB.WhenReady is not enough for anything that needs the active season
+-- at boot: this module's own DB callback runs a query, so a consumer's DB
+-- callback fires BEFORE the answer arrives. M10 hit that and created no
+-- institutions; these pin the contract that replaced it.
+check("a readiness callback sees the active season, not a nil one", function()
+    ReloadCore()
+    for _, f in ipairs(MODULE_FILES) do dofile(f) end
+    Omerta.Module.FinishLoading()
+
+    local mock = { dialect = "sqlite", heuristic = true, log = {} }
+    function mock.Connect(_, cb) cb(nil) end
+    function mock.RunQuery(sqlStr, _, cb)
+        mock.log[#mock.log + 1] = sqlStr
+        if sqlStr:find("SELECT version") then cb({}, nil) return end
+        if sqlStr:find("FROM omerta_seasons", 1, true) and not sqlStr:find("WHERE", 1, true) then
+            cb({ { id = "7", state = "active", label = "season seven",
+                   ruleset_version = "1", created_at = "100" } }, nil)
+            return
+        end
+        cb({}, nil, 1)
+    end
+    function mock.RunTransaction(_, cb) cb(true, nil) end
+    Omerta.DB.Internal.Drivers = Omerta.DB.Internal.Drivers or {}
+    Omerta.DB.Internal.Drivers.sqlite = mock
+
+    -- Registered BEFORE the boot, exactly as a consuming module's OnEnable does.
+    local sawSeason, ran = nil, false
+    Omerta.Seasons.WhenReady(function()
+        ran = true
+        sawSeason = Omerta.Seasons.GetActive()
+    end)
+
+    -- A plain DB callback registered at the same moment is the broken version,
+    -- kept here so the difference is visible rather than asserted in a comment.
+    local dbCallbackSaw = "not run"
+    Omerta.DB.WhenReady(function() dbCallbackSaw = Omerta.Seasons.GetActive() end)
+
+    Omerta.Module.EnableAll()
+
+    assert(ran, "the readiness callback never fired")
+    assert(sawSeason and sawSeason.id == 7, "it should see season #7, got "
+        .. tostring(sawSeason and sawSeason.id))
+    assert(dbCallbackSaw == nil, "a DB callback should still see nil — that is the bug")
+end)
+
+check("a callback still fires when there is no season, and when it is late", function()
+    local mock = bootSeasons()
+    assert(Omerta.Seasons.GetActive() == nil, "this boot has no season")
+
+    -- Nothing to report is still an answer: a consumer left waiting forever is
+    -- worse than one told there is nothing.
+    local ranLate = false
+    Omerta.Seasons.WhenReady(function() ranLate = true end)
+    assert(ranLate, "a callback registered after resolution must still fire")
+    assert(mock ~= nil)
+end)
+
 check("boot applies migration 2 and lands idle with no season", function()
     local mock = bootSeasons()
     assert(Omerta.DB.IsReady())
