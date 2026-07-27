@@ -172,3 +172,15 @@ Implemented in `gamemodes/omertarp/gamemode/modules/database/` (six files: share
 - **Migration machinery** is exercised headless via the mock driver; the first real migration lands with M2's accounts table, as designed.
 
 Remaining acceptance step (D-006, user-side): run `omerta_db_selftest` on SQLite, flip `db.backend` to `mysql` in `data/omertarp/config/server.txt`, restart, run it again — identical pass required. The reconnect step self-skips on SQLite and on mysqloo builds without a disconnect method, and says so.
+
+### Prerequisite: installing mysqloo
+
+`mysqloo` is a **binary module for the server**, not a Lua dependency the gamemode can ship. It must be installed separately:
+
+1. Download the release matching the server's platform *and branch* from <https://github.com/FredyH/MySQLOO/releases>.
+2. Place it at `garrysmod/lua/bin/<binary>` (create `bin/` if absent). Filenames: `gmsv_mysqloo_win32.dll`, `gmsv_mysqloo_win64.dll`, `gmsv_mysqloo_linux.dll`, `gmsv_mysqloo_linux64.dll` — note upstream ships the Linux builds with a `.dll` extension too. Use the `win64`/`linux64` build only if the server runs the x86-64 branch.
+3. Create the database and user in MySQL and grant that user rights on it; the gamemode creates its own tables.
+
+The driver checks for the expected file **before** calling `require`, because a bare `require` on a missing module also emits GMod's own "Couldn't include file" error, burying the real cause in a two-error cascade. The resulting message names the exact expected path, the download URL, and the SQLite fallback; if the file exists but fails to load, the second message reports the server's detected platform and branch, since a wrong-branch binary is the usual cause. `Internal.MysqlooBinaryName(isWindows, is64)` is pure and unit-tested across all four combinations.
+
+A missing module remains a **hard boot failure** rather than a degraded start: a database-backed gamemode that cannot reach its database should refuse to run rather than appear healthy while persisting nothing.

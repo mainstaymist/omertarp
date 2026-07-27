@@ -238,6 +238,22 @@ check("duplicate registered versions are refused", function()
 end)
 
 --------------------------------------------------------------------------------
+suite("db.mysqloo_binary")
+--------------------------------------------------------------------------------
+
+check("binary name resolves per platform and branch", function()
+    ReloadCore()
+    dofile("gamemodes/omertarp/gamemode/modules/database/sv_schema.lua")
+    dofile("gamemodes/omertarp/gamemode/modules/database/sv_driver_mysql.lua")
+    local N = Omerta.DB.Internal.MysqlooBinaryName
+    assert(N(true, false)  == "gmsv_mysqloo_win32.dll",   N(true, false))
+    assert(N(true, true)   == "gmsv_mysqloo_win64.dll",   N(true, true))
+    -- upstream ships the linux builds with a .dll extension too
+    assert(N(false, false) == "gmsv_mysqloo_linux.dll",   N(false, false))
+    assert(N(false, true)  == "gmsv_mysqloo_linux64.dll", N(false, true))
+end)
+
+--------------------------------------------------------------------------------
 suite("db.flow") -- full boot flow against a scripted mock driver
 --------------------------------------------------------------------------------
 

@@ -20,13 +20,48 @@ local DRIVER = {
 
 local db -- mysqloo database object
 
+-- The binary this server needs, by platform and branch. Pure (arguments in,
+-- name out) so the headless suite covers every combination; the caller reads
+-- the actual platform from the engine.
+-- Note the Linux builds are also named .dll — that is upstream's convention,
+-- not a mistake.
+function Internal.MysqlooBinaryName(isWindows, is64)
+    local arch
+    if isWindows then
+        arch = is64 and "win64" or "win32"
+    else
+        arch = is64 and "linux64" or "linux"
+    end
+    return "gmsv_mysqloo_" .. arch .. ".dll"
+end
+
 function DRIVER.Connect(cfg, cb)
     if not mysqloo then
-        -- Synchronous point (module OnEnable): error here fails the boot.
+        -- Check for the file first: a bare require() on a missing module also
+        -- prints GMod's own "Couldn't include file" error, which buries the
+        -- real message in a two-error cascade.
+        local binary = Internal.MysqlooBinaryName(system.IsWindows(), jit.arch == "x64")
+        if not file.Exists("bin/" .. binary, "LUA") then
+            -- Synchronous point (module OnEnable): error here fails the boot,
+            -- deliberately — a database-backed gamemode that cannot reach its
+            -- database should refuse to run rather than appear healthy.
+            error(string.format(
+                "db.backend is 'mysql' but the mysqloo binary module is not installed.\n" ..
+                "         Expected file: garrysmod/lua/bin/%s\n" ..
+                "         Download:      https://github.com/FredyH/MySQLOO/releases\n" ..
+                "         Alternative:   set db.backend to \"sqlite\" in " ..
+                "data/omertarp/config/server.txt", binary))
+        end
+
         local ok, err = pcall(require, "mysqloo")
         if not ok or not mysqloo then
-            error("db.backend is 'mysql' but the mysqloo binary module could not be loaded " ..
-                "(install gmsv_mysqloo for your platform): " .. tostring(err))
+            error(string.format(
+                "db.backend is 'mysql' and garrysmod/lua/bin/%s exists, but it failed to load: %s\n" ..
+                "         This usually means the binary is for the wrong platform or branch " ..
+                "(this server is %s, %s).",
+                binary, tostring(err),
+                system.IsWindows() and "Windows" or "Linux",
+                jit.arch == "x64" and "64-bit" or "32-bit"))
         end
     end
 
