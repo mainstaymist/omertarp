@@ -1,6 +1,6 @@
 # Design Review — M11: Treasury and Procurement
 
-Status: **APPROVED 2026-07-27 — IMPLEMENTED** (§4a, §4b and §4c all ruled (a); logged as D-024, D-026 and D-025). See §13.
+Status: **APPROVED 2026-07-27 — IMPLEMENTED AND VERIFIED IN-ENGINE** (`omerta_treasury_selftest`; the books-versus-safe discrepancy confirmed live). §4a, §4b and §4c all ruled (a); logged as D-024, D-026 and D-025. See §13.
 Milestone: M11 (roadmap Track B). Depends on: M9 (money and items are physical), M10 (something has to own the money). Consumed by: M12 (private lines are bought), M13 (businesses feed the treasury and draw stock from it), M14 (robbery proceeds go somewhere and safes are worth robbing), M15 (marked bills), M17 (seizure), M19 (medical supplies).
 
 > **Three rulings needed** (§4): whether a treasury is a balance or a safe, where purchased goods come from, and how a withdrawal is authorised.

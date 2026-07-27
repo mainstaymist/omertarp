@@ -262,7 +262,11 @@ function Internal.EnsureContainer(organizationId)
     return containerId
 end
 
-function Internal.SpawnSafe(organizationId, pos, ang)
+-- `restOnGround` is for fresh placement, where `pos` is a floor point and the
+-- model has to be lifted to sit on it. A safe being RESTORED already has its
+-- final position stored and must not be adjusted a second time, or it climbs
+-- half its own height on every restart.
+function Internal.SpawnSafe(organizationId, pos, ang, restOnGround)
     if not Omerta.InEngine then return nil end
     if IsValid(safeEntities[organizationId]) then safeEntities[organizationId]:Remove() end
 
@@ -272,6 +276,7 @@ function Internal.SpawnSafe(organizationId, pos, ang)
     ent:SetPos(pos)
     ent:SetAngles(ang or Angle(0, 0, 0))
     ent:Spawn()
+    if restOnGround then Omerta.Inventory.RestOnGround(ent, pos) end
     safeEntities[organizationId] = ent
     return ent
 end
@@ -451,12 +456,16 @@ function Internal.RegisterCommands()
             return
         end
 
-        local pos = caller:GetPos() + caller:GetAimVector() * 72 + Vector(0, 0, 8)
+        local floor = Omerta.Inventory.PlacementInFront(caller, 110)
         Internal.EnsureContainer(org.id)
-        if not Internal.SpawnSafe(org.id, pos, Angle(0, caller:EyeAngles().y, 0)) then
+        local ent = Internal.SpawnSafe(org.id, floor, Angle(0, caller:EyeAngles().y, 0), true)
+        if not IsValid(ent) then
             Omerta.Log.Error("treasury", "could not spawn the safe")
             return
         end
+
+        -- Store where it ENDED UP, so restoring it needs no further arithmetic.
+        local pos = ent:GetPos()
         Internal.Repo.SaveSafe(org.id, game.GetMap(), math.floor(pos.x), math.floor(pos.y),
             math.floor(pos.z), os.time(), function(ok, err)
             if not ok then Omerta.Log.Error("treasury", "%s", tostring(err)) return end

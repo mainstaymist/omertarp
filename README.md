@@ -16,7 +16,9 @@ That completes Track A.
 
 **M10 (factions core) is implemented and verified in-engine.** Four crime families and a police department exist as season-scoped instances of code-defined institutions, with rank ladders, cumulative rank permissions, sponsorship and induction, and authority that descends the chain when a leader is away. Two families are active at launch and staff open the rest as the population justifies it (D-022). Joining teaches you only the people who were in the room (D-023), and the one thing a stranger can read off you is a police uniform — the rank, not the name (D-021).
 
-**M11 (treasury and procurement) is implemented; in-engine verification pending** (`omerta_treasury_selftest`, run in the server console). A treasury is a **safe** — physical cash in a container with a location on the map — and the ledger beside it is append-only. The two are allowed to disagree, and that disagreement is embezzlement, a robbery, or a Don who has been skimming (D-024). Spending is capped by rank, with larger amounts needing a second member present who can cover them (D-025), and procurement buys objects from a data-driven catalogue, never statistics (D-026).
+**M11 (treasury and procurement) is implemented and verified in-engine.** A treasury is a **safe** — physical cash in a container with a location on the map — and the ledger beside it is append-only. The two are allowed to disagree, and that disagreement is embezzlement, a robbery, or a Don who has been skimming (D-024). Spending is capped by rank, with larger amounts needing a second member present who can cover them (D-025), and procurement buys objects from a data-driven catalogue, never statistics (D-026).
+
+**M12 (telephony) is in design review and awaiting approval.** The S1 voice-routing spike is answered: participant-only call audio and spatial local speech are both supported, and they do not compete — but there must be exactly one voice hook in the gamemode, which is a constraint M12 has to honour rather than discover.
 
 ## Repository layout
 
@@ -36,6 +38,7 @@ That completes Track A.
 | [`docs/review/02_development_roadmap.md`](docs/review/02_development_roadmap.md) | Phase 2 milestone roadmap with dependencies. |
 | [`docs/review/03_portrait_evaluation.md`](docs/review/03_portrait_evaluation.md) | Newspaper-portrait pipeline evaluation — superseded by D-011 (Option C). |
 | [`docs/review/04_justice_system_proposals.md`](docs/review/04_justice_system_proposals.md) | Justice-loop design proposals (awaiting selection). |
+| [`docs/review/05_voice_routing_spike.md`](docs/review/05_voice_routing_spike.md) | S1 spike — voice routing for telephony; answered, gates M12. |
 | [`docs/design-reviews/M0_foundation.md`](docs/design-reviews/M0_foundation.md) | M0 design review — approved and implemented. |
 | [`docs/design-reviews/M1_database.md`](docs/design-reviews/M1_database.md) | M1 design review — approved and implemented; MySQL verified in-engine. |
 | [`docs/design-reviews/M2_accounts.md`](docs/design-reviews/M2_accounts.md) | M2 design review — approved, implemented, verified in-engine. |
@@ -47,7 +50,8 @@ That completes Track A.
 | [`docs/design-reviews/M8_hud.md`](docs/design-reviews/M8_hud.md) | M8 design review — approved, implemented, verified in-engine (rules D-016/D-017). |
 | [`docs/design-reviews/M9_inventory.md`](docs/design-reviews/M9_inventory.md) | M9 design review — approved and implemented (rules D-018/D-019/D-020). |
 | [`docs/design-reviews/M10_factions.md`](docs/design-reviews/M10_factions.md) | M10 design review — approved, implemented, verified in-engine (rules D-021/D-022/D-023). |
-| [`docs/design-reviews/M11_treasury.md`](docs/design-reviews/M11_treasury.md) | M11 design review — approved and implemented (rules D-024/D-025/D-026). |
+| [`docs/design-reviews/M11_treasury.md`](docs/design-reviews/M11_treasury.md) | M11 design review — approved, implemented, verified in-engine (rules D-024/D-025/D-026). |
+| [`docs/design-reviews/M12_telephony.md`](docs/design-reviews/M12_telephony.md) | M12 design review — **awaiting approval**; requests three rulings. |
 | [`docs/rules/metagaming.md`](docs/rules/metagaming.md) | Player-facing metagaming policy (ships with M6). |
 | [`docs/GLOSSARY.md`](docs/GLOSSARY.md) | Plain-language definitions of the engineering terms used in the design reviews. |
 

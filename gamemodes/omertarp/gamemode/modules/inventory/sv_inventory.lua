@@ -416,6 +416,34 @@ end
 
 local worldEntities = {} -- instanceId -> entity
 
+-- Where a prop placed by this player should stand: where they are looking,
+-- on the surface under it. Taking the player's feet and adding an aim vector
+-- puts the prop wherever the crosshair happened to be pointing, which is
+-- usually a few inches into the floor.
+function Omerta.Inventory.PlacementInFront(ply, distance)
+    local start = ply:EyePos()
+    local forward = util.TraceLine({
+        start = start,
+        endpos = start + ply:GetAimVector() * (distance or 96),
+        filter = ply,
+    })
+    local ground = util.TraceLine({
+        start = forward.HitPos + Vector(0, 0, 16),
+        endpos = forward.HitPos - Vector(0, 0, 1024),
+        filter = ply,
+    })
+    return ground.Hit and ground.HitPos or forward.HitPos
+end
+
+-- Lifts a spawned entity so its BASE sits on `pos`. A prop's origin is its
+-- centre, so setting the position to a floor point buries half the model —
+-- which is exactly what a safe placed at head height then dropped looks like.
+-- Must run after Spawn, since the bounding box needs the model.
+function Omerta.Inventory.RestOnGround(ent, pos)
+    if not IsValid(ent) then return end
+    ent:SetPos(pos - Vector(0, 0, ent:OBBMins().z))
+end
+
 function Internal.SpawnWorldItem(row, pos, ang)
     if not Omerta.InEngine then return nil end
     local def = Omerta.Items.Get(row.def_id)
@@ -847,10 +875,12 @@ function Internal.RegisterCommands()
 
         local ent = ents.Create("omerta_container")
         if not IsValid(ent) then return end
-        ent:SetPos(caller:GetPos() + caller:GetAimVector() * 64 + Vector(0, 0, 8))
+        local pos = Omerta.Inventory.PlacementInFront(caller, 96)
+        ent:SetPos(pos)
         ent:SetAngles(Angle(0, caller:EyeAngles().y, 0))
         ent.OmertaContainer = id
         ent:Spawn()
+        Omerta.Inventory.RestOnGround(ent, pos)
         Omerta.Inventory.Load({ type = OWNER.CONTAINER, id = id })
         Omerta.Log.Info("inventory", "container #%d spawned with capacity %d", id, capacity)
     end)
