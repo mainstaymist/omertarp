@@ -92,6 +92,26 @@ Resolves Q-4. Ending a season automatically retires every living character ("lea
 
 ---
 
+## D-013 — Introductions are one-way, with reciprocation offered (DECIDED, 2026-07-27; overrides Tech §5)
+
+An introduction discloses **only the introducer's** name. The recipient immediately learns it and is offered a one-keypress prompt to introduce themselves back; declining or ignoring it is always permitted.
+
+**This overrides the Technical Design's own MVP recommendation of mutual introductions** (Tech §5), which precedence would otherwise carry. Mutual introductions make it mechanically impossible to take someone's name without surrendering your own — a power dynamic central to the fiction and to operational security (BA §4: "sharing one's identity with a rival family is a meaningful operational-security failure"). The reciprocate prompt keeps ordinary socializing to the same single keypress mutual would have cost.
+
+**Affects:** Tech §5 (MVP recommendation superseded); `docs/design-reviews/M5_identity.md` §4a.
+
+## D-014 — Knowledge is permanent; recognition is situational (DECIDED, 2026-07-27; resolves Tech §5)
+
+Identity **knowledge** ("that character is named Tony Marino") is permanent, stored per observer–subject pair, and never lost through appearance changes. **Recognition** ("the person in front of me is that character") is situational: a character whose face is concealed resolves as **Unknown to everyone**, including people who know them and including their own crew, who must rely on voice.
+
+Introductions are never blocked by concealment — a masked character may still state a name.
+
+**Rationale:** conflating the two would make masks useless against anyone who had ever met you, gutting the disguise design (BA §5). Separating them costs one seam and preserves both systems.
+
+M5 ships the seam (`Omerta.Identity.IsConcealed`, returning false); the clothing/disguise milestone implements it.
+
+**Affects:** Tech §5, §6, §12; `docs/design-reviews/M5_identity.md` §4d/§4e.
+
 ## D-012 — One living character per account per season (DECIDED, 2026-07-27; resolves Q-3)
 
 Each account may have exactly one character with status `alive` in the active season. A new character becomes possible only once the current one is `retired` or `dead`, and inherits nothing beyond the account's seasonal track (D-009).

@@ -40,6 +40,7 @@ local TEST_FILES = {
     "tests/test_accounts.lua",
     "tests/test_seasons.lua",
     "tests/test_characters.lua",
+    "tests/test_identity.lua",
     "tests/test_lint.lua",
 }
 

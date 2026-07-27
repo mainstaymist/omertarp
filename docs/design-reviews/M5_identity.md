@@ -1,6 +1,6 @@
 # Design Review — M5: Interaction Framework, Identity and Introductions
 
-Status: **AWAITING APPROVAL — no implementation until approved.**
+Status: **APPROVED 2026-07-27 — IMPLEMENTED** (§4a ruled one-way; logged as D-013 and D-014). See §13.
 Milestone: M5 (roadmap Track A). Depends on: M0–M4. Consumed by: M6 (hidden population), M7 (local text speaker labels), M9 (inventory interactions), M13/M14 (business and crime interactions), M15 (witness descriptors), M17 (police identification).
 
 > **This review asks for rulings on the five questions Tech §5 leaves open** (§4). One of my recommendations **differs from the Technical Design's own MVP suggestion** and is flagged as such — precedence says Tech wins, so it needs your explicit call to override.
@@ -159,4 +159,17 @@ M0 (net, config, log, hooks), M1 (migration 5), M2 (audit), M3 (season scoping),
 
 ---
 
-**Requesting approval to implement M5 as specified**, and specifically a ruling on §4a (one-way vs mutual introductions), where my recommendation overrides the Technical Design's MVP suggestion.
+## 13. Implementation Notes (post-implementation)
+
+Implemented as `modules/interaction/` and `modules/identity/`. Headless suite grew to 115 checks. Notes:
+
+- **§4a ruled one-way** (D-013). Introductions disclose only the introducer; the recipient gets a prompt (`E` to give their name, `R` to say nothing) valid for 20 seconds, bound to the specific person who introduced themselves — a reply naming anyone else is discarded.
+- **The resolution rule is one pure function** (`ResolveDisplayName`), the single place the project's central rule is expressed, and it is the most heavily tested code in the codebase: self-recognition, known, unknown, empty-string-is-not-knowledge, missing subject, concealed-but-known, and concealed-self.
+- **Concealment seam registered but unused** (D-014): no provider exists, so `IsConcealed` returns false until clothing lands. The self-test registers a temporary provider to prove the rule bites.
+- **Fixed-width option slots** in `interaction.options`: the net schema validator has no repeat construct, so eight `{index, label}` pairs are declared and unused slots carry index 0 with an empty label. Slightly ugly on the wire, but it keeps every message strictly schema-validated, which is the property worth protecting.
+- **Action ids travel as small integers** derived from a deterministic `order`-then-id sort computed identically in both realms, so the wire never carries action names.
+- **Client cache is cleared aggressively** — on entity removal, on server invalidation, on character state change, on Lua refresh — because a stale name outliving its subject is exactly the leak this milestone exists to prevent.
+- **Interaction key is `+menu_context`** (default `C`), held to open, released to execute the highlighted option, mouse wheel to select. Plain text rendering; M8 owns presentation.
+- **Staff tool**: `omerta_identity_who_knows <characterId>` lists every character who knows them and how they learned it — the metagaming-investigation tool the hidden-identity design requires.
+
+In-engine acceptance (user-side): pull, restart (watch for `applying migration 5: identity knowledge`), then `omerta_identity_selftest` (expect 11/11). The real test needs **two clients**: both see "Unknown" when looking at each other; one holds `C` and picks *Introduce Yourself*; the recipient sees the name and a prompt, and — crucially — the introducer still sees "Unknown" until the other reciprocates with `E`. That asymmetry is the whole point of D-013.
