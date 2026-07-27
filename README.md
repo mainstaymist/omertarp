@@ -8,7 +8,9 @@ Omertà RP is not a DarkRP derivative. There is no global chat, no scoreboard, n
 
 ## Project status
 
-**M0–M6 implemented and verified in-engine** on MySQL/MariaDB, the backend of record (D-008). Everyone is Unknown until introduced (D-013/D-014); the surfaces that used to hand identity out for free — scoreboard, kill feed, join/leave lines, voice panel, `Player:Nick()` (D-015) — are closed, with a leak audit reporting zero leaks. **M0–M7 implemented and verified in-engine** on MySQL/MariaDB (D-008). Speech is ranged and every listener sees the speaker's name resolved through their own knowledge. **M8 (contextual HUD framework) implemented; in-engine verification pending (`omerta_hud_selftest`, client console).** The persistent screen is empty by construction: elements draw only through a controller that asks each one whether it currently deserves to be visible. Next: M9 (inventory, items and hunger).
+**M0–M7 implemented and verified in-engine** on MySQL/MariaDB, the backend of record (D-008). Everyone is Unknown until introduced (D-013/D-014); the surfaces that used to hand identity out for free — scoreboard, kill feed, join/leave lines, voice panel, `Player:Nick()` (D-015) — are closed, with a leak audit reporting zero leaks; and speech is ranged, with every listener seeing the speaker's name resolved through their own knowledge.
+
+**M8 (contextual HUD framework) is implemented; in-engine verification pending** (`omerta_hud_selftest`, run in a client console). The persistent screen is empty by construction: elements draw only through a controller that asks each one whether it currently deserves to be visible. Next: M9 — inventory, items, and hunger (D-016).
 
 ## Repository layout
 
