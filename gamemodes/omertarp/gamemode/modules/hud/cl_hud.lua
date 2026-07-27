@@ -214,6 +214,15 @@ Omerta.HUD.Register("injury", {
 -- Interactable indicator (D-017, replacing the crosshair)
 --------------------------------------------------------------------------------
 
+-- Players are always potentially interactable (M5). Everything else registers
+-- its class, which is how M9's dropped items and containers light the dot up
+-- without this file learning what an item is.
+local interactableClasses = {}
+
+function Omerta.HUD.RegisterInteractableClass(class)
+    interactableClasses[class] = true
+end
+
 local function interactableTarget()
     local ply = LocalPlayer()
     if not (IsValid(ply) and ply:Alive()) then return nil end
@@ -222,9 +231,9 @@ local function interactableTarget()
         endpos = ply:EyePos() + ply:GetAimVector() * Omerta.Interaction.MAX_RANGE,
         filter = ply,
     })
-    -- Players are always potentially interactable (M5). Entity interactions
-    -- arrive with M9/M13/M14; this is where they extend.
-    if IsValid(tr.Entity) and tr.Entity:IsPlayer() then return tr.Entity end
+    if not IsValid(tr.Entity) then return nil end
+    if tr.Entity:IsPlayer() then return tr.Entity end
+    if interactableClasses[tr.Entity:GetClass()] then return tr.Entity end
     return nil
 end
 

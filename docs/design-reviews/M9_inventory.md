@@ -1,6 +1,6 @@
 # Design Review — M9: Inventory, Items, Currency and Hunger
 
-Status: **AWAITING APPROVAL — no implementation until approved.**
+Status: **APPROVED 2026-07-27 — IMPLEMENTED** (§4a ruled (a) bulk, §4b ruled (a) denominated with automatic change, §4c ruled (a) a contextual starvation warning; logged as D-020, D-018 and D-019). See §13.
 Milestone: M9 (roadmap Track A — the last foundational milestone). Depends on: M0–M8. Consumed by: M11 (treasury buys items), M12 (payphones need quarters), M13 (businesses sell stock), M14 (robbery proceeds are physical), M15 (evidence is items), M17 (seizure), M19 (medical supplies), M20 (searching a body).
 
 > **Three rulings needed** (§4): the capacity model, how granular money is, and the hunger warning question D-016 left open.
@@ -159,4 +159,44 @@ M0 (net, config, log), M1 (migration 7, transactions), M2 (audit), M3 (season sc
 
 ---
 
-**Requesting approval to implement M9 as specified**, with rulings on §4a (bulk vs grid — recommend bulk), §4b (money granularity — recommend denominated with automatic change), and §4c (starvation warning — recommend a contextual one).
+## 13. Implementation Notes (post-implementation)
+
+Implemented as `modules/inventory/` plus two entities. The headless suite grew from 140 to 175 checks. All three rulings came back as recommended, so the design above stands; what follows is what building it changed.
+
+**Schema additions the review did not have.** `items` gained `pos_x/pos_y/pos_z`. Without them a dropped item is a row owned by `world` with nowhere to be, so a restart would silently destroy it — and "drop it and log off" would be a way to destroy evidence that nobody could ever discover. World items are now restored to the floor when the database comes up.
+
+**Bulk is integer arithmetic.** Definitions declare bulk as a decimal (a quarter is 0.02, a Thompson is 22), but it is carried internally as hundredths and only divided for display. Summing 0.02 two hundred times in floating point does not reliably compare against a limit, and "your inventory is full" is not a place for a rounding error.
+
+**Exact change needed more than greedy.** Greedy largest-first is optimal for *minting* an amount, because the denomination set is canonical — but not for *paying* one from a limited wallet: with a quarter and three dimes it takes the quarter and then cannot find a nickel, when three dimes were exact. Payment therefore tries a bounded dynamic program first (up to $200, in 5¢ units) and falls back to greedy-plus-cheapest-overshoot above that. Both halves are pure and both are tested, including a loop that pays every amount from 5¢ to $5 and asserts the net cost is exact each time.
+
+**Change and payment are one transaction, planned against the future.** The change a player receives is planned against their wallet *as it will be after paying*, not as it is now. Planning against the current wallet let the credit try to top up a stack the payment was about to empty, which is one row needing two contradicting guarded `UPDATE`s. Everything then goes through `Omerta.DB.Transaction` as a single unit.
+
+**Duplication is prevented twice over.** Every move is a guarded `UPDATE` naming the owner it expects to move *from*, so the same request arriving twice moves the item once; and every operation takes an in-memory lock on the instance for the duration of its round-trip, so two requests naming one item cannot interleave. The self-test asserts the second move of an already-moved item is refused. The guard assumes one game server owns a season's items — the same assumption characters and identity knowledge already make, now written down.
+
+**The driver has no affected-row count**, so a guarded move confirms itself with a read-back rather than trusting that the `UPDATE` matched. It is one extra query on an operation that is not hot.
+
+**An amendment to M8, which the review said would not change.** Hunger became the second system with an opinion about movement speed, and two systems calling `SetRunSpeed` is how one silently undoes the other. `sv_stamina.lua` is now the single owner of movement speed and exposes `RegisterSpeedModifier` / `RegisterRegenModifier`; exhaustion was refactored onto the same mechanism. `cl_hud.lua` gained `RegisterInteractableClass`, which is the extension point its own D-017 comment anticipated for exactly this milestone.
+
+**The inventory is a VGUI frame, not a HUD element** — a deliberate departure from §12. It takes input, and the empty-screen rule is about what is on screen when the player has not asked for anything; the character-creation window is the same shape and M8 explicitly left it alone. What *is* registered with M8's controller is the starvation warning (D-019). F3 opens the window; `omerta_inventory` does the same from the console.
+
+**Corpse searching is deferred, not delivered.** §2 put "searching containers and corpses" in scope. Containers shipped — the owner type, the operations, a world container entity and an admin command to place one. Corpses did not: there is no death system until M19/M20, so there is no corpse to search and no owner to map one to. Building it now would mean inventing the death model M19 exists to design.
+
+**Items are addressed by entity in the world, never by id.** A client is told the instance ids of things it is holding and of things in a container it has opened, and nothing else. Picking something up names the entity; the server resolves it to a row. Reaching into a container re-checks range on every action, not just when it was opened, so walking away closes the hand as well as the window.
+
+**`chat` is a declared dependency.** Every refusal the server issues ("there is no room for that") reaches the player through `Omerta.Chat.Notice`, because there is no error box to put it in. That is a real edge in the module graph and is declared as one.
+
+In-engine acceptance (user-side): pull, restart, then run **`omerta_inventory_selftest` in the SERVER console** — expect 10/10. Then, with a character loaded:
+
+```
+omerta_money_give 12.50
+omerta_item_give food.sandwich 2
+omerta_item_give clothing.overcoat
+omerta_item_give weapon.thompson      -- refused: no room without the coat
+omerta_container_spawn 1 100
+```
+
+Press **F3** for the inventory. Check the cash total reads $12.50, equip the coat and watch the capacity line grow, then give yourself the Thompson again and see it fit. Drop something and watch it land in the world; walk over it for the dot; pick it up. Search the crate, store something, walk away, and confirm you can no longer take it back. `omerta_inventory_dump` prints the same state to the console.
+
+---
+
+**Delivered.** Rulings §4a (a), §4b (a) and §4c (a) as recommended; logged as D-020, D-018 and D-019.

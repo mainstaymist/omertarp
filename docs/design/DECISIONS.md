@@ -92,6 +92,34 @@ Resolves Q-4. Ending a season automatically retires every living character ("lea
 
 ---
 
+## D-020 — Carrying capacity is bulk, not a spatial grid (DECIDED, 2026-07-27; resolves Tech §9)
+
+Each item carries a **bulk**; each owner has a **capacity**. What a character can carry is a single number, modified by what they are wearing and, later, what they are carrying it in. Tech §9 left the choice between this and a Tarkov-style packing grid open.
+
+**Rationale:** bulk achieves the design's actual goal — big things are hard to carry and impossible to hide — without spending a large UI budget in the milestone that already carries items, money, hunger, containers and persistence. Packing puzzles also pull attention toward inventory management and away from people, which is the opposite of what this game is for.
+
+A grid can be layered over the same data model later without altering a single stored row, so this is a presentation decision deferred, not a door closed.
+
+**Affects:** Tech §9; `docs/design-reviews/M9_inventory.md` §4a.
+
+## D-019 — Starvation warns; hunger does not (DECIDED, 2026-07-27; closes the question D-016 left open)
+
+Hunger stays out of the HUD in normal play, exactly as D-016 requires. The **single** exception is starvation: once hunger is actually costing the player something, a warning fades in as stamina and injury do, and fades out when they eat.
+
+**Rationale:** the contextual rule is that elements appear in response to conditions, not that nothing may ever appear. Degrading a player for a number they were given no chance to notice is not consequence, it is a bug. Below the starvation threshold nothing is shown — being merely hungry is something a character checks, like money in a wallet.
+
+**Affects:** D-016 (closes its open question); `docs/design-reviews/M9_inventory.md` §4c; Tech §8.
+
+## D-018 — Money is denominated, and change is automatic (DECIDED, 2026-07-27)
+
+Cash exists as stacks of specific denominations — 5¢, 10¢, 25¢, $1, $5, $20, $100 — held as ordinary items that can be dropped, hidden, taken off a body and counted by whoever finds them.
+
+Players are **never asked to count**. Shops, treasuries and hand-to-hand payments select notes automatically: an exact set where one exists, otherwise the payer overpays and the change comes straight back. The net cost is exact either way.
+
+**Rationale:** D-003 requires a physical quarter to feed a payphone and D-004 requires small amounts to matter — both of which a single abstract balance dissolves, taking marked-bill evidence with it. Manual counting at every counter is the busywork the Brainstorm warns against (BA §13). Denominations with automatic change keep the one place a specific coin matters ("have you got a quarter?") and remove it everywhere else.
+
+**Affects:** D-003, D-004; `docs/design-reviews/M9_inventory.md` §4b; M12 (payphones), M13 (businesses), M15 (marked bills).
+
 ## D-016 — Hunger exists, but is checked in the inventory (DECIDED, 2026-07-27; resolves Q-7)
 
 Hunger is a real mechanic, **displayed only in the inventory view** — never on the HUD, in keeping with the rule that money, ammunition and other quantities are checked deliberately rather than displayed permanently (BA §11).

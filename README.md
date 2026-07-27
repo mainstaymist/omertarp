@@ -10,7 +10,7 @@ Omertà RP is not a DarkRP derivative. There is no global chat, no scoreboard, n
 
 **M0–M8 implemented and verified in-engine** on MySQL/MariaDB, the backend of record (D-008). Everyone is Unknown until introduced (D-013/D-014); the surfaces that used to hand identity out for free — scoreboard, kill feed, join/leave lines, voice panel, `Player:Nick()` (D-015) — are closed, with a leak audit reporting zero leaks; speech is ranged, with every listener seeing the speaker's name resolved through their own knowledge; and the persistent screen is empty by construction, elements drawing only through a controller that asks each one whether it currently deserves to be visible.
 
-**M9 (inventory, items, currency and hunger) is in design review and awaiting approval** — the largest milestone since M1 and the last of Track A's foundations. It needs three rulings: the capacity model, how granular money is, and the starvation-warning question D-016 left open.
+**M9 (inventory, items, currency and hunger) is implemented; in-engine verification pending** (`omerta_inventory_selftest`, run in the server console). Everything physical is now real: money is stacks of notes and coins you can drop, hide or take off a body (D-018); carrying capacity is bulk, so a Thompson does not go in a pocket (D-020); and hunger is read in the inventory, warning you only once starvation actually costs you something (D-016/D-019). Items live one row per instance with transactional, guarded ownership changes, so an item cannot exist in two places at once.
 
 ## Repository layout
 
@@ -39,7 +39,7 @@ Omertà RP is not a DarkRP derivative. There is no global chat, no scoreboard, n
 | [`docs/design-reviews/M6_hidden_population.md`](docs/design-reviews/M6_hidden_population.md) | M6 design review — approved, implemented, verified in-engine (rules D-015). |
 | [`docs/design-reviews/M7_communication.md`](docs/design-reviews/M7_communication.md) | M7 design review — approved, implemented, verified in-engine. |
 | [`docs/design-reviews/M8_hud.md`](docs/design-reviews/M8_hud.md) | M8 design review — approved, implemented, verified in-engine (rules D-016/D-017). |
-| [`docs/design-reviews/M9_inventory.md`](docs/design-reviews/M9_inventory.md) | M9 design review — **awaiting approval**; requests three rulings. |
+| [`docs/design-reviews/M9_inventory.md`](docs/design-reviews/M9_inventory.md) | M9 design review — approved and implemented (rules D-018/D-019/D-020). |
 | [`docs/rules/metagaming.md`](docs/rules/metagaming.md) | Player-facing metagaming policy (ships with M6). |
 | [`docs/GLOSSARY.md`](docs/GLOSSARY.md) | Plain-language definitions of the engineering terms used in the design reviews. |
 

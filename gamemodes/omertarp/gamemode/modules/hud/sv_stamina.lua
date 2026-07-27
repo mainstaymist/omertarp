@@ -43,6 +43,20 @@ function Internal.StepExhausted(wasExhausted, stamina, exhaustedBelow, recovered
     return stamina <= exhaustedBelow
 end
 
+-- Modifiers multiply rather than add, so two systems that each halve a value
+-- quarter it instead of cancelling out. A modifier that errors or returns
+-- nonsense is ignored rather than allowed to freeze the player in place.
+function Internal.CombineModifiers(modifiers, ply)
+    local product = 1
+    for _, fn in pairs(modifiers or {}) do
+        local ok, value = pcall(fn, ply)
+        if ok and type(value) == "number" and value > 0 then
+            product = product * value
+        end
+    end
+    return product
+end
+
 --------------------------------------------------------------------------------
 -- Runtime
 --------------------------------------------------------------------------------
@@ -50,6 +64,39 @@ end
 local stamina = {}   -- sid -> 0..100
 local exhausted = {} -- sid -> bool
 local lastSent = {}  -- sid -> last value networked
+local lastSpeeds = {} -- sid -> { walk = , run = }
+
+Internal.BASE_WALK_SPEED = 200
+Internal.BASE_RUN_SPEED = 400
+
+--------------------------------------------------------------------------------
+-- Movement speed
+--------------------------------------------------------------------------------
+-- This module is the SINGLE owner of a character's movement speed. M9's hunger
+-- was the second system to want a say, and two systems calling SetRunSpeed is
+-- how one silently undoes the other — so anything that slows a character down
+-- registers a multiplier here instead.
+
+local speedModifiers = {}
+local regenModifiers = {}
+
+-- fn(ply) returns a multiplier; 1 means "no opinion".
+function Omerta.Stamina.RegisterSpeedModifier(id, fn) speedModifiers[id] = fn end
+function Omerta.Stamina.RegisterRegenModifier(id, fn) regenModifiers[id] = fn end
+
+local function applySpeeds(ply, sid, isExhausted)
+    local factor = Internal.CombineModifiers(speedModifiers, ply)
+    local walk = math.max(50, math.floor(Internal.BASE_WALK_SPEED * factor))
+    -- Exhaustion does not slow the walk, it takes the run away: that is what
+    -- makes it a limit on fleeing rather than a general punishment.
+    local run = isExhausted and walk
+        or math.max(walk, math.floor(Internal.BASE_RUN_SPEED * factor))
+
+    local last = lastSpeeds[sid]
+    if not last or last.walk ~= walk then ply:SetWalkSpeed(walk) end
+    if not last or last.run ~= run then ply:SetRunSpeed(run) end
+    lastSpeeds[sid] = { walk = walk, run = run }
+end
 
 function Omerta.Stamina.Get(ply)
     if not IsValid(ply) then return 1 end
@@ -78,18 +125,18 @@ local function tick(dt)
             local sprinting = isSprinting(ply) and not exhausted[sid]
             current = Internal.StepStamina(current, sprinting, dt,
                 Omerta.Config.Get("stamina.drain_per_second"),
-                Omerta.Config.Get("stamina.regen_per_second"))
+                Omerta.Config.Get("stamina.regen_per_second")
+                    * Internal.CombineModifiers(regenModifiers, ply))
             stamina[sid] = current
 
             local nowExhausted = Internal.StepExhausted(exhausted[sid] or false, current,
                 Omerta.Config.Get("stamina.exhausted_below"),
                 Omerta.Config.Get("stamina.recovered_above"))
-            if nowExhausted ~= (exhausted[sid] or false) then
-                exhausted[sid] = nowExhausted
-                -- Taking the run speed away is what actually stops the sprint;
-                -- the client's key is irrelevant.
-                ply:SetRunSpeed(nowExhausted and ply:GetWalkSpeed() or 400)
-            end
+            exhausted[sid] = nowExhausted
+
+            -- Applied every tick, not only on the exhaustion transition: a
+            -- modifier can change without stamina changing at all.
+            applySpeeds(ply, sid, nowExhausted)
 
             -- Networked on meaningful change only: a per-tick stream would be
             -- pure noise for a value drawn as a fading bar.
@@ -110,13 +157,13 @@ function MODULE:OnEnable()
 
     hook.Add("PlayerDisconnected", "omerta.hud.stamina_cleanup", function(ply)
         local sid = ply:SteamID64() or ""
-        stamina[sid], exhausted[sid], lastSent[sid] = nil, nil, nil
+        stamina[sid], exhausted[sid], lastSent[sid], lastSpeeds[sid] = nil, nil, nil, nil
     end)
 
     -- A fresh character starts rested.
     hook.Add("Omerta.CharacterLoaded", "omerta.hud.stamina_reset", function(ply)
         local sid = ply:SteamID64() or ""
-        stamina[sid], exhausted[sid], lastSent[sid] = 100, false, nil
-        if IsValid(ply) then ply:SetRunSpeed(400) end
+        stamina[sid], exhausted[sid], lastSent[sid], lastSpeeds[sid] = 100, false, nil, nil
+        if IsValid(ply) then applySpeeds(ply, sid, false) end
     end)
 end
