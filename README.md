@@ -8,7 +8,7 @@ Omertà RP is not a DarkRP derivative. There is no global chat, no scoreboard, n
 
 ## Project status
 
-**M1 (database abstraction layer) implemented; in-engine dual-backend verification pending.** M0 (foundation skeleton) is verified in-engine. The database layer offers one async API over SQLite and MySQL/mysqloo — backend switched by a single config value — with a schema DSL, versioned migrations, transactions, and result-type normalization. Verify with `omerta_db_selftest` in the server console on each backend (see D-006). No gameplay systems exist yet; M2 (accounts) is next, pending its design review.
+**M1 (database abstraction layer) implemented; MySQL/MariaDB verified in-engine 10/10 via `omerta_db_selftest` (SQLite baseline run still pending — D-006).** M0 (foundation skeleton) is verified in-engine. The database layer offers one async API over SQLite and MySQL/mysqloo — backend switched by a single config value — with a schema DSL, versioned migrations, transactions, and result-type normalization. No gameplay systems exist yet. **M2 (accounts + audit) is in design review** — see `docs/design-reviews/M2_accounts.md`.
 
 ## Repository layout
 
@@ -29,7 +29,8 @@ Omertà RP is not a DarkRP derivative. There is no global chat, no scoreboard, n
 | [`docs/review/03_portrait_evaluation.md`](docs/review/03_portrait_evaluation.md) | Newspaper-portrait pipeline evaluation and recommendation. |
 | [`docs/review/04_justice_system_proposals.md`](docs/review/04_justice_system_proposals.md) | Justice-loop design proposals (awaiting selection). |
 | [`docs/design-reviews/M0_foundation.md`](docs/design-reviews/M0_foundation.md) | M0 design review — approved and implemented. |
-| [`docs/design-reviews/M1_database.md`](docs/design-reviews/M1_database.md) | M1 design review (database abstraction layer) — awaiting approval. |
+| [`docs/design-reviews/M1_database.md`](docs/design-reviews/M1_database.md) | M1 design review — approved and implemented; MySQL verified in-engine. |
+| [`docs/design-reviews/M2_accounts.md`](docs/design-reviews/M2_accounts.md) | M2 design review (accounts + audit) — awaiting approval. |
 | [`docs/GLOSSARY.md`](docs/GLOSSARY.md) | Plain-language definitions of the engineering terms used in the design reviews. |
 
 ## Document precedence
