@@ -8,7 +8,7 @@ Omertà RP is not a DarkRP derivative. There is no global chat, no scoreboard, n
 
 ## Project status
 
-**M4 (characters) implemented; in-engine verification pending (`omerta_characters_selftest`).** M0–M3 are verified in-engine on MySQL/MariaDB, the backend of record (D-008). Players now create a season-unique named character with a creation-time mugshot (D-011), one living character per account (D-012), on a server-enforced seasonal track (D-009), retired automatically at season end (D-010). Next: M5 (interaction framework, identity and introductions) — the system the whole design pivots on.
+**M0–M4 implemented and verified in-engine** on MySQL/MariaDB, the backend of record (D-008): foundation, database layer, accounts with a live audit trail, seasons with enforced allegiance tracks, and characters with creation-time mugshots. **M5 (interaction framework, identity and introductions) is in design review** — the system the whole design pivots on; see `docs/design-reviews/M5_identity.md`.
 
 ## Repository layout
 
@@ -32,7 +32,8 @@ Omertà RP is not a DarkRP derivative. There is no global chat, no scoreboard, n
 | [`docs/design-reviews/M1_database.md`](docs/design-reviews/M1_database.md) | M1 design review — approved and implemented; MySQL verified in-engine. |
 | [`docs/design-reviews/M2_accounts.md`](docs/design-reviews/M2_accounts.md) | M2 design review — approved, implemented, verified in-engine. |
 | [`docs/design-reviews/M3_seasons.md`](docs/design-reviews/M3_seasons.md) | M3 design review — approved, implemented, verified in-engine. |
-| [`docs/design-reviews/M4_characters.md`](docs/design-reviews/M4_characters.md) | M4 design review — approved and implemented (rules D-011/D-012). |
+| [`docs/design-reviews/M4_characters.md`](docs/design-reviews/M4_characters.md) | M4 design review — approved, implemented, verified in-engine (rules D-011/D-012). |
+| [`docs/design-reviews/M5_identity.md`](docs/design-reviews/M5_identity.md) | M5 design review (interaction, identity, introductions) — awaiting approval. |
 | [`docs/GLOSSARY.md`](docs/GLOSSARY.md) | Plain-language definitions of the engineering terms used in the design reviews. |
 
 ## Document precedence
