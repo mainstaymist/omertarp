@@ -68,25 +68,29 @@ hook.Add("Think", "omerta.interaction.scroll", function()
     end
 end)
 
-surface.CreateFont("Omerta.Interaction", {
-    font = "Roboto", size = 19, weight = 500, antialias = true,
+-- Registered with the HUD controller (M8): the menu is contextual by nature,
+-- so it belongs to the same list as every other conditional element.
+Omerta.HUD.Register("interaction.menu", {
+    order = 60,
+    fade = 0.12,
+    visible = function() return menu.open end,
+    draw = function(alpha)
+        local scale = Omerta.HUD.Scale()
+        local x, y = ScrW() * 0.5 + 24 * scale, ScrH() * 0.5 - 12 * scale
+
+        if #menu.options == 0 then
+            draw.SimpleText("nothing to do", Omerta.HUD.Font("label"), x, y,
+                Color(190, 190, 190, 150 * alpha), TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
+            return
+        end
+
+        for i, opt in ipairs(menu.options) do
+            local selected = (i == menu.hovered)
+            local text = (selected and "> " or "  ") .. opt.label
+            draw.SimpleText(text, Omerta.HUD.Font("label"), x, y + (i - 1) * 22 * scale,
+                selected and Color(240, 235, 220, 255 * alpha)
+                    or Color(170, 170, 170, 200 * alpha),
+                TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
+        end
+    end,
 })
-
-hook.Add("HUDPaint", "omerta.interaction.draw", function()
-    if not menu.open then return end
-
-    local x, y = ScrW() * 0.5 + 24, ScrH() * 0.5 - 12
-    if #menu.options == 0 then
-        draw.SimpleText("nothing to do", "Omerta.Interaction", x, y,
-            Color(190, 190, 190, 150), TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
-        return
-    end
-
-    for i, opt in ipairs(menu.options) do
-        local selected = (i == menu.hovered)
-        local text = (selected and "> " or "  ") .. opt.label
-        draw.SimpleText(text, "Omerta.Interaction", x, y + (i - 1) * 22,
-            selected and Color(240, 235, 220) or Color(170, 170, 170, 200),
-            TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
-    end
-end)

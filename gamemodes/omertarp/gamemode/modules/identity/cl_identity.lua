@@ -47,33 +47,39 @@ local function lookedAtPlayer()
     return nil
 end
 
-surface.CreateFont("Omerta.Identity", {
-    font = "Roboto", size = 21, weight = 500, antialias = true,
+-- Registered with the HUD controller (M8) rather than hooking HUDPaint
+-- directly, so the empty-screen rule stays inspectable in one place and this
+-- label gains fading and accessibility scaling for free.
+local current = nil -- the entry for whoever is under the crosshair right now
+
+Omerta.HUD.Register("identity.label", {
+    order = 30,
+    fade = 0.2,
+    visible = function()
+        current = nil
+        local target = lookedAtPlayer()
+        if not target then return false end
+
+        local index = target:EntIndex()
+        -- Ask the server, at most every REQUEST_INTERVAL per entity. The server
+        -- re-checks range and answers from THIS observer's knowledge only.
+        local now = CurTime()
+        if not resolved[index] and (lastRequest[index] or 0) + REQUEST_INTERVAL < now then
+            lastRequest[index] = now
+            Omerta.Net.Request("identity.resolve", { target = index })
+        end
+        current = resolved[index]
+        return current ~= nil
+    end,
+    draw = function(alpha)
+        if not current then return end
+        local colour = current.known and Color(235, 230, 215, 255 * alpha)
+            or Color(165, 165, 165, 210 * alpha)
+        draw.SimpleText(current.name, Omerta.HUD.Font("body"),
+            ScrW() * 0.5, ScrH() * 0.5 + 40 * Omerta.HUD.Scale(),
+            colour, TEXT_ALIGN_CENTER, TEXT_ALIGN_TOP)
+    end,
 })
-surface.CreateFont("Omerta.IdentityPrompt", {
-    font = "Roboto", size = 18, weight = 500, antialias = true,
-})
-
-hook.Add("HUDPaint", "omerta.identity.label", function()
-    local target = lookedAtPlayer()
-    if not target then return end
-
-    local index = target:EntIndex()
-    local entry = resolved[index]
-
-    -- Ask the server, at most every REQUEST_INTERVAL per entity. The server
-    -- re-checks range and answers from THIS observer's knowledge only.
-    local now = CurTime()
-    if not entry and (lastRequest[index] or 0) + REQUEST_INTERVAL < now then
-        lastRequest[index] = now
-        Omerta.Net.Request("identity.resolve", { target = index })
-    end
-    if not entry then return end
-
-    local colour = entry.known and Color(235, 230, 215) or Color(165, 165, 165, 210)
-    draw.SimpleText(entry.name, "Omerta.Identity", ScrW() * 0.5, ScrH() * 0.5 + 40,
-        colour, TEXT_ALIGN_CENTER, TEXT_ALIGN_TOP)
-end)
 
 --------------------------------------------------------------------------------
 -- Reciprocation prompt (D-013)
@@ -83,16 +89,24 @@ hook.Add("Omerta.IntroducePrompt", "omerta.identity.prompt", function(from, name
     prompt = { from = from, name = name, expires = CurTime() + 20 }
 end)
 
-hook.Add("HUDPaint", "omerta.identity.prompt_draw", function()
-    if not prompt then return end
-    if CurTime() > prompt.expires then prompt = nil return end
-
-    local x, y = ScrW() * 0.5, ScrH() * 0.72
-    draw.SimpleText(prompt.name .. " introduced themselves.", "Omerta.Identity", x, y,
-        Color(235, 230, 215), TEXT_ALIGN_CENTER, TEXT_ALIGN_TOP)
-    draw.SimpleText("[E] give your name    [R] say nothing", "Omerta.IdentityPrompt",
-        x, y + 26, Color(180, 180, 180, 220), TEXT_ALIGN_CENTER, TEXT_ALIGN_TOP)
-end)
+Omerta.HUD.Register("identity.prompt", {
+    order = 50,
+    fade = 0.25,
+    visible = function()
+        if prompt and CurTime() > prompt.expires then prompt = nil end
+        return prompt ~= nil
+    end,
+    draw = function(alpha)
+        if not prompt then return end
+        local scale = Omerta.HUD.Scale()
+        local x, y = ScrW() * 0.5, ScrH() * 0.66
+        draw.SimpleText(prompt.name .. " introduced themselves.", Omerta.HUD.Font("body"),
+            x, y, Color(235, 230, 215, 255 * alpha), TEXT_ALIGN_CENTER, TEXT_ALIGN_TOP)
+        draw.SimpleText("[E] give your name    [R] say nothing", Omerta.HUD.Font("label"),
+            x, y + 26 * scale, Color(180, 180, 180, 220 * alpha),
+            TEXT_ALIGN_CENTER, TEXT_ALIGN_TOP)
+    end,
+})
 
 hook.Add("PlayerBindPress", "omerta.identity.prompt_reply", function(_, bind, pressed)
     if not prompt or not pressed then return end

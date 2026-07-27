@@ -8,7 +8,7 @@ Omertà RP is not a DarkRP derivative. There is no global chat, no scoreboard, n
 
 ## Project status
 
-**M0–M6 implemented and verified in-engine** on MySQL/MariaDB, the backend of record (D-008). Everyone is Unknown until introduced (D-013/D-014); the surfaces that used to hand identity out for free — scoreboard, kill feed, join/leave lines, voice panel, `Player:Nick()` (D-015) — are closed, with a leak audit reporting zero leaks. **M0–M7 implemented and verified in-engine** on MySQL/MariaDB (D-008). Speech is ranged and every listener sees the speaker's name resolved through their own knowledge. **M8 (contextual HUD framework) is in design review** — see `docs/design-reviews/M8_hud.md`.
+**M0–M6 implemented and verified in-engine** on MySQL/MariaDB, the backend of record (D-008). Everyone is Unknown until introduced (D-013/D-014); the surfaces that used to hand identity out for free — scoreboard, kill feed, join/leave lines, voice panel, `Player:Nick()` (D-015) — are closed, with a leak audit reporting zero leaks. **M0–M7 implemented and verified in-engine** on MySQL/MariaDB (D-008). Speech is ranged and every listener sees the speaker's name resolved through their own knowledge. **M8 (contextual HUD framework) implemented; in-engine verification pending (`omerta_hud_selftest`, client console).** The persistent screen is empty by construction: elements draw only through a controller that asks each one whether it currently deserves to be visible. Next: M9 (inventory, items and hunger).
 
 ## Repository layout
 
@@ -36,7 +36,7 @@ Omertà RP is not a DarkRP derivative. There is no global chat, no scoreboard, n
 | [`docs/design-reviews/M5_identity.md`](docs/design-reviews/M5_identity.md) | M5 design review — approved, implemented, verified in-engine (rules D-013/D-014). |
 | [`docs/design-reviews/M6_hidden_population.md`](docs/design-reviews/M6_hidden_population.md) | M6 design review — approved, implemented, verified in-engine (rules D-015). |
 | [`docs/design-reviews/M7_communication.md`](docs/design-reviews/M7_communication.md) | M7 design review — approved, implemented, verified in-engine. |
-| [`docs/design-reviews/M8_hud.md`](docs/design-reviews/M8_hud.md) | M8 design review (contextual HUD framework) — awaiting approval. |
+| [`docs/design-reviews/M8_hud.md`](docs/design-reviews/M8_hud.md) | M8 design review — approved and implemented (rules D-016/D-017). |
 | [`docs/rules/metagaming.md`](docs/rules/metagaming.md) | Player-facing metagaming policy (ships with M6). |
 | [`docs/GLOSSARY.md`](docs/GLOSSARY.md) | Plain-language definitions of the engineering terms used in the design reviews. |
 

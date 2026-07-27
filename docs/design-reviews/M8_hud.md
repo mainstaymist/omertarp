@@ -1,6 +1,6 @@
 # Design Review — M8: Contextual HUD Framework
 
-Status: **AWAITING APPROVAL — no implementation until approved.**
+Status: **APPROVED 2026-07-27 — IMPLEMENTED** (§4a ruled *keep* hunger, inventory-only; §4b ruled (b); logged as D-016 and D-017). See §13.
 Milestone: M8 (roadmap Track A). Depends on: M0–M7. Consumed by: M9 (inventory), M12 (telephony), M19 (injury), M21 (newspaper) — every system that ever needs to show the player something.
 
 > **Two things need your ruling** (§4): confirmation of Q-7 (no hunger mechanic), and the crosshair, which the GDD says to remove and which materially changes how the game feels to play.
@@ -111,4 +111,17 @@ M0 (config, net), M4 (own character), M5 (target label, interaction menu — bot
 
 ---
 
-**Requesting approval to implement M8 as specified**, with rulings on §4a (confirm no hunger) and §4b (crosshair — recommendation: (b), no reticle but an interactable indicator).
+## 13. Implementation Notes (post-implementation)
+
+Implemented as `modules/hud/`. Suite grew to 140 checks. Notes:
+
+- **§4a was ruled against my recommendation, and better than it:** hunger is *kept*, but displayed only in the inventory — checked deliberately, like money in a wallet (BA §11). The consequence is that **hunger moved out of M8 entirely and into M9**, since the inventory is its only interface; building the mechanic here would have shipped an invisible system a milestone early. M8 therefore covers stamina alone. D-016 records the open follow-up: whether a *contextual* starvation warning should exist, since without one a player is degraded by something they were never given a chance to notice.
+- **§4b ruled (b)** (D-017): `CHudCrosshair` is suppressed and a small dot appears only when something interactable is under the gaze. Players are the only interactable targets today; M9/M13/M14 extend the same predicate.
+- **`HUDDrawTargetID` is suppressed too** — it draws player names, so it belonged in M6's leak sweep and was missed there. Caught while enumerating the engine's HUD elements.
+- **M5's two elements migrated onto the controller** as planned, gaining fades and scaling. `cl_identity.lua`'s label moves its trace and resolve-request into the element's `visible()`, so the request only happens when the element is actually being considered.
+- **A broken element unregisters itself** rather than taking the screen down: a `pcall` around each draw, an error log, and removal. One bad element must not blank the HUD.
+- **Exhaustion is hysteretic** (falls below 5, recovers above 25) because a single threshold flickers the sprint on and off every frame at the boundary — the sort of thing that is invisible in a design document and obvious within ten seconds of playing.
+- **Module dependency direction:** `identity` and `interaction` now depend on `hud`, not the reverse. The headless suite caught this immediately when three test files booted the graph without `hud` present — the loader refusing an unknown dependency doing exactly its job.
+- `Omerta.SelfTest.Run` lost its server-only assertion, since the HUD suite must run client-side.
+
+In-engine acceptance (user-side): pull, restart, then run **`omerta_hud_selftest` in a CLIENT console** (the HUD only exists there) — expect 6/6, including the headline check that the screen is empty when idle. Then manually: sprint until winded and watch the bar fade in and out, look at another player for the dot and the name label, hold `C`, and try `omerta_ui_scale 1.4`. Health, armour, ammo and crosshair should all be gone.

@@ -92,6 +92,26 @@ Resolves Q-4. Ending a season automatically retires every living character ("lea
 
 ---
 
+## D-016 — Hunger exists, but is checked in the inventory (DECIDED, 2026-07-27; resolves Q-7)
+
+Hunger is a real mechanic, **displayed only in the inventory view** — never on the HUD, in keeping with the rule that money, ammunition and other quantities are checked deliberately rather than displayed permanently (BA §11).
+
+Consequences of the ruling:
+- **Hunger is built in M9, not M8**, because the inventory is its only interface; shipping the mechanic earlier would mean an invisible system no player could inspect.
+- Stamina remains separate and keeps its contextual indicator (Tech §8), since it changes second to second.
+- **Hunger never kills.** Permanent character death is a deliberate act (GDD §19.2); starvation degrades (stamina recovery, and optionally movement) and no more.
+- Open for M9: whether a *contextual* warning appears when genuinely starving, as stamina and injury do. Without one, a player is degraded by something they were given no chance to notice.
+
+**Affects:** `docs/design-reviews/M8_hud.md` §4a; M9 (implements it); GDD §8.
+
+## D-017 — No crosshair; an indicator for interactable targets (DECIDED, 2026-07-27)
+
+The persistent crosshair is removed (GDD §8). In its place, a small indicator appears only when something interactable is under the player's gaze.
+
+**Rationale:** preserves the empty screen and the deliberate, non-arcade feel, while keeping "what am I pointing at" answerable — which M5's introductions already require and M9's searching, M13's shopfronts and M14's robberies will require more.
+
+**Affects:** `docs/design-reviews/M8_hud.md` §4b.
+
 ## D-015 — `Player:Nick()` returns a neutral placeholder (DECIDED, 2026-07-27)
 
 `Nick()`, `Name()` and `GetName()` return `"Unknown"` for every player, except that on the client a player's own methods return their own character's name. The genuine Steam name remains available server-side as `Omerta.Population.RealName(ply)` for logs, audit rows and staff tools.

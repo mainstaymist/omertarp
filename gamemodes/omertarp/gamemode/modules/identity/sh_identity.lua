@@ -7,7 +7,7 @@
 
 Omerta.Module.Register({
     name = "identity",
-    depends = { "database", "characters", "interaction" },
+    depends = { "database", "characters", "interaction", "hud" },
 })
 
 Omerta.Identity = Omerta.Identity or {}

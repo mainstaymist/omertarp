@@ -9,7 +9,7 @@
 
 Omerta.Module.Register({
     name = "interaction",
-    depends = { "characters" },
+    depends = { "characters", "hud" },
 })
 
 Omerta.Interaction = Omerta.Interaction or {}

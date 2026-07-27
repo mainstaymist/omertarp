@@ -17,8 +17,9 @@
 
 Omerta.SelfTest = {}
 
+-- Realm-agnostic: some surfaces only exist client-side (HUD elements, the M6
+-- suppressions), so their suites must run there.
 function Omerta.SelfTest.Run(suiteName, steps, opts)
-    Omerta.AssertServer("Omerta.SelfTest.Run")
     opts = opts or {}
     local stepTimeout = opts.timeout or 10
     local passed, failed, skipped = 0, 0, 0
