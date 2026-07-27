@@ -764,7 +764,9 @@ function Internal.RegisterCommands()
         local ply = target and findPlayer(target) or caller
         if not IsValid(ply) then
             Omerta.Log.Error("inventory",
-                "usage: omerta_item_give <itemId> [quantity] [steamID64]")
+                "usage: omerta_item_give <itemId> [quantity] [steamID64]%s",
+                IsValid(caller) and ""
+                    or " — from the server console the SteamID64 is required")
             return
         end
         if not Omerta.Items.Get(defId) then
@@ -783,7 +785,9 @@ function Internal.RegisterCommands()
         local dollars = tonumber(args[1])
         local ply = args[2] and findPlayer(args[2]) or caller
         if not (dollars and IsValid(ply)) then
-            Omerta.Log.Error("inventory", "usage: omerta_money_give <dollars> [steamID64]")
+            Omerta.Log.Error("inventory", "usage: omerta_money_give <dollars> [steamID64]%s",
+                IsValid(caller) and ""
+                    or " — from the server console the SteamID64 is required")
             return
         end
         -- Entered in dollars because that is how a human thinks about it;
@@ -797,7 +801,14 @@ function Internal.RegisterCommands()
     end)
 
     concommand.Add("omerta_container_spawn", function(caller, _, args)
-        if not IsValid(caller) or not caller:IsSuperAdmin() then return end
+        -- Needs somewhere to put it, so unlike the others this one cannot run
+        -- from the server console. Say so rather than doing nothing.
+        if not IsValid(caller) then
+            Omerta.Log.Error("inventory",
+                "omerta_container_spawn must be run in-game — it spawns the container in front of you")
+            return
+        end
+        if not caller:IsSuperAdmin() then return end
         local id = tonumber(args[1])
         local capacity = tonumber(args[2]) or 100
         if not id or id % 1 ~= 0 or id < 1 then
