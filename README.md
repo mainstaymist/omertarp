@@ -12,7 +12,9 @@ Omertà RP is not a DarkRP derivative. There is no global chat, no scoreboard, n
 
 **M9 (inventory, items, currency and hunger) is implemented; in-engine verification pending** (`omerta_inventory_selftest`, run in the server console). Everything physical is now real: money is stacks of notes and coins you can drop, hide or take off a body (D-018); carrying capacity is bulk, so a Thompson does not go in a pocket (D-020); and hunger is read in the inventory, warning you only once starvation actually costs you something (D-016/D-019). Items live one row per instance with transactional, guarded ownership changes, so an item cannot exist in two places at once.
 
-That completes Track A. **M10 (factions core — families and the police department) is in design review and awaiting approval**, and with it Track B: institutions that persist while the characters inside them do not.
+That completes Track A.
+
+**M10 (factions core) is implemented; in-engine verification pending** (`omerta_org_selftest`, run in the server console). Four crime families and a police department exist as season-scoped instances of code-defined institutions, with rank ladders, cumulative rank permissions, sponsorship and induction, and authority that descends the chain when a leader is away. Two families are active at launch and staff open the rest as the population justifies it (D-022). Joining teaches you only the people who were in the room (D-023), and the one thing a stranger can read off you is a police uniform — the rank, not the name (D-021).
 
 ## Repository layout
 
@@ -42,7 +44,7 @@ That completes Track A. **M10 (factions core — families and the police departm
 | [`docs/design-reviews/M7_communication.md`](docs/design-reviews/M7_communication.md) | M7 design review — approved, implemented, verified in-engine. |
 | [`docs/design-reviews/M8_hud.md`](docs/design-reviews/M8_hud.md) | M8 design review — approved, implemented, verified in-engine (rules D-016/D-017). |
 | [`docs/design-reviews/M9_inventory.md`](docs/design-reviews/M9_inventory.md) | M9 design review — approved and implemented (rules D-018/D-019/D-020). |
-| [`docs/design-reviews/M10_factions.md`](docs/design-reviews/M10_factions.md) | M10 design review — **awaiting approval**; requests three rulings. |
+| [`docs/design-reviews/M10_factions.md`](docs/design-reviews/M10_factions.md) | M10 design review — approved and implemented (rules D-021/D-022/D-023). |
 | [`docs/rules/metagaming.md`](docs/rules/metagaming.md) | Player-facing metagaming policy (ships with M6). |
 | [`docs/GLOSSARY.md`](docs/GLOSSARY.md) | Plain-language definitions of the engineering terms used in the design reviews. |
 

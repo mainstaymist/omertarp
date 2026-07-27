@@ -24,6 +24,12 @@ local MODULE_FILES = {
     "gamemodes/omertarp/gamemode/modules/identity/sv_repository.lua",
     "gamemodes/omertarp/gamemode/modules/identity/sv_identity.lua",
     "gamemodes/omertarp/gamemode/modules/chat/sh_chat.lua",
+    "gamemodes/omertarp/gamemode/modules/inventory/sh_currency.lua",
+    "gamemodes/omertarp/gamemode/modules/inventory/sh_hunger.lua",
+    "gamemodes/omertarp/gamemode/modules/inventory/sh_inventory.lua",
+    "gamemodes/omertarp/gamemode/modules/inventory/sh_items.lua",
+    "gamemodes/omertarp/gamemode/modules/organizations/sh_ladders.lua",
+    "gamemodes/omertarp/gamemode/modules/organizations/sh_organizations.lua",
     "gamemodes/omertarp/gamemode/modules/population/sh_population.lua",
     "gamemodes/omertarp/gamemode/modules/population/sv_population.lua",
 }
@@ -81,6 +87,12 @@ check("the real registry's outbound name fields are all accounted for", function
         ["identity.introduce_prompt"] = true,
         ["characters.self"] = true,
         ["chat.message"] = true,
+        -- M10. The roster is the institution's own books and is sent only to
+        -- members whose rank earns it (D-023); the invitation names the
+        -- sponsor standing in front of you, already resolved through the
+        -- recipient's own knowledge.
+        ["org.roster_entry"] = true,
+        ["org.invite"] = true,
     }
     for _, f in ipairs(findings) do
         local msg = f.what:match("net '([^']+)'")

@@ -92,6 +92,38 @@ Resolves Q-4. Ending a season automatically retires every living character ("lea
 
 ---
 
+## D-023 — Induction is a formal introduction; the roster is rank-gated (DECIDED, 2026-07-27)
+
+Joining an institution grants **no identity knowledge by itself**. Being made is an *event in a room*: every member of that organization who is present when someone is inducted learns them, and they learn those members, through M5's ordinary introduction machinery. Members who were not there learn nothing.
+
+Reading the **roster** is a rank permission (Caporegime and above in a family, Detective and above in the police). The roster shows real names, because it is the institution's own books — but reading it **does not teach recognition**. A Don who reads that a Tony Marino is a soldier still cannot pick him out of a crowd until somebody introduces them. This is D-014's knowledge/recognition split applied literally.
+
+**Rationale:** a family that hands every new soldier a list of names breaks the rule this project exists to enforce; a family where nobody knows anybody cannot be run. Making induction a ceremony that happens somewhere, with people present, costs one thing — and that cost is the feature.
+
+**Affects:** `docs/design-reviews/M10_factions.md` §4b; GDD §4.1; M5 (uses its introduction path unchanged).
+
+## D-022 — Two families are active at launch, seeded by staff (DECIDED, 2026-07-27; resolves Q-1 and C8)
+
+A season starts with **two active families**; the remaining two are dormant and opened mid-season by staff decision as the population justifies it. The count is **configuration, not code** (`organizations.active_families`), so a season that fills up can open a third without a patch. The police department is always active.
+
+The **first leader of an empty institution is seated by staff** from pre-season applications. From that moment they are an ordinary Don and the normal rules apply — staff do not re-seed a running season.
+
+**Rationale:** four families across a small population is four groups of three who never meet anybody, and family rivalry is most of the criminal content. Opening the third as the season fills makes expansion an event players notice.
+
+**Affects:** GDD §4.1 and §22 (resolves the internal contradiction C8 identified); `docs/design-reviews/M10_factions.md` §4a; M10 bootstrap.
+
+## D-021 — Police rank is public; family membership never is (DECIDED, 2026-07-27)
+
+Families and the police department are **one system** — the same tables, the same ladder mechanism, the same permission model — with exactly one asymmetry: **a uniformed officer is publicly identifiable as an officer.**
+
+The visibility rides on the **uniform, not the institution**. The uniform is an ordinary item with an equipment slot, so it can be taken off, left at home or stolen. A stranger looking at a uniformed officer reads their **rank, not their name** ("Sergeant"); someone who knows them reads both ("Sergeant Frank Doyle"); an officer in plain clothes is a stranger like anybody else. A mask hides a face but not a uniform, so a concealed officer still reads as "Sergeant" — and is still not identified.
+
+**Rationale:** a badge is a deliberate public announcement, and family membership is worth having precisely because nobody can prove it. Writing the police as a parallel implementation for one property's worth of difference would guarantee drift.
+
+Implemented as a title seam on `Omerta.Identity.ResolveDisplayName`, mirroring D-014's concealment seam.
+
+**Affects:** GDD §4.2; Tech §6; `docs/design-reviews/M10_factions.md` §4c; M5 (`ResolveDisplayName` gains the title case); M17/M18 (police authority will key off the same membership).
+
 ## D-020 — Carrying capacity is bulk, not a spatial grid (DECIDED, 2026-07-27; resolves Tech §9)
 
 Each item carries a **bulk**; each owner has a **capacity**. What a character can carry is a single number, modified by what they are wearing and, later, what they are carrying it in. Tech §9 left the choice between this and a Tarkov-style packing grid open.

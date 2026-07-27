@@ -44,6 +44,7 @@ local TEST_FILES = {
     "tests/test_hud.lua",
     "tests/test_chat.lua",
     "tests/test_inventory.lua",
+    "tests/test_organizations.lua",
     "tests/test_population.lua",
     "tests/test_lint.lua",
 }

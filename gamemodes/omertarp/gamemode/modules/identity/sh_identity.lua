@@ -47,6 +47,29 @@ function Omerta.Identity.IsConcealed(subjectChar)
 end
 
 --------------------------------------------------------------------------------
+-- Public title seam (D-021)
+--------------------------------------------------------------------------------
+-- Some things a stranger CAN read off you. A uniform is a deliberate public
+-- announcement: you do not know the officer's name, but you know they are an
+-- officer. Nothing in the base game grants a title; M10 registers the police
+-- uniform, and it keys off the garment rather than the institution, so an
+-- officer in plain clothes is a stranger like anyone else.
+
+local titleProviders = {}
+
+function Omerta.Identity.RegisterTitleProvider(fn)
+    titleProviders[#titleProviders + 1] = fn
+end
+
+function Omerta.Identity.PublicTitle(subjectChar)
+    for _, fn in ipairs(titleProviders) do
+        local title = fn(subjectChar)
+        if title then return title end
+    end
+    return nil
+end
+
+--------------------------------------------------------------------------------
 -- The resolution rule
 --------------------------------------------------------------------------------
 -- Pure, and the single place the rule is expressed (Tech §6).
@@ -60,13 +83,18 @@ function Omerta.Identity.ResolveDisplayName(observerChar, subjectChar, knownName
         return subjectChar.first_name .. " " .. subjectChar.last_name, true
     end
 
+    local title = Omerta.Identity.PublicTitle(subjectChar)
+
     -- D-014: concealment defeats recognition before knowledge is consulted.
+    -- A mask hides a face, not a uniform — so a title still reads.
     if Omerta.Identity.IsConcealed(subjectChar) then
-        return Omerta.Identity.UNKNOWN, false
+        return title or Omerta.Identity.UNKNOWN, false
     end
 
-    if knownName and knownName ~= "" then return knownName, true end
-    return Omerta.Identity.UNKNOWN, false
+    if knownName and knownName ~= "" then
+        return title and (title .. " " .. knownName) or knownName, true
+    end
+    return title or Omerta.Identity.UNKNOWN, false
 end
 
 --------------------------------------------------------------------------------

@@ -1,6 +1,6 @@
 # Design Review — M10: Factions Core (Families and the Police Department)
 
-Status: **AWAITING APPROVAL — no implementation until approved.**
+Status: **APPROVED 2026-07-27 — IMPLEMENTED** (§4a, §4b and §4c all ruled (a); logged as D-022, D-023 and D-021). See §13.
 Milestone: M10 (roadmap Track B — the first milestone that is not a foundation). Depends on: M0–M5, M9. Consumed by: M11 (treasuries belong to organizations), M12 (private lines are bought by them), M13 (businesses are owned by them), M14 (crews commit robberies), M17/M18 (the PD is an institution with authority), M20 (a confirmed kill triggers succession), M21 (the newspaper names institutions, not people).
 
 > **Three rulings needed** (§4): the season bootstrap Q-1 left open, what being inducted actually *teaches* you, and whether the police department is the same system with a different ladder or a deliberately different one.
@@ -173,4 +173,41 @@ D-009 is load-bearing here: **family recruitment is what performs the independen
 
 ---
 
-**Requesting approval to implement M10 as specified**, with rulings on §4a (season bootstrap — recommend two families, staff-seeded, count configurable), §4b (what induction teaches — recommend formal introduction plus a rank-gated roster), and §4c (police symmetry — recommend one system with visibility carried by the uniform).
+## 13. Implementation Notes (post-implementation)
+
+Implemented as `modules/organizations/`. The headless suite grew from 176 to 197 checks. All three rulings came back as recommended, so the design above stands; what follows is what building it changed or exposed.
+
+**A migration that would have failed on the backend of record.** `key` and `rank` are both reserved words in MySQL 8 — `CREATE TABLE ... (key VARCHAR(32), ...)` does not parse there, and neither does `SET rank = ?`. Every SQLite test would have passed and migration 8 would have died on the user's server. The columns are `org_key` and `rank_index`, aliased back to `key` and `rank` inside the repository, so nothing above that layer knows the database had an opinion about vocabulary. A test now walks every declared column in every table against a reserved-word list, because the next person to add a column will not be thinking about MySQL's keyword list either.
+
+**Acting authority is computed and cached, not stored.** §7 promised computed; the honest version is computed on every roster or connection change and cached, because `Can()` has to answer synchronously and reading the roster is a query. The cache is refreshed on membership change, on disconnect, and on a 30-second timer — the last because who is present changes without anybody calling anything.
+
+**"Limited authority" got a concrete meaning.** Tech §19 says an acting capo receives *limited* authority without saying what that limits. Implemented as: whoever is acting is treated as holding **the highest rung below the leader's**. An acting Capo can run the family — promote, demote, expel — but cannot `APPOINT`, so they cannot name a successor to a chair they are only borrowing. An acting Underboss gains nothing, which is correct: they already had those powers.
+
+**The seat empties, and nothing fills it automatically.** When a leader leaves or is expelled, `leader_character_id` is cleared and acting authority takes over. Promotion to the top rank is what seats a new leader — the ladder decides, rather than a separate appointment nobody remembers to make. Who ends up running a family after a Don is killed stays a decision a person makes.
+
+**Rank changes are guarded on the rank we read.** Two promotions racing each other would otherwise both apply and land the target two rungs up. The `UPDATE` names the rank we believe they hold, and the outcome is confirmed by a read-back because the driver exposes no affected-row count — the same pattern M9's item moves use, for the same reason.
+
+**D-009's matrix landed exactly where it should.** `Internal.MayJoin` is the whole transition policy in eight lines: a family will not take an officer this season, and the police recruit only from players who chose that path at season start, because cross-side transitions would launder one side's knowledge into the other. Family recruitment is also what performs the one-way independent → criminal conversion, through `Omerta.Seasons.ConvertToCriminal` — which M3 had already provided and which had no caller until now.
+
+**The uniform is a real garment, not a flag.** §4c could have been a boolean on the institution; it is an M9 item in the `outerwear` slot instead, issued on induction into a public institution. That means an officer who takes it off *is* a stranger, with no seam fiction and nothing for the clothing milestone to retrofit. `ResolveDisplayName` gained a title provider mirroring D-014's concealment provider: a mask hides a face but not a uniform, so a concealed officer reads as "Sergeant" and is still not identified.
+
+**Reading the roster does not teach recognition.** The roster sends real names to members whose rank earns it, and deliberately does **not** call `Omerta.Identity.Learn`. A Don who reads that a Tony Marino is a soldier still cannot pick him out of a crowd. This is D-014's split applied literally, and it is the reason the roster can show real names without becoming the identity leak §4b was worried about. M6's audit will flag `org.roster_entry` and `org.invite` as outbound name fields — correctly; both are now in the reviewed allowlist, and the test that guards it loads M10 so the guard stays honest.
+
+**No teams, no networked variables.** Membership reaches a client only as `org.self` — an institution index, a rank, and a permission bitfield, with no text in it at all — and as roster entries to those permitted. A roster *request* names no organization, so it cannot be used to ask about somebody else's.
+
+**Not built, and why.** Treasuries (M11 owns the ledger; the permissions for it are already on the ladder, unused). Police authority to detain or arrest (M17). Informant and corrupt-officer overlays — D-009 calls them covert overlays, and an overlay that shows up in a membership table is not covert.
+
+In-engine acceptance (user-side): pull, restart, then run **`omerta_org_selftest` in the SERVER console** — expect 10/10. Then:
+
+```
+omerta_org_list                                  -- two families active, two dormant, PD active
+omerta_org_seed marino <your steamID64>          -- seat yourself as Don
+omerta_org_roster marino
+omerta_org_open ricci                            -- a third family opens
+```
+
+`omerta_organization` (client console) opens your institution window. With a second player standing next to you, hold **C** and pick **Offer Membership**; they press **E** to accept. Confirm they are inducted, that both of you now know each other by name, and that the audit log shows `organization.joined`. Then seat someone in the police with `omerta_org_seed police <steamID64>`, have them equip the uniform from their inventory, and look at them: a stranger should read their rank, not their name.
+
+---
+
+**Delivered.** Rulings §4a, §4b and §4c all (a) as recommended; logged as D-022, D-023 and D-021.
