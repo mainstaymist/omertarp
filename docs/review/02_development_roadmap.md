@@ -158,6 +158,8 @@ An arbitrary-length scene sequence played on a player's first entry and replayab
 
 Per scene: start/end position, start/end rotation, start/end FOV, duration, fade-to-next, static flag, optional overlay text, optional text display duration. Per sequence: enabled, skippable, letterbox bars on/off, bar height. Movement, rotation and FOV interpolate smoothly; a static scene simply holds.
 
+**Music:** the intro track is in the repository already, at `gamemodes/omertarp/content/sound/omertarp/cry-me-a-river.wav`. It is **not registered for client download** — `resource.AddFile` belongs to this milestone, not to the commit that placed the asset, since every registered file is fetched by every player on join. Two questions come with it and are settled at this review, not after: whether clients receive the 30.9 MB WAV or a ~4 MB MP3 (the Source engine's native music format, and this is the download standing between a new player and their first impression of the game), and whether the sequence is scene-driven or music-driven — a cinematic cut to a fixed track needs scene durations that sum to the track, which is a constraint on the data format, not on the playback code.
+
 **Depends on:** M27 (camera rig, interpolator, data loading), M25 (overlay text and the skip prompt are toolkit widgets). **Testable when:** a cinematic mixing static and moving scenes plays end to end with no camera pop at any scene boundary; skip returns control immediately from any scene and can never leave a player letterboxed or camera-locked; disabling it in the data file skips it entirely with no code change; a sequence with zero scenes is a no-op rather than a hang.
 
 ### M29 — UI standardization pass
@@ -201,6 +203,7 @@ Two constraints decide its design, and are much cheaper to know now than to disc
 - **Weapons**: small period arsenal (BA §27) per Q-10 decision.
 - **Playermodels/clothing**: timeless-era dress (D-002); disguise items must map to the witness descriptor system (Tech §12) — placeholder models acceptable until then.
 - **UI assets (Track E)**: a font hierarchy needs actual licence-cleared fonts; the UI sound set (open, close, confirm, cancel, deny, hover) is a small commission; and the main-menu and intro-cinematic camera positions are **per-map authoring work that lands with the map** (Q-9), not with the code — M27/M28 ship the system and one placeholder set, and the shots are written once the final map exists.
+- **Music and audio licensing (pre-release gate)**: placeholder audio is acceptable during development under D-005, exactly as placeholder models are — but unlike a placeholder crate, a placeholder *recording* carries someone else's rights and cannot simply ship. The intro track now in the repository ("Cry Me a River", Arthur Hamilton 1953 — copyrighted composition, and whatever recording this is has its own rights on top) is a development placeholder. **Before public release**: licence it, commission a cover the project owns, or replace it. The same applies to every sound added between now and then, so the convention is to record provenance in `gamemodes/omertarp/content/README.md` as each asset lands rather than reconstructing it under deadline.
 
 ## Dependency graph
 
