@@ -32,6 +32,16 @@ function ENT:GetItemDef()
     return Omerta and Omerta.Items and Omerta.Items.GetByIndex(index) or nil
 end
 
+-- What somebody standing over it can read. Nothing new is published here: the
+-- definition and the stack size were already on the wire, because the model on
+-- the floor gives both away anyway.
+function ENT:OmertaLabel()
+    local def = self:GetItemDef()
+    if not def then return nil end
+    local stack = self:GetStackSize()
+    return def.name, stack > 1 and ("x" .. stack) or nil
+end
+
 if SERVER then
     -- Called after Spawn. `OmertaModel` is set by the spawner beforehand,
     -- because Initialize is what applies the model.

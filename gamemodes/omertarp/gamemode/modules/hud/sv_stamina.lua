@@ -24,6 +24,14 @@ Omerta.Config.Define("stamina.recovered_above", {
     type = "number", default = 25, min = 1, max = 100, scope = "server",
     description = "Exhaustion lifts once stamina climbs back above this.",
 })
+Omerta.Config.Define("stamina.jump_cost", {
+    type = "number", default = 12, min = 0, max = 100, scope = "server",
+    description = "Stamina spent on one jump (of 100).",
+})
+Omerta.Config.Define("stamina.exhausted_jump_scale", {
+    type = "number", default = 0.55, min = 0, max = 1, scope = "server",
+    description = "How high an exhausted character can jump, as a fraction.",
+})
 
 --------------------------------------------------------------------------------
 -- Pure maths (headless-tested)
@@ -41,6 +49,13 @@ end
 function Internal.StepExhausted(wasExhausted, stamina, exhaustedBelow, recoveredAbove)
     if wasExhausted then return stamina < recoveredAbove end
     return stamina <= exhaustedBelow
+end
+
+-- Jumping is movement, so it is owned here rather than by whoever thinks of it
+-- next. Someone out of breath does not vault a fence — but they are not pinned
+-- to the floor either, so exhaustion scales the jump rather than removing it.
+function Internal.JumpPower(base, factor, isExhausted, exhaustedScale)
+    return math.max(1, math.floor(base * factor * (isExhausted and exhaustedScale or 1)))
 end
 
 -- Modifiers multiply rather than add, so two systems that each halve a value
@@ -68,6 +83,7 @@ local lastSpeeds = {} -- sid -> { walk = , run = }
 
 Internal.BASE_WALK_SPEED = 200
 Internal.BASE_RUN_SPEED = 400
+Internal.BASE_JUMP_POWER = 200
 
 --------------------------------------------------------------------------------
 -- Movement speed
@@ -92,10 +108,14 @@ local function applySpeeds(ply, sid, isExhausted)
     local run = isExhausted and walk
         or math.max(walk, math.floor(Internal.BASE_RUN_SPEED * factor))
 
+    local jump = Internal.JumpPower(Internal.BASE_JUMP_POWER, factor, isExhausted,
+        Omerta.Config.Get("stamina.exhausted_jump_scale"))
+
     local last = lastSpeeds[sid]
     if not last or last.walk ~= walk then ply:SetWalkSpeed(walk) end
     if not last or last.run ~= run then ply:SetRunSpeed(run) end
-    lastSpeeds[sid] = { walk = walk, run = run }
+    if not last or last.jump ~= jump then ply:SetJumpPower(jump) end
+    lastSpeeds[sid] = { walk = walk, run = run, jump = jump }
 end
 
 function Omerta.Stamina.Get(ply)
@@ -154,6 +174,15 @@ function MODULE:OnEnable()
 
     local interval = 0.25
     timer.Create("omerta.hud.stamina", interval, 0, function() tick(interval) end)
+
+    -- A jump costs stamina the moment it leaves the ground. KeyPress rather
+    -- than the movement hook because it fires once per press; checking IN_JUMP
+    -- every tick would bill somebody for holding the key down.
+    hook.Add("KeyPress", "omerta.hud.stamina_jump", function(ply, key)
+        if key ~= IN_JUMP then return end
+        if not (ply:OnGround() and Omerta.Characters.IsLoaded(ply)) then return end
+        Omerta.Stamina.Drain(ply, Omerta.Config.Get("stamina.jump_cost"))
+    end)
 
     hook.Add("PlayerDisconnected", "omerta.hud.stamina_cleanup", function(ply)
         local sid = ply:SteamID64() or ""

@@ -92,6 +92,24 @@ Resolves Q-4. Ending a season automatically retires every living character ("lea
 
 ---
 
+## D-033 — Objects name themselves; people never do (DECIDED, 2026-07-28)
+
+The interaction indicator (D-017) now carries a short label naming what is under the player's gaze. What a label may say is bounded by a single rule: **it repeats only what the object itself would tell a stranger standing in front of it**, and it is the object that decides, not the HUD.
+
+What that yields in practice:
+
+- **A dropped item** names itself and its stack size. Both were already on the wire, because the model on the floor gives them away regardless.
+- **A container reads "Crate" and nothing more** — including a family's safe and a bar's stock room. Containers carry private labels ("Rossi's till", "the Marino safe") which go to whoever is allowed to open them and never onto the entity.
+- **A business counter shows its public name and its kind.** A place nobody can name is a place nobody can be sent to; Tech §11 grants businesses a public name for exactly that reason, and a shopfront is legible from the pavement. This is the one genuine widening: the name previously reached a client only when they walked up and used the counter, and now reaches anyone who can see it. That matches what a sign does.
+- **A payphone shows its number; a private line shows nothing.** D-027's asymmetry made structural: the number is painted on the public box, and a private number travels only by being told. The rule lives in one pure function (`Omerta.Phone.PublicNumberFor`) that the headless suite pins, rather than at each handset.
+- **A person is never labelled.** Players have no label and must not be given one. Who somebody is, is learned by being introduced (D-013); a name floating over a stranger is the single thing this project exists to not do.
+
+**Rationale:** the empty screen (GDD §8) was never a ban on information, it is a ban on *omniscient* information. "What is this object in front of me" is something a character plainly knows and a player, looking at an untextured placeholder model, plainly does not — the interface was withholding something the fiction grants. The scope rule keeps that from becoming a crack: two lints now enforce it, one requiring every interactable class to define its own label, one forbidding any entity from networking a container id, line id, or owner.
+
+**Affects:** `docs/design-reviews/M8_hud.md` §4b (D-017's indicator gains a label); M9, M12, M13 entity classes; every future interactable, which must define `ENT:OmertaLabel` under this rule.
+
+---
+
 ## D-032 — A business earns from customers and from being staffed, and its till is physical (DECIDED, 2026-07-27)
 
 A business's income is **sales to players**, plus a small trickle that accrues **only while the place is open AND a real person is behind the counter**. An unstaffed business earns nothing at all. The trickle is deliberately small enough that it never beats a real customer; it exists so that tending a bar is worth doing — which is the role GDD §4.3 promises independents and never explains how to fill.

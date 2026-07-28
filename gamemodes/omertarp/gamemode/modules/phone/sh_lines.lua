@@ -39,6 +39,23 @@ function Omerta.Phone.ValidNumber(number)
     return n >= Omerta.Phone.NUMBER_MIN and n <= Omerta.Phone.NUMBER_MAX
 end
 
+-- What is written on the outside of the box, for anyone to read.
+--
+-- A payphone has its number painted on it (D-027) — that is how you tell
+-- somebody where to call you back, and it is why a payphone is a place people
+-- wait at. A private line has nothing written on it: its number travels only by
+-- being told, which is the entire reason knowing one is worth anything. Putting
+-- that number on the entity would hand every passer-by a directory, which §4a
+-- exists to prevent.
+--
+-- Pure, and the single place the rule is decided — the handset asks it rather
+-- than deciding for itself.
+function Omerta.Phone.PublicNumberFor(kind, number)
+    if kind ~= Omerta.Phone.KIND.PAYPHONE then return nil end
+    if not Omerta.Phone.ValidNumber(number) then return nil end
+    return number
+end
+
 -- The lowest free number. Deterministic rather than random so a line placed
 -- and replaced during setup keeps the number staff just wrote down.
 -- `taken` is a set of number strings. Returns a number string, or nil.

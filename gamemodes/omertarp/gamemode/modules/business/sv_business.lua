@@ -189,6 +189,10 @@ function Internal.SpawnCounter(business, pos, ang, restOnGround)
     ent:SetPos(pos)
     ent:SetAngles(ang or Angle(0, 0, 0))
     ent:Spawn()
+    -- After Spawn, where networked variables are guaranteed to reach clients.
+    -- The sign over the door, and nothing behind it.
+    ent:SetPublicName(business.name or "")
+    ent:SetTypeKey(business.type_key or "")
     if restOnGround then Omerta.Inventory.RestOnGround(ent, pos) end
     business.counter = ent
     byCounter[ent:EntIndex()] = business

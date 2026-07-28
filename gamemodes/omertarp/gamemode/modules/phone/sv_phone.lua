@@ -21,6 +21,10 @@ function Internal.SpawnHandset(line, pos, ang, restOnGround)
     ent:SetPos(pos)
     ent:SetAngles(ang or Angle(0, 0, 0))
     ent:Spawn()
+    -- After Spawn, where networked variables are guaranteed to reach clients.
+    -- A payphone wears its number; a private line is a handset and nothing more.
+    ent:SetKind(line.kind or "")
+    ent:SetPublicNumber(Omerta.Phone.PublicNumberFor(line.kind, line.number) or "")
     if restOnGround then Omerta.Inventory.RestOnGround(ent, pos) end
     line.entity = ent
     return ent

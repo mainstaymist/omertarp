@@ -223,7 +223,7 @@ function Omerta.HUD.RegisterInteractableClass(class)
     interactableClasses[class] = true
 end
 
-local function interactableTarget()
+local function traceForTarget()
     local ply = LocalPlayer()
     if not (IsValid(ply) and ply:Alive()) then return nil end
     local tr = util.TraceLine({
@@ -237,6 +237,20 @@ local function interactableTarget()
     return nil
 end
 
+-- Cached for the frame. `visible` and `draw` both need the answer and a trace
+-- is not free; more importantly, tracing twice can return two different
+-- entities in one frame, which is how a label ends up describing something the
+-- player is no longer looking at.
+local cachedFrame, cachedTarget = -1, nil
+
+local function interactableTarget()
+    local frame = FrameNumber()
+    if cachedFrame ~= frame then
+        cachedFrame, cachedTarget = frame, traceForTarget()
+    end
+    return cachedTarget
+end
+
 Omerta.HUD.Register("interactable", {
     order = 40,
     fade = 0.15,
@@ -246,5 +260,19 @@ Omerta.HUD.Register("interactable", {
         local size = 3 * scale
         surface.SetDrawColor(235, 230, 215, 170 * alpha)
         surface.DrawRect(ScrW() * 0.5 - size * 0.5, ScrH() * 0.5 - size * 0.5, size, size)
+
+        -- Under the dot rather than over it: the thing you are looking at stays
+        -- unobstructed, and the eye is already there.
+        local title, subtitle = Omerta.HUD.LabelFor(interactableTarget())
+        if not title then return end
+
+        local y = ScrH() * 0.5 + 14 * scale
+        draw.SimpleText(title, Omerta.HUD.Font("label"), ScrW() * 0.5, y,
+            Color(235, 230, 215, 235 * alpha), TEXT_ALIGN_CENTER, TEXT_ALIGN_TOP)
+        if subtitle then
+            draw.SimpleText(subtitle, Omerta.HUD.Font("small"), ScrW() * 0.5,
+                y + 19 * scale,
+                Color(190, 184, 170, 205 * alpha), TEXT_ALIGN_CENTER, TEXT_ALIGN_TOP)
+        end
     end,
 })

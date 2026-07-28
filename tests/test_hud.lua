@@ -109,3 +109,66 @@ check("exhaustion latches and lifts at a higher mark", function()
     assert(E(false, 5, 5, 25) == true and E(true, 6, 5, 25) == true,
         "at the floor it latches and does not immediately lift")
 end)
+
+-- A jump is movement, and this module owns movement. The cost is charged on
+-- the press; the height is what exhaustion actually takes away.
+check("exhaustion shortens the jump without grounding the character", function()
+    loadModules()
+    local J = Omerta.HUD.Internal.JumpPower
+    assert(J(200, 1, false, 0.55) == 200, "rested and unencumbered")
+    assert(J(200, 1, true, 0.55) == 110, "exhausted jumps lower")
+    assert(J(200, 0.5, false, 0.55) == 100, "a speed modifier applies to the jump too")
+    assert(J(200, 0.5, true, 0.55) == 55, "both at once, multiplied not added")
+    -- Never zero: a character who cannot leave the floor is stuck on scenery,
+    -- which reads as a bug rather than as being out of breath.
+    assert(J(200, 0.001, true, 0) >= 1, "always able to leave the ground")
+end)
+
+check("the jump cost is configured, not hardcoded", function()
+    loadModules()
+    assert(Omerta.Config.Get("stamina.jump_cost") > 0, "a jump costs something")
+    assert(Omerta.Config.Get("stamina.exhausted_jump_scale") < 1,
+        "exhaustion has to cost height or the config is decorative")
+end)
+
+--------------------------------------------------------------------------------
+suite("hud.labels")
+--------------------------------------------------------------------------------
+
+-- The label is asked of the entity, so the HUD never learns what an item is.
+check("a label comes from the entity and both parts are optional", function()
+    loadModules()
+    local L = Omerta.HUD.LabelFor
+
+    local title, subtitle = L({ OmertaLabel = function() return "Whiskey", "x3" end })
+    assert(title == "Whiskey" and subtitle == "x3", "title and subtitle")
+
+    title, subtitle = L({ OmertaLabel = function() return "Crate" end })
+    assert(title == "Crate" and subtitle == nil, "a subtitle is optional")
+
+    title = L({ OmertaLabel = function() return "", "x3" end })
+    assert(title == nil, "an empty title is no label at all")
+
+    title, subtitle = L({ OmertaLabel = function() return "Crate", "" end })
+    assert(title == "Crate" and subtitle == nil, "an empty subtitle is dropped")
+end)
+
+-- §4a's hard line: a person never wears a name. Players have no OmertaLabel,
+-- and anything else without one is simply not labelled.
+check("anything without a label of its own gets none", function()
+    loadModules()
+    local L = Omerta.HUD.LabelFor
+    assert(L(nil) == nil, "nothing")
+    assert(L({}) == nil, "a player, which has no OmertaLabel")
+    assert(L({ OmertaLabel = "Marco Rossi" }) == nil, "a field is not a method")
+    assert(L({ __invalid = true, OmertaLabel = function() return "Crate" end }) == nil,
+        "a removed entity")
+end)
+
+-- One broken label must cost a line of text, not the screen.
+check("a label that errors is skipped rather than fatal", function()
+    loadModules()
+    local L = Omerta.HUD.LabelFor
+    assert(L({ OmertaLabel = function() error("boom") end }) == nil)
+    assert(L({ OmertaLabel = function() return 42 end }) == nil, "a number is not a label")
+end)

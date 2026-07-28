@@ -24,6 +24,24 @@ local MODELS = {
     "models/props_c17/furnituredresser001a.mdl",
 }
 
+-- The two facts that are painted on the outside of the building. A business has
+-- a public name by design (Tech §11) — a place nobody can name is a place nobody
+-- can be sent to — and what kind of place it is, is obvious from the doorway.
+-- Everything else about it (the takings, the staff, who really owns it) is sent
+-- per person, on request, in business.state.
+function ENT:SetupDataTables()
+    self:NetworkVar("String", 0, "PublicName")
+    self:NetworkVar("String", 1, "TypeKey")
+end
+
+function ENT:OmertaLabel()
+    local name = self:GetPublicName()
+    if name == "" then return "Counter", nil end
+    -- The type registry is shared, so only the key travels.
+    local typeDef = Omerta and Omerta.Business and Omerta.Business.GetType(self:GetTypeKey())
+    return name, typeDef and typeDef.name or nil
+end
+
 if SERVER then
     function ENT:Initialize()
         self:SetModel(Omerta.Util.ResolveModel(MODELS))

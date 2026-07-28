@@ -97,6 +97,22 @@ check("allocation takes the lowest free number", function()
         "a gap should be filled before moving on")
 end)
 
+-- D-027: a payphone is a public box with its number painted on it; a private
+-- line is a number you have to be TOLD. That asymmetry is what makes a number
+-- worth something, so it is decided in one pure place rather than at each
+-- handset.
+check("only a payphone wears its number", function()
+    loadModules()
+    local P = Omerta.Phone.PublicNumberFor
+    local KIND = Omerta.Phone.KIND
+    assert(P(KIND.PAYPHONE, "1004") == "1004", "painted on the box")
+    assert(P(KIND.PRIVATE, "1004") == nil, "a private line publishes nothing")
+    assert(P(KIND.PAYPHONE, "abcd") == nil, "not a number")
+    assert(P(KIND.PAYPHONE, nil) == nil, "no number yet")
+    assert(P(nil, "1004") == nil, "an unknown kind is not a payphone")
+    assert(P("", "1004") == nil, "nor is an empty one")
+end)
+
 --------------------------------------------------------------------------------
 suite("phone.state_machine")
 --------------------------------------------------------------------------------

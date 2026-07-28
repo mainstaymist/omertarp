@@ -21,6 +21,23 @@ local MODELS = {
     "models/props_c17/consolebox01a.mdl",
 }
 
+-- Only what is legible from arm's length. `PublicNumber` is empty on a private
+-- line and stays that way: the server fills it from Omerta.Phone.PublicNumberFor,
+-- which is where that rule is decided and tested.
+function ENT:SetupDataTables()
+    self:NetworkVar("String", 0, "Kind")
+    self:NetworkVar("String", 1, "PublicNumber")
+end
+
+function ENT:OmertaLabel()
+    local KIND = Omerta and Omerta.Phone and Omerta.Phone.KIND
+    if KIND and self:GetKind() == KIND.PAYPHONE then
+        local number = self:GetPublicNumber()
+        return "Payphone", number ~= "" and ("No. " .. number) or nil
+    end
+    return "Telephone", nil
+end
+
 if SERVER then
     function ENT:Initialize()
         self:SetModel(Omerta.Util.ResolveModel(MODELS))

@@ -181,3 +181,76 @@ check("entities derive only from engine bases, never sandbox ones", function()
         "entity derives from a sandbox base (use base_anim/base_entity) at " ..
         table.concat(offenders, ", "))
 end)
+
+suite("lint.entity_labels")
+
+-- The interaction dot names what it is pointing at, and the name comes from the
+-- entity's own OmertaLabel. Registering a class as interactable without giving
+-- it one produces a dot that lights up over an unidentifiable object — a
+-- regression nothing else catches, because both halves keep working alone.
+check("every interactable class labels itself", function()
+    local classes = {}
+    local pipe = io.popen("find gamemodes -name '*.lua' 2>/dev/null")
+    assert(pipe, "linter could not scan for interactable classes")
+    for path in pipe:lines() do
+        for line in io.lines(path) do
+            local code = line:gsub("%-%-.*$", "")
+            local class = code:match('RegisterInteractableClass%s*%(%s*"([%w_]+)"')
+            if class then classes[class] = path end
+        end
+    end
+    pipe:close()
+    assert(next(classes), "linter found no interactable classes to scan")
+
+    local offenders = {}
+    for class, registeredIn in pairs(classes) do
+        local handle = io.open("gamemodes/omertarp/entities/entities/" .. class .. ".lua", "r")
+        if not handle then
+            offenders[#offenders + 1] = class .. " (no entity file; registered in " ..
+                registeredIn .. ")"
+        else
+            local source = handle:read("*a")
+            handle:close()
+            if not source:find("function ENT:OmertaLabel", 1, true) then
+                offenders[#offenders + 1] = class .. " (no OmertaLabel)"
+            end
+        end
+    end
+
+    assert(#offenders == 0,
+        "interactable class without a label at " .. table.concat(offenders, ", "))
+end)
+
+-- A label is drawn for everybody in range, so anything it can reach has already
+-- left the server. An entity that networks a container id, a line id or an
+-- owner is publishing exactly what M9/M11/M12 keep server-side on purpose.
+check("no entity networks a private identifier", function()
+    local FORBIDDEN = {
+        Container = true, ContainerId = true, Line = true, LineId = true,
+        Owner = true, OwnerId = true, Business = true, BusinessId = true,
+        Organization = true, OrganizationId = true, Instance = true,
+        InstanceId = true, Character = true, CharacterId = true,
+        Number = true, -- PublicNumber is fine; a bare Number is the private one
+    }
+
+    local offenders = {}
+    local pipe = io.popen("find gamemodes -path '*/entities/*' -name '*.lua' 2>/dev/null")
+    if pipe then
+        for path in pipe:lines() do
+            local lineNumber = 0
+            for line in io.lines(path) do
+                lineNumber = lineNumber + 1
+                local code = line:gsub("%-%-.*$", "")
+                local name = code:match('NetworkVar%s*%([^,]+,%s*%d+%s*,%s*"([%w_]+)"')
+                if name and FORBIDDEN[name] then
+                    offenders[#offenders + 1] = path .. ":" .. lineNumber .. " (" .. name .. ")"
+                end
+            end
+        end
+        pipe:close()
+    end
+
+    assert(#offenders == 0,
+        "entity networks a private identifier (keep it on the server) at " ..
+        table.concat(offenders, ", "))
+end)

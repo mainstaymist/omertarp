@@ -18,6 +18,17 @@ ENT.AdminOnly = true
 
 local MODELS = { "models/props_junk/wood_crate001a.mdl" }
 
+-- Deliberately the object and nothing else.
+--
+-- Every container has a label — "Rossi's till", "the Marino safe" — but that is
+-- a PRIVATE name: M9 hands it to whoever is allowed to open the thing, and it
+-- has no business on the entity where every client can read it. A crate at the
+-- back of a bar and a family's safe look identical from the doorway, which is
+-- the correct amount for a stranger to know.
+function ENT:OmertaLabel()
+    return "Crate", nil
+end
+
 if SERVER then
     function ENT:Initialize()
         self:SetModel(Omerta.Util.ResolveModel(MODELS))

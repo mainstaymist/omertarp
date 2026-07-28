@@ -1,6 +1,6 @@
 # Design Review — M8: Contextual HUD Framework
 
-Status: **APPROVED 2026-07-27 — IMPLEMENTED AND VERIFIED IN-ENGINE** (`omerta_hud_selftest` 6/6, including the headline check that the screen is empty when idle; 7 elements registered). §4a ruled *keep* hunger, inventory-only; §4b ruled (b); logged as D-016 and D-017. See §13.
+Status: **APPROVED 2026-07-27 — IMPLEMENTED AND VERIFIED IN-ENGINE** (`omerta_hud_selftest` 6/6, including the headline check that the screen is empty when idle; 7 elements registered). §4a ruled *keep* hunger, inventory-only; §4b ruled (b); logged as D-016 and D-017. See §13. Amended 2026-07-28 with entity labels (D-033) and jump stamina — see §14.
 Milestone: M8 (roadmap Track A). Depends on: M0–M7. Consumed by: M9 (inventory), M12 (telephony), M19 (injury), M21 (newspaper) — every system that ever needs to show the player something.
 
 > **Two things need your ruling** (§4): confirmation of Q-7 (no hunger mechanic), and the crosshair, which the GDD says to remove and which materially changes how the game feels to play.
@@ -125,3 +125,21 @@ Implemented as `modules/hud/`. Suite grew to 140 checks. Notes:
 - `Omerta.SelfTest.Run` lost its server-only assertion, since the HUD suite must run client-side.
 
 In-engine acceptance (user-side): pull, restart, then run **`omerta_hud_selftest` in a CLIENT console** (the HUD only exists there) — expect 6/6, including the headline check that the screen is empty when idle. Then manually: sprint until winded and watch the bar fade in and out, look at another player for the dot and the name label, hold `C`, and try `omerta_ui_scale 1.4`. Health, armour, ammo and crosshair should all be gone.
+
+---
+
+## 14. Amendment — labels and the jump (2026-07-28)
+
+Two changes reached back into this milestone after M13, both because M8 owns the surface they belong to.
+
+**Entity labels (D-033).** D-017's dot said *that you can interact*; it never said *with what*. In a world built from placeholder models that is a real gap — a character can obviously tell a crate of whiskey from a crate of nothing, and the player was looking at two identical wooden boxes. The indicator now carries a short label, under the dot rather than over it so the object stays unobstructed.
+
+The label is asked of the entity (`ENT:OmertaLabel() -> title, subtitle`), never decided here, which is the same seam `RegisterInteractableClass` already used: `cl_hud.lua` still does not know what an item is. `Omerta.HUD.LabelFor` lives in the shared file so the guard logic — invalid entity, missing method, a label that errors, an empty string — is covered headlessly rather than only in front of a running server.
+
+The scope rule and its consequences are in D-033. Two lints hold the line: every class registered as interactable must define a label, and no entity may network a container id, line id, character id or owner. The second is the one that matters long-term — a label draws for everyone in range, so anything reachable from one has already left the server, and the lint catches that at the point where it is cheap.
+
+**Jumping costs stamina.** Movement speed has been this module's exclusive property since M9 (§10's single-owner rule), and jumping was the one part of movement nobody had claimed — so a winded character could still vault a fence indefinitely, which quietly undercut stamina as a limit on fleeing. A jump now spends `stamina.jump_cost` (default 12 of 100) on the press, and exhaustion scales jump height by `stamina.exhausted_jump_scale` (default 0.55) rather than removing it, because a character who cannot leave the floor reads as a bug rather than as being out of breath.
+
+Charged on `KeyPress`/`IN_JUMP` while on the ground, not per tick: billing `IN_JUMP` every tick charges for holding the key, and the ground check is what stops a bunny-hopper being billed once per bounce for free height. Jump power is computed in `applySpeeds` alongside walk and run and diffed against the last applied value, so it obeys the same speed modifiers everything else does and is set only when it changes.
+
+Suite: 266 → 274 checks.
