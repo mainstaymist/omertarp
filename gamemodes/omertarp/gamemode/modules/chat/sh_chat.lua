@@ -44,6 +44,27 @@ end
 
 local voiceOverrides = {}
 
+-- Who may use which channel right now. Registered rather than hardcoded, so
+-- M19 can take a dying man's voice down to a whisper without this module
+-- learning what an injury is.
+-- fn(ply, channelId) returns false + reason to refuse; anything else allows.
+local channelFilters = {}
+
+function Omerta.Chat.RegisterChannelFilter(id, fn)
+    channelFilters[id] = fn
+end
+
+-- Returns true, or false + reason. A filter that errors refuses, rather than
+-- accidentally granting speech because of a typo in somebody else's module.
+function Omerta.Chat.MayUseChannel(ply, channelId)
+    for _, fn in pairs(channelFilters) do
+        local ok, allowed, why = pcall(fn, ply, channelId)
+        if not ok then return false, "you cannot speak" end
+        if allowed == false then return false, why end
+    end
+    return true
+end
+
 function Omerta.Chat.RegisterVoiceOverride(id, fn)
     voiceOverrides[id] = fn
 end

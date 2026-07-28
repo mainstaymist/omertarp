@@ -254,3 +254,39 @@ check("no entity networks a private identifier", function()
         "entity networks a private identifier (keep it on the server) at " ..
         table.concat(offenders, ", "))
 end)
+
+suite("lint.repo_capture")
+
+-- Files inside a module are included shared-first then ALPHABETICALLY, so
+-- sv_injury.lua loads before sv_repository.lua and sv_bodies.lua before both.
+-- A file-scope `local Repo = Internal.Repo` therefore captures nil whenever the
+-- repository happens to sort later — a load-order bug that is invisible until
+-- the first query, and the fourth of its kind on this project.
+--
+-- Every shipped module already does the safe thing: reference Internal.Repo at
+-- CALL time. This makes the convention enforceable rather than remembered.
+check("no file captures Internal.Repo into a file-scope local", function()
+    local offenders = {}
+    local pipe = io.popen("find gamemodes -path '*/modules/*' -name '*.lua' 2>/dev/null")
+    assert(pipe, "linter could not scan module files")
+    for path in pipe:lines() do
+        -- The repository file itself creates the table, so it is allowed to
+        -- hold a reference to what it just made.
+        if not path:find("sv_repository%.lua$") then
+            local lineNumber = 0
+            for line in io.lines(path) do
+                lineNumber = lineNumber + 1
+                local code = line:gsub("%-%-.*$", "")
+                if code:find("^local%s+[%w_]+%s*=%s*[%w_%.]*Internal%.Repo%s*$")
+                        or code:find("^local%s+[%w_]+%s*=%s*[%w_%.]*Internal%.Repo%s*[^%.%w(]") then
+                    offenders[#offenders + 1] = path .. ":" .. lineNumber
+                end
+            end
+        end
+    end
+    pipe:close()
+
+    assert(#offenders == 0,
+        "Internal.Repo captured at file scope (reference it at call time) at " ..
+        table.concat(offenders, ", "))
+end)

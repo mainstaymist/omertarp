@@ -53,6 +53,29 @@ end
 
 local titleProviders = {}
 
+-- What character, if any, an entity represents.
+--
+-- Players are the obvious answer and the only one M5 needed. M19's bodies are
+-- the second: a man on the floor is still a person, and looking at him must
+-- resolve through exactly this path rather than through a name painted on an
+-- entity. Providers are asked in registration order; the first to claim the
+-- entity wins.
+local subjectProviders = {}
+
+-- fn(ent, cb) -> true if this provider claims the entity (and will call cb
+-- with the character row, or nil), false/nil to decline.
+function Omerta.Identity.RegisterSubjectProvider(id, fn)
+    subjectProviders[id] = fn
+end
+
+function Omerta.Identity.ResolveSubject(ent, cb)
+    for _, fn in pairs(subjectProviders) do
+        local ok, claimed = pcall(fn, ent, cb)
+        if ok and claimed then return true end
+    end
+    return false
+end
+
 function Omerta.Identity.RegisterTitleProvider(fn)
     titleProviders[#titleProviders + 1] = fn
 end

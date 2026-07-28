@@ -1,6 +1,6 @@
 # Design Review — M19: Injury, Incapacitation, and Medical Care
 
-Status: **AWAITING APPROVAL**
+Status: **APPROVED 2026-07-28 — §4a (a) persistent body entity, §4b (b) bleed out and die, §4c (a) light decaying penalty.** §4b was ruled against my recommendation; the ruling stands and §4d records what it changes. Logged as D-037.
 Milestone: M19 (roadmap Track D). Depends on: M5 (interactions), M8 (the injury indicator seam, the speed modifiers), M9 (stabilization items, searching a body), M13 (the clinic is a business). Consumed by: M20 (confirmed death is the interaction this milestone refuses to build), M14 (a robbery that can put someone down), M15 (a body is evidence), M16/M17 (arrest is an interaction on an incapacitated person), M21 (a death needs to have happened somewhere).
 
 > **Three rulings needed** (§4): what an incapacitated character physically *is*, what happens to one nobody helps, and whether losing a fight costs anything once you are back on your feet.
@@ -90,6 +90,14 @@ Under (b), the counterplay to being shot is Alt-F4. Your body vanishes, your cha
 - **(b) They bleed out and die permanently.**
 - **(c) They stay down indefinitely until somebody acts.**
 
+**RULED: (b) — an untreated incapacitated character bleeds out and dies.** My recommendation was (a) and the reasoning below is left standing as the record of what was weighed. §4d covers what the ruling changes.
+
+One correction to my own argument, in fairness to the ruling: I framed (b) as contradicting GDD §19.2, and it is at least as fair to read bleeding out from untreated gunshot wounds as precisely the *"explicitly terminal circumstance"* that clause already carves out. On that reading the ruling exercises the GDD's own escape hatch rather than overriding it. Either way DECISIONS.md outranks the GDD, so the ruling governs.
+
+---
+
+*Original recommendation, retained as the record:*
+
 **Recommendation: (a).**
 
 (b) contradicts a design document I cannot override: *"A character permanently dies only through a deliberate confirmed kill or an explicitly terminal circumstance"* (GDD §19.2). Bleeding out on a pavement because nobody happened to walk past is neither deliberate nor explicit — it is permadeath by server population, and it would make firefights during quiet hours categorically more lethal than the same firefight at peak. It also quietly deletes M20's reason to exist: why perform a deliberate, logged, interruptible confirm-kill when waiting ninety seconds does the same job with no evidence and no witnesses? **(b) would make the safest way to murder someone doing nothing at all**, which is exactly backwards for a game about consequence.
@@ -112,6 +120,18 @@ Under (b) the entire cost of being shot is the minutes you spent horizontal, whi
 Under (a), the hour after a shooting is one you spend carefully: you are slower, you tire faster, you would rather not be seen. That is atmosphere and mechanics agreeing, and it costs almost nothing to build — `Omerta.Stamina.RegisterSpeedModifier` and `RegisterRegenModifier` already exist and M9's hunger already uses both, so M19 registers two more functions and writes no new machinery. It is also easy to tune to nothing (set the multiplier to 1) if it plays badly, which (b) is not easy to add to later once nobody expects it.
 
 **D-034 calibration note:** whatever multiplier we choose is measured against the new base of 100/200, not the old 200/400, and the slow floor (25% of walk) is now the hard limit. An injury multiplier below 0.25 will be silently clamped.
+
+### 4d. What the §4b ruling changes (recorded, not re-argued)
+
+Bleeding out is reachable by a *timer*, which means **M19 now ships permanent character death** — the thing §2 explicitly put out of scope on the assumption that only M20's interaction could reach `dead`. That is a real scope change and it is handled, not absorbed silently.
+
+**One death funnel.** `Omerta.Injury.Die(characterId, cause, actorCharacterId, cb)` becomes the single path to `dead`. The bleed-out timer calls it. M20's confirm-kill interaction will call the same function, so nothing is built twice and the cascade cannot diverge between the two ways of dying. M19 performs the parts it owns — status, audit row, injury event, the body becoming a corpse, the player routed to new-character creation — and fires `Omerta.CharacterDied` for everything else. M10 exists, so rank removal and succession wire in now; M21's newspaper and M22's archive listen when they exist.
+
+**M20 still has a reason to exist**, and it is a better one than before. Bleeding out is *slow and uncertain*: the timer is long enough that anyone walking past can interrupt it with a bandage, so leaving someone to die is a gamble on nobody finding them. The confirm kill is *fast and certain*, and costs you a deliberate, logged, interruptible act with a witness surface. That is a genuine strategic choice — patience and deniability against speed and certainty — and it is a better shape for M20 than "the only way to kill anyone".
+
+**The population problem is a knob, not an argument.** `injury.bleed_out_seconds` defaults to five minutes, long enough that rescue is real at any population, and an operator running a quiet server can raise it. Lethality becomes something the server tunes rather than something the clock decides.
+
+**Combat logging now cuts the right way.** Under §4a the body persists through a disconnect, and under §4b its timer keeps running. Logging out while incapacitated is no longer an escape from a confirmed kill — it is the most reliable way to die. The two rulings reinforce each other.
 
 ## 5. Networking
 
@@ -203,3 +223,28 @@ Nothing in M0–M13 changes otherwise.
 ---
 
 **Awaiting rulings on §4a, §4b and §4c before implementation begins.**
+
+---
+
+## 13. Implementation Notes (post-implementation)
+
+Implemented as `modules/injury/` — nine files plus `omerta_body`. Suite grew from 279 to 298 checks. Notes worth keeping:
+
+- **§4b's ruling made M19 bigger than §2 said it would be**, exactly as §4d predicted. `Omerta.Injury.Die` is the funnel; the bleed-out timer is its only caller today and M20's confirm kill will be the second. M19 does the parts it owns (status, audit, event, corpse, the player told) and fires `Omerta.CharacterDied` for the rest. **M10 can wire rank removal and succession to that hook without touching this module**, and M21/M22 listen when they exist.
+
+- **Three seams were added to already-shipped modules**, which is two more than §12 predicted, and each replaced a hardcoded check rather than forking a path:
+  - **M9 gained `RegisterOpenable`.** Opening a container tested `ent:GetClass() == "omerta_container"` — right while a crate was the only thing worth looking in, wrong the moment a person is. `openContainer` now remembers an *owner* rather than assuming a container, so searching a body reuses M9's transactional moves, capacity checks and access predicate. A downed character's pockets **are** their inventory, not a copy of it: two homes for one coat is how an item gets duplicated.
+  - **M5 gained `RegisterSubjectProvider`.** Identity resolution rejected anything that was not a player. A body claims itself through the seam, so looking at one runs `ResolveDisplayName` per observer — you recognise the man on the floor if and only if you would have recognised him upright, and a masked body stays Unknown.
+  - **M7 gained `RegisterChannelFilter`.** A dying man is down to a whisper. The same seam covers gags, and M18's holding cells.
+
+- **A load-order bug was caught before it shipped, and it is the fourth of its kind.** Module files include shared-first then *alphabetically*, so `sv_injury.lua` loads before `sv_repository.lua`. A file-scope `local Repo = Internal.Repo` therefore captured nil — invisible until the first query. Every shipped module already referenced `Internal.Repo` at call time; that convention is now a lint (`lint.repo_capture`) rather than something to remember.
+
+- **The two-step medicine works out better than expected in play terms.** A bandage moves Incapacitated → Stabilized and stops the clock killing you; only treatment reaches Recovering. So a passer-by with 300 cents of bandages can save a stranger's life in an alley without being able to end the situation — which gives the clinic a reason to exist and gives the person who put them down a reason to check whether they are still there.
+
+- **Deadlines are absolute, never countdowns**, and there is a lint-adjacent test asserting the column is a timestamp. A restart that reset the bleed-out clock would rescue everyone who was about to die, making "wait for the nightly restart" a medical procedure.
+
+- **`injury.enabled` exists** as a master switch. Permadeath is now reachable by a timer and M20's audit cascade does not exist yet; a test server that wants the state machine without the consequence turns it off in one config value.
+
+- **The engine must never see zero health.** `EntityTakeDamage` clamps lethal damage and sets health to 1; `PlayerDeath` logs an error if a loaded character ever reaches it, because that means damage bypassed the state machine and the milestone has silently failed for that case.
+
+In-engine acceptance (user-side): pull, restart, then `omerta_injury_selftest` (13 steps). Then manually: `omerta_injury_state incapacitated` on yourself to go down, watch the body appear and the urgency text fade in; have a second character pick you up, carry you (slowly), drop you, search you; `omerta_item_give medical.bandage` and stabilize; `omerta_injury_list` and `omerta_injury_history <id>`. **To see D-037 end to end, set `injury.bleed_out_seconds` low in `data/omertarp/config/server.txt` and leave somebody alone.**

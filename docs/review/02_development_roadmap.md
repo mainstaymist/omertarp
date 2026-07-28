@@ -95,7 +95,7 @@ Post-arrest consequence system per the P-002 selection (`04_justice_system_propo
 ### M19 — Injury, incapacitation, and medical care
 The 7-state machine (Tech §17); incapacitation interactions (carry, search, arrest, treat); stabilization items, hospital, illegal doctor; recovery timers.
 **Depends on:** M8 (indicators), M5 (interactions), and in practice M9 (searching, stabilization items) and M13 (the clinic). Can start in parallel with Track C after M8. **Testable when:** lethal-damage scenarios land in Incapacitated, not respawn; each listed interaction works on an incapacitated character; treatment paths lead to Recovering.
-**Design review:** `docs/design-reviews/M19_injury.md` (delivered, awaiting approval — three rulings).
+**Design review:** `docs/design-reviews/M19_injury.md` (APPROVED, IMPLEMENTED — §4a (a), §4b (b), §4c (a); logged as D-037).
 
 ### M20 — Confirmed death and succession
 Deliberate, logged, interruptible confirm-kill interaction (Tech §18); death cascade (status, rank removal, succession trigger, death event, body/evidence preservation, newspaper eligibility, archive references, new-character flow); no automatic transfer of anything (GDD §19.3); confirmed-death rules spec (deliverable).

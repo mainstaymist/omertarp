@@ -106,8 +106,25 @@ function Internal.SendResolved(ply, entIndex)
             { target = entIndex, name = name, known = known }, ply)
     end
 
-    if not (IsValid(target) and target:IsPlayer()) or not observer then
+    if not IsValid(target) or not observer then
         reply(Omerta.Identity.UNKNOWN, false)
+        return
+    end
+
+    -- Not a player, but possibly still a person: M19's bodies claim themselves
+    -- through the subject-provider seam. Range is checked first either way.
+    if not target:IsPlayer() then
+        if ply:GetPos():Distance(target:GetPos()) > Omerta.Interaction.MAX_RANGE then
+            reply(Omerta.Identity.UNKNOWN, false)
+            return
+        end
+        local claimed = Omerta.Identity.ResolveSubject(target, function(subject)
+            if not subject then reply(Omerta.Identity.UNKNOWN, false) return end
+            local known = Omerta.Identity.GetKnownName(observer.id, subject.id)
+            local name, isKnown = Omerta.Identity.ResolveDisplayName(observer, subject, known)
+            reply(name, isKnown)
+        end)
+        if not claimed then reply(Omerta.Identity.UNKNOWN, false) end
         return
     end
 

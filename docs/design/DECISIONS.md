@@ -92,6 +92,25 @@ Resolves Q-4. Ending a season automatically retires every living character ("lea
 
 ---
 
+## D-037 — Going down is a situation; bleeding out ends it (DECIDED, 2026-07-28)
+
+M19's three rulings, together:
+
+**A downed character is a persistent `omerta_body` entity** (§4a). The player entity is hidden and frozen; everything that touches you — carrying, searching, treating, arresting, killing — touches the body, and **the body stays when you disconnect**. The deciding argument was combat logging: with no persistent body, the counterplay to being shot is Alt-F4, which makes a confirmed kill optional for the victim.
+
+**An untreated incapacitated character bleeds out and dies** (§4b). This was ruled against the engineering recommendation, which was an ambulance to hospital. Recorded as a ruling, with the counter-argument preserved in `M19_injury.md` §4b. Note that bleeding out from untreated wounds is fairly read as the *"explicitly terminal circumstance"* GDD §19.2 already carves out, so this is plausibly the GDD's own escape hatch rather than an override of it — and in any case this log outranks the GDD.
+
+**Recovering carries a light decaying penalty** (§4c): slower movement and worse stamina regeneration for a configured window after you are back on your feet, built entirely from M8's existing modifier seams. Without it the only cost of losing a fight is the minutes spent horizontal.
+
+**What §4b changes, and how it is handled:**
+
+- **M19 now ships permanent character death**, because a timer can reach `dead`. All death routes through one funnel, `Omerta.Injury.Die`, which does what M19 owns and fires `Omerta.CharacterDied` for the rest. **M20's confirm kill calls the same function**, so the two ways of dying cannot diverge.
+- **M20 keeps its reason to exist, in a better shape.** Bleeding out is slow and uncertain — the timer is long enough that any passer-by can interrupt it with a bandage, so leaving someone is a gamble on nobody finding them. The confirm kill is fast and certain, and costs a deliberate, logged, interruptible act performed in front of whoever is watching. Patience and deniability against speed and certainty.
+- **Lethality is a knob, not a clock.** `injury.bleed_out_seconds` defaults to five minutes so rescue is real at any population, and an operator running a quiet server raises it.
+- **Two-step medicine.** A stabilization item stops the bleeding and buys time; it does not get you up. Only treatment reaches Recovering. That is what makes both the bandage and M13's clinic worth having.
+
+**Affects:** `docs/design-reviews/M19_injury.md`; GDD §19.2 (read as exercising its terminal-circumstance clause); M20, whose confirm kill becomes one caller of a funnel rather than the only path to death; M10, whose succession now has a trigger; M21/M22, which listen to `Omerta.CharacterDied` when they exist.
+
 ## D-036 — Structured configuration is a data file, not a config key (DECIDED, 2026-07-28)
 
 `Omerta.Config` holds **scalars only** — a declared key, one of number/string/boolean, schema-validated, server-scope, overridden from `data/omertarp/config/server.txt`, boot-failing loudly on anything unrecognised. Configuration that is list- or record-shaped (camera scenes, cinematic sequences, anything with an arbitrary count) uses a second core primitive, **`Omerta.Data`**, introduced by M27: the same sandboxed-Lua-file pattern and the same fail-loudly discipline, validated against a declared record structure. Files live under `data/omertarp/` beside the config.

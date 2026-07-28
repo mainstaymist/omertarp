@@ -83,6 +83,16 @@ function Omerta.Chat.Send(ply, channelId, text)
         return false, "channel unavailable"
     end
 
+    -- A seam for anything that takes somebody's voice away rather than their
+    -- words: M19's incapacitation is the first, and gags, radios and M18's
+    -- holding cells are the same shape. A filter that refuses says why, so the
+    -- player is told rather than left typing into nothing.
+    local allowed, refusal = Omerta.Chat.MayUseChannel(ply, channelId)
+    if not allowed then
+        Omerta.Chat.Notice(ply, refusal or "You cannot say that here.")
+        return false, refusal or "channel restricted"
+    end
+
     local clean, why = Omerta.Chat.Sanitize(text, Omerta.Config.Get("chat.max_length"))
     if not clean then return false, why end
 

@@ -87,9 +87,9 @@ function Omerta.Inventory.RegisterContainerAccess(id, fn)
 end
 
 -- Returns true, or false + reason. A container with no opinion is open.
-function Omerta.Inventory.MayOpen(ply, containerId)
+function Omerta.Inventory.MayOpen(ply, containerId, owner)
     for _, fn in pairs(accessProviders) do
-        local ok, allowed, why = pcall(fn, ply, containerId)
+        local ok, allowed, why = pcall(fn, ply, containerId, owner)
         -- A provider that errors refuses, rather than accidentally granting
         -- access to a safe because of a typo in somebody else's module.
         if not ok then return false, "that is locked" end
@@ -655,27 +655,47 @@ end
 -- so an action naming a container has to match something they actually opened
 -- — and remembers the ENTITY too, so it can re-check every time they reach in
 -- that they are still standing next to it.
-local openContainer = {} -- steamid64 -> { id = , ent = }
+local openContainer = {} -- steamid64 -> { id = , ent = , owner = { type, id } }
 
--- The container this player may currently reach into, or nil. Range is
--- re-tested on every action: opening a crate and walking away must not leave
--- the player with a remote hand in it.
-local function reachableContainer(ply)
+-- What can be opened, and what is inside it.
+--
+-- M9 shipped with `omerta_container` hardcoded here, which was right while a
+-- crate was the only thing worth looking in. M19 needs to search a person, and
+-- a person is not a crate — so the class check became a registration, exactly
+-- as the access predicate did in M11. fn(ply, ent) returns an owner table
+-- ({ type, id }) and a display id, or nil to decline.
+local openables = {}
+
+function Omerta.Inventory.RegisterOpenable(class, fn)
+    openables[class] = fn
+end
+
+Omerta.Inventory.RegisterOpenable("omerta_container", function(_, ent)
+    local containerId = ent.OmertaContainer
+    if not containerId then return nil end
+    return { type = OWNER.CONTAINER, id = containerId }, containerId
+end)
+
+-- What this player may currently reach into, or nil. Range is re-tested on
+-- every action: opening a crate and walking away must not leave the player
+-- with a remote hand in it.
+local function reachableOpen(ply)
     local open = openContainer[ply:SteamID64() or ""]
     if not open then return nil end
     if not IsValid(open.ent) then return nil end
     if ply:GetPos():Distance(open.ent:GetPos()) > Omerta.Interaction.MAX_RANGE then
         return nil
     end
-    return open.id
+    return open
 end
 
-local function sendInventory(ply, containerId)
+local function sendInventory(ply, open)
     local ownerType, ownerId = Omerta.Inventory.OwnerOf(ply)
     if not ownerType then return end
 
+    local containerId = open and open.id or nil
     local mine = cachedRows(ownerType, ownerId)
-    local theirs = containerId and cachedRows(OWNER.CONTAINER, containerId) or {}
+    local theirs = open and cachedRows(open.owner.type, open.owner.id) or {}
     local limit = Omerta.Config.Get("inventory.max_stream")
 
     Omerta.Net.Send("inventory.begin", {
@@ -714,7 +734,7 @@ Internal.SendInventory = sendInventory
 -- Refreshes whoever currently has this owner's contents on screen.
 function Internal.Refresh(ply)
     if not (Omerta.InEngine and IsValid(ply)) then return end
-    sendInventory(ply, reachableContainer(ply))
+    sendInventory(ply, reachableOpen(ply))
 end
 
 function Internal.HandleOpen(ply, target)
@@ -728,26 +748,29 @@ function Internal.HandleOpen(ply, target)
     end
 
     local ent = Entity(target)
-    if not (IsValid(ent) and ent:GetClass() == "omerta_container") then return end
-    -- Range is re-checked here, not trusted: opening a container must never
-    -- become a way to read one across the map.
+    if not IsValid(ent) then return end
+    local resolve = openables[ent:GetClass()]
+    if not resolve then return end
+    -- Range is re-checked here, not trusted: opening something must never
+    -- become a way to read it across the map.
     if ply:GetPos():Distance(ent:GetPos()) > Omerta.Interaction.MAX_RANGE then return end
 
-    local containerId = ent.OmertaContainer
-    if not containerId then return end
+    local owner, containerId = resolve(ply, ent)
+    if not owner then return end
 
-    local allowed, why = Omerta.Inventory.MayOpen(ply, containerId)
+    local allowed, why = Omerta.Inventory.MayOpen(ply, containerId or owner.id, owner)
     if not allowed then
         Omerta.Chat.Notice(ply, why)
         return
     end
 
-    openContainer[sid] = { id = containerId, ent = ent }
-    if Omerta.Inventory.IsLoaded({ type = OWNER.CONTAINER, id = containerId }) then
-        sendInventory(ply, containerId)
+    local open = { id = containerId or 0, ent = ent, owner = owner }
+    openContainer[sid] = open
+    if Omerta.Inventory.IsLoaded(owner) then
+        sendInventory(ply, open)
     else
-        Omerta.Inventory.Load({ type = OWNER.CONTAINER, id = containerId }, function()
-            if IsValid(ply) then sendInventory(ply, containerId) end
+        Omerta.Inventory.Load(owner, function()
+            if IsValid(ply) then sendInventory(ply, open) end
         end)
     end
 end
@@ -765,7 +788,7 @@ function Internal.HandleAction(ply, payload)
 
     local A = Omerta.Inventory.ACTION
     local action, instanceId = payload.action, payload.instance
-    local containerId = reachableContainer(ply)
+    local open = reachableOpen(ply)
 
     local function done(ok, err)
         if not ok then refuse(ply, err) return end
@@ -783,15 +806,15 @@ function Internal.HandleAction(ply, payload)
     elseif action == A.UNEQUIP then
         Omerta.Inventory.Unequip(ply, instanceId, done)
     elseif action == A.TAKE then
-        if not containerId then refuse(ply, "you cannot reach that") return end
-        local row = (cache[ownerKey(OWNER.CONTAINER, containerId)] or {})[instanceId]
+        if not open then refuse(ply, "you cannot reach that") return end
+        local row = (cache[ownerKey(open.owner.type, open.owner.id)] or {})[instanceId]
         if not row then refuse(ply, "that is not in there") return end
         Omerta.Inventory.Move(instanceId, { type = ownerType, id = ownerId }, done)
     elseif action == A.STORE then
-        if not containerId then refuse(ply, "you cannot reach that") return end
+        if not open then refuse(ply, "you cannot reach that") return end
         local row = (cache[ownerKey(ownerType, ownerId)] or {})[instanceId]
         if not row then refuse(ply, "you are not carrying that") return end
-        Omerta.Inventory.Move(instanceId, { type = OWNER.CONTAINER, id = containerId }, done)
+        Omerta.Inventory.Move(instanceId, open.owner, done)
     end
 end
 
