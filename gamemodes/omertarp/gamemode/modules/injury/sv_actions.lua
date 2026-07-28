@@ -109,7 +109,7 @@ end
 -- somebody. Two homes for one coat is how an item gets duplicated.
 
 function Internal.RegisterSearch()
-    Omerta.Inventory.RegisterOpenable("omerta_body", function(_, ent)
+    Omerta.Inventory.RegisterOpenable("prop_ragdoll", function(_, ent)
         local characterId = Omerta.Injury.CharacterOfBody(ent)
         if not characterId then return nil end
         return { type = Omerta.Inventory.OWNER.CHARACTER, id = characterId }, 0

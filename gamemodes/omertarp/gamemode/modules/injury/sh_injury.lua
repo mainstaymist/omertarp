@@ -198,6 +198,92 @@ function Omerta.Injury.RemainingFraction(expiresAt, total, now)
 end
 
 --------------------------------------------------------------------------------
+-- Presentation curves
+--------------------------------------------------------------------------------
+-- The client draws these; they live here because they are arithmetic, and
+-- arithmetic in a cl_ file is arithmetic nothing can test. Same reason M8 put
+-- StepAlpha in its shared file.
+
+-- How far the vignette has closed in, as a fraction of half the screen, with
+-- the heartbeat riding on top. Eases in so it is barely there early and
+-- unmistakable at the end.
+function Omerta.Injury.VignetteReach(progress, pulsePhase)
+    progress = math.Clamp(progress or 0, 0, 1)
+    local base = 0.18 + 0.62 * (progress * progress)
+    -- The beat grows with the loss: a flutter at first, a hammer by the end.
+    local pulse = math.sin(pulsePhase or 0) * (0.02 + 0.06 * progress)
+    return math.Clamp(base + pulse, 0, 0.95)
+end
+
+-- Beats per second, quickening as blood is lost.
+function Omerta.Injury.PulseRate(progress)
+    return 1.1 + 1.9 * math.Clamp(progress or 0, 0, 1)
+end
+
+Omerta.Injury.DEATH = {
+    HOLD    = 1.4,  -- still on the body, letting the trombone land
+    RISE    = 5.5,  -- pulling up and away
+    CEILING = 12,   -- keep this far off whatever is overhead
+    HEIGHT  = 420,  -- how far up it would go with nothing in the way
+}
+
+function Omerta.Injury.DeathPhase(elapsed)
+    local D = Omerta.Injury.DEATH
+    if (elapsed or 0) < D.HOLD then return "hold", math.Clamp((elapsed or 0) / D.HOLD, 0, 1) end
+    return "rise", math.Clamp(((elapsed or 0) - D.HOLD) / D.RISE, 0, 1)
+end
+
+-- Eases out, so the pull-away starts quickly and settles, rather than sliding
+-- at a constant speed like a lift.
+function Omerta.Injury.RiseEase(t)
+    t = math.Clamp(t or 0, 0, 1)
+    return 1 - (1 - t) * (1 - t) * (1 - t)
+end
+
+-- The words on the death screen.
+--
+-- Not "reincarnate": that means a soul returning, and nothing of the sort
+-- happens here. A dead character stays dead, keeps nothing and passes nothing
+-- on (GDD §19.3, D-012) — what comes next is a different person, in the same
+-- city, starting from nothing. "Begin again" says exactly that and stays in
+-- the register the rest of the game is written in. Two constants, so it is two
+-- edits if you would rather it said something else.
+Omerta.Injury.DEATH_TITLE = "You have died..."
+Omerta.Injury.DEATH_PROMPT = "press any key to begin again"
+
+Omerta.Injury.DEATH_TIMING = {
+    BLACK_AT   = 4.2,  -- screen fully black
+    BLACK_OVER = 2.6,  -- how long the fade to black takes
+    TEXT_AT    = 5.0,  -- words start to appear
+    TEXT_OVER  = 2.2,  -- how long they take to arrive
+    MUSIC_FADE = 2.0,  -- the piano easing in once the words have landed
+    LOOP_FADE  = 1.2,  -- the quick dip at each end of the loop
+}
+
+function Omerta.Injury.DeathFade(elapsed)
+    local T = Omerta.Injury.DEATH_TIMING
+    return math.Clamp(((elapsed or 0) - (T.BLACK_AT - T.BLACK_OVER)) / T.BLACK_OVER, 0, 1)
+end
+
+function Omerta.Injury.DeathTextAlpha(elapsed)
+    local T = Omerta.Injury.DEATH_TIMING
+    return math.Clamp(((elapsed or 0) - T.TEXT_AT) / T.TEXT_OVER, 0, 1)
+end
+
+-- The loop's own envelope: a quick dip at both ends so the seam is a breath
+-- rather than a click.
+function Omerta.Injury.LoopVolume(position, length, fade)
+    if not (length and length > 0) then return 1 end
+    fade = fade or Omerta.Injury.DEATH_TIMING.LOOP_FADE
+    if fade * 2 >= length then return 1 end
+    position = math.Clamp(position or 0, 0, length)
+    if position < fade then return math.Clamp(position / fade, 0, 1) end
+    local remaining = length - position
+    if remaining < fade then return math.Clamp(remaining / fade, 0, 1) end
+    return 1
+end
+
+--------------------------------------------------------------------------------
 -- Carrying
 --------------------------------------------------------------------------------
 
@@ -236,6 +322,46 @@ Omerta.Net.Register("injury.prompt", {
     },
     handler = function(payload)
         hook.Run("Omerta.InjuryPrompt", payload.text, payload.seconds)
+    end,
+})
+
+-- Which entity in the world is you. Sent only to the character it belongs to,
+-- so the client can hang its camera on its own head — nobody is ever told
+-- whose body somebody else's is.
+Omerta.Net.Register("injury.body", {
+    realm = "server_to_client",
+    schema = { { name = "body", type = "uint", bits = 16 } },
+    handler = function(payload)
+        hook.Run("Omerta.InjuryBody", payload.body)
+    end,
+})
+
+-- Death, with where it happened, so the camera has somewhere to pull back to.
+Omerta.Net.Register("injury.died", {
+    realm = "server_to_client",
+    schema = {
+        { name = "body", type = "uint", bits = 16 },
+        { name = "x", type = "int", bits = 20 },
+        { name = "y", type = "int", bits = 20 },
+        { name = "z", type = "int", bits = 20 },
+    },
+    handler = function(payload)
+        hook.Run("Omerta.CharacterDiedLocally", payload.body,
+            Vector(payload.x, payload.y, payload.z))
+    end,
+})
+
+-- "I have watched the end." Nothing but an acknowledgement: the character is
+-- already dead server-side, and this only decides when the new-character flow
+-- may begin.
+Omerta.Net.Register("injury.acknowledge_death", {
+    realm = "client_to_server",
+    schema = {},
+    rate = { burst = 3, per = 10 },
+    handler = function(ply)
+        if Omerta.Injury.Internal.AcknowledgeDeath then
+            Omerta.Injury.Internal.AcknowledgeDeath(ply)
+        end
     end,
 })
 

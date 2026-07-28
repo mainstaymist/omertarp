@@ -32,14 +32,23 @@ base for something that does nothing.
 | Path | Format | Size | Used by |
 |---|---|---|---|
 | `sound/omertarp/cry-me-a-river.wav` | 16-bit stereo PCM, 44.1 kHz, 2:55 | 30.9 MB | M28 (intro cinematic) — **not yet wired up** |
+| `sound/omertarp/trombone-crescendo.wav` | 16-bit stereo PCM, 44.1 kHz, 0:22 | 3.8 MB | M19 — the moment of death |
+| `sound/omertarp/death-piano.wav` | 16-bit stereo PCM, 44.1 kHz, 0:46 | 7.7 MB | M19 — the death screen, looped |
 
-Two open items on that file, both for M28's design review:
+The two M19 sounds **are** registered (`modules/injury/sv_injury.lua`), because
+that milestone plays them. The intro track is not, because M28 does not exist.
 
-- **Format.** 30.9 MB uncompressed is a long "downloading content" screen in front
-  of the intro, which is the worst possible place for one. MP3 is the Source
-  engine's native music format and the same track lands around 4 MB at 192 kbps.
-  The WAV is fine as the master; what ships to clients probably should not be it.
+Open items for all three:
+
+- **Format.** These are uncompressed. Together they are a 42 MB first-join
+  download, most of it in front of a player who has not seen the game yet. MP3
+  is the Source engine's native music format and would take the set to roughly
+  6 MB. The WAVs are fine as masters; what ships to clients probably should not
+  be. No encoder is available in this environment, so converting is a local
+  step.
 - **Licensing.** "Cry Me a River" (Arthur Hamilton, 1953) is a copyrighted
-  composition, and any recording of it carries its own rights. Acceptable as a
-  development placeholder under D-005, but it needs a licence or a replacement
-  before public release. Tracked in the roadmap's content workstream.
+  composition and any recording carries its own rights. The two Freesound
+  files are community uploads whose individual licences (CC0 / CC-BY /
+  sampling+) need checking and, if attribution is required, recording. All
+  three are acceptable development placeholders under D-005 and all three are
+  a pre-release gate — see the roadmap's content workstream.

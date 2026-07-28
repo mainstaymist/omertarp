@@ -63,7 +63,10 @@ function Omerta.HUD.Scale()
     return Omerta.HUD.ClampScale(GetConVar("omerta_ui_scale"):GetFloat())
 end
 
-local FONT_SIZES = { body = 21, label = 19, small = 16 }
+-- `headline` is deliberately the only size above body text. It exists for the
+-- two moments the game raises its voice — bleeding out, and dying — and adding
+-- a third would start the drift the empty-screen rule exists to prevent.
+local FONT_SIZES = { headline = 38, body = 21, label = 19, small = 16 }
 
 local function buildFonts()
     local scale = Omerta.HUD.Scale()
@@ -218,9 +221,17 @@ Omerta.HUD.Register("injury", {
 -- its class, which is how M9's dropped items and containers light the dot up
 -- without this file learning what an item is.
 local interactableClasses = {}
+local interactablePredicates = {}
 
 function Omerta.HUD.RegisterInteractableClass(class)
     interactableClasses[class] = true
+end
+
+-- For things whose class is not their own: M19's bodies are prop_ragdolls, and
+-- lighting the dot up for every ragdoll on the map would point at furniture.
+-- fn(ent) returns true if this particular entity is worth walking to.
+function Omerta.HUD.RegisterInteractablePredicate(id, fn)
+    interactablePredicates[id] = fn
 end
 
 local function traceForTarget()
@@ -234,6 +245,10 @@ local function traceForTarget()
     if not IsValid(tr.Entity) then return nil end
     if tr.Entity:IsPlayer() then return tr.Entity end
     if interactableClasses[tr.Entity:GetClass()] then return tr.Entity end
+    for _, fn in pairs(interactablePredicates) do
+        local ok, matched = pcall(fn, tr.Entity)
+        if ok and matched then return tr.Entity end
+    end
     return nil
 end
 

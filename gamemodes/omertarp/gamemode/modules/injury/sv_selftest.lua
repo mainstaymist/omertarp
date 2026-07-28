@@ -166,17 +166,38 @@ local function buildSteps()
         pass()
     end }
 
-    -- §4a: a body is a PERSON. It must never name itself.
-    steps[#steps + 1] = { name = "a body carries no object label", fn = function(pass, fail)
-        local stored = scripted_ents.GetStored("omerta_body")
-        local class = stored and stored.t
-        if not class then fail("omerta_body did not load") return end
-        if type(class.OmertaLabel) ~= "function" then
-            fail("no label decision was made at all") return
+    -- §4a: a body is a PERSON. It must never name itself, and the character it
+    -- belongs to must never leave the server.
+    steps[#steps + 1] = { name = "a body publishes nothing about who it is",
+        fn = function(pass, fail)
+        -- Bodies are prop_ragdolls now, tagged with a boolean that says
+        -- "somebody is on the floor here" — visible from across the street
+        -- anyway — and nothing else.
+        for _, ent in ipairs(ents.FindByClass("prop_ragdoll")) do
+            if ent.OmertaCharacter then
+                for _, key in ipairs({ "OmertaCharacter", "CharacterId", "Character" }) do
+                    if ent:GetNWInt(key, -1) ~= -1 or ent:GetNWString(key, "") ~= "" then
+                        fail("a body networks " .. key) return
+                    end
+                end
+            end
         end
-        if class.OmertaLabel(class) ~= nil then
-            fail("a body names itself — it must resolve through identity") return
+        pass()
+    end }
+
+    -- The presentation curves. Cheap to check, and the kind of thing that
+    -- silently inverts when somebody retunes a number.
+    steps[#steps + 1] = { name = "the screen closes in, and the clock empties",
+        fn = function(pass, fail)
+        local V = Omerta.Injury.VignetteReach
+        if V(0, 0) >= V(1, 0) then fail("the vignette does not close in") return end
+        if V(1, 0) > 0.95 then fail("the vignette would black the screen out") return end
+        if Omerta.Injury.PulseRate(1) <= Omerta.Injury.PulseRate(0) then
+            fail("the heartbeat does not quicken") return
         end
+        local F = Omerta.Injury.DeathFade
+        if F(0) ~= 0 then fail("the death fade starts already black") return end
+        if F(60) ~= 1 then fail("the death fade never finishes") return end
         pass()
     end }
 

@@ -63,20 +63,79 @@ function Internal.ReleaseView(ply)
     ply:SetMoveType(MOVETYPE_WALK)
 end
 
-function Internal.SpawnBody(characterId, pos, yaw, model)
+-- The body is a real ragdoll, not a prop lying at a fixed angle.
+--
+-- A scripted entity cannot BE a ragdoll — `base_anim` is a CBaseAnimating and
+-- ragdoll bone data is a property of CRagdollProp — so the body is a genuine
+-- prop_ragdoll that the module owns and tags. That also gives the client an
+-- "eyes" attachment to hang the first-person camera on, which is the whole
+-- reason a limp head looks like anything.
+--
+-- Marked with a networked boolean so a client can tell our bodies from the
+-- map's furniture. It says "somebody is on the floor here", which is visible
+-- from across the street anyway; it does NOT say who, and the character id
+-- stays server-side exactly as before.
+function Internal.SpawnBody(characterId, pos, yaw, model, sourcePly)
     if not Omerta.InEngine then return nil end
     if IsValid(bodies[characterId]) then bodies[characterId]:Remove() end
 
-    local ent = ents.Create("omerta_body")
+    local ent = ents.Create("prop_ragdoll")
     if not IsValid(ent) then return nil end
-    ent.OmertaCharacter = characterId
-    ent.OmertaModel = model
+
+    ent:SetModel(Omerta.Util.ResolveModel(model, Internal.FALLBACK_MODEL))
     ent:SetPos(pos)
     ent:SetAngles(Angle(0, yaw or 0, 0))
     ent:Spawn()
-    Omerta.Inventory.RestOnGround(ent, pos)
+    ent:Activate()
+
+    ent.OmertaCharacter = characterId
+    ent:SetNWBool("OmertaBody", true)
+
+    -- Match the pose the character was standing in, then hand it their
+    -- momentum, so somebody shot mid-sprint goes down travelling rather than
+    -- appearing in a heap. Guarded: a model whose physics bones do not map
+    -- cleanly should produce a plain ragdoll, not an error.
+    if IsValid(sourcePly) then
+        local velocity = sourcePly:GetVelocity()
+        for i = 0, ent:GetPhysicsObjectCount() - 1 do
+            local phys = ent:GetPhysicsObjectNum(i)
+            if IsValid(phys) then
+                local boneIndex = ent:TranslatePhysBoneToBone(i)
+                if boneIndex then
+                    local bonePos, boneAng = sourcePly:GetBonePosition(boneIndex)
+                    if bonePos then phys:SetPos(bonePos) end
+                    if boneAng then phys:SetAngles(boneAng) end
+                end
+                phys:SetVelocity(velocity)
+                phys:Wake()
+            end
+        end
+    end
+
     bodies[characterId] = ent
     return ent
+end
+
+Internal.FALLBACK_MODEL = "models/player/group01/male_01.mdl"
+
+-- A body removed by a map cleanup is still on the floor as far as persistence
+-- is concerned. prop_ragdoll has no OnRemove of ours, so the module watches
+-- instead — same contract M9's dropped items have.
+function Internal.RegisterBodyCleanup()
+    hook.Add("EntityRemoved", "omerta.injury.body_removed", function(ent)
+        local characterId = ent.OmertaCharacter
+        if characterId and bodies[characterId] == ent then
+            bodies[characterId] = nil
+        end
+    end)
+
+    -- prop_ragdoll has no Use of its own, so the E shortcut is wired here.
+    -- It goes through the same server-side path the interaction menu uses.
+    hook.Add("PlayerUse", "omerta.injury.body_use", function(ply, ent)
+        if not (IsValid(ent) and ent.OmertaCharacter) then return end
+        Internal.HandleUse(ply, ent)
+        return false -- consumed; do not also +use the world behind it
+    end)
 end
 
 function Internal.PutDown(characterId, opts)
@@ -98,7 +157,7 @@ function Internal.PutDown(characterId, opts)
     if not pos then return end
 
     if not IsValid(existing) then
-        Internal.SpawnBody(characterId, pos, yaw, model)
+        Internal.SpawnBody(characterId, pos, yaw, model, ply)
         local season = Omerta.Seasons.GetActive()
         if season then
             Internal.Repo.SaveBody(season.id, characterId, game.GetMap(), pos, yaw)
@@ -155,10 +214,12 @@ function Omerta.Injury.Carry(ply, characterId, cb)
     if Internal.CarrierOf(characterId) then cb(false, "somebody already has them") return end
 
     carrying[ply:SteamID64() or ""] = characterId
-    body:SetMoveType(MOVETYPE_NONE)
+    -- A carried ragdoll has its physics disabled and is parented; re-enabled
+    -- on drop so it falls properly.
+    Internal.FreezeBody(body)
     body:SetParent(ply)
-    body:SetLocalPos(Vector(24, 0, 24))
-    body:SetLocalAngles(Angle(85, 0, 0))
+    body:SetLocalPos(Vector(14, 0, 40))
+    body:SetLocalAngles(Angle(0, 90, 70))
 
     Omerta.Net.Send("injury.carrying", { carrying = true }, ply)
     Omerta.Log.Audit("injury.carried", {
@@ -179,10 +240,10 @@ function Omerta.Injury.Drop(ply, cb)
     if IsValid(body) then
         body:SetParent(nil)
         body:SetMoveType(MOVETYPE_VPHYSICS)
-        local pos = ply:GetPos() + ply:GetForward() * 32
-        body:SetPos(pos)
-        body:SetAngles(Angle(85, ply:EyeAngles().y, 0))
-        Omerta.Inventory.RestOnGround(body, pos)
+        body:SetPos(ply:GetPos() + ply:GetForward() * 32 + Vector(0, 0, 8))
+        -- Let it fall rather than placing it: a dropped body should land the
+        -- way a dropped body lands.
+        Internal.WakeBody(body, ply:GetForward() * 40)
         Internal.Repo.MoveBody(characterId, body:GetPos())
 
         -- Where a body ends up is the fact M15 will care about most.
@@ -200,6 +261,28 @@ function Omerta.Injury.Drop(ply, cb)
 
     if IsValid(ply) then Omerta.Net.Send("injury.carrying", { carrying = false }, ply) end
     cb(true)
+end
+
+-- A ragdoll has many physics objects, so "freeze" and "wake" are loops rather
+-- than a single call. Kept together so the pair cannot drift.
+function Internal.FreezeBody(body)
+    if not IsValid(body) then return end
+    for i = 0, body:GetPhysicsObjectCount() - 1 do
+        local phys = body:GetPhysicsObjectNum(i)
+        if IsValid(phys) then phys:EnableMotion(false) end
+    end
+end
+
+function Internal.WakeBody(body, impulse)
+    if not IsValid(body) then return end
+    for i = 0, body:GetPhysicsObjectCount() - 1 do
+        local phys = body:GetPhysicsObjectNum(i)
+        if IsValid(phys) then
+            phys:EnableMotion(true)
+            phys:Wake()
+            if impulse then phys:SetVelocity(impulse) end
+        end
+    end
 end
 
 function Internal.DropIfCarried(characterId)
@@ -223,6 +306,7 @@ function Internal.ValidateCarries()
             if IsValid(body) then
                 body:SetParent(nil)
                 body:SetMoveType(MOVETYPE_VPHYSICS)
+                Internal.WakeBody(body)
                 Internal.Repo.MoveBody(characterId, body:GetPos())
             end
         end
@@ -249,7 +333,7 @@ function Internal.LoadBodies()
             local state = Omerta.Injury.GetByCharacter(row.character_id)
             if Omerta.Injury.IsDown(state) then
                 if Internal.SpawnBody(row.character_id,
-                        Vector(row.pos_x, row.pos_y, row.pos_z), row.ang_y) then
+                        Vector(row.pos_x, row.pos_y, row.pos_z + 8), row.ang_y) then
                     placed = placed + 1
                 end
             else

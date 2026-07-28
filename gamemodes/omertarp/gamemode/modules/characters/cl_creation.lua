@@ -217,8 +217,39 @@ end
 -- Server-driven state
 --------------------------------------------------------------------------------
 
+-- Something may want to hold the creation window back for a moment.
+--
+-- M19 is the first: a character who has just died is routed here immediately,
+-- and a "make a new person" form appearing over the body of the old one is the
+-- wrong beat entirely. A gate returns true while it wants to wait, and calls
+-- the release function when it is done.
+local creationGates = {}
+local creationPending = false
+
+function Omerta.Characters.RegisterCreationGate(id, fn)
+    creationGates[id] = fn
+end
+
+local function creationHeld()
+    for _, fn in pairs(creationGates) do
+        local ok, held = pcall(fn)
+        if ok and held then return true end
+    end
+    return false
+end
+
+-- Called by whoever was holding it once they are finished.
+function Omerta.Characters.ReleaseCreation()
+    if creationPending and not creationHeld() then
+        creationPending = false
+        buildFrame()
+    end
+end
+
 hook.Add("Omerta.CharactersState", "omerta.characters.ui", function(state)
     if state == STATE.NEEDS_CREATION then
+        if creationHeld() then creationPending = true return end
+        creationPending = false
         buildFrame()
     elseif state == STATE.ACTIVE then
         if IsValid(frame) then frame:Remove() end

@@ -105,6 +105,11 @@ function Internal.SendState(characterId)
     local state = entry and entry.state or S.HEALTHY
     local seconds = entry and Omerta.Injury.SecondsLeft(entry.expiresAt, os.time()) or nil
 
+    local body = Omerta.Injury.BodyOf(characterId)
+    Omerta.Net.Send("injury.body", {
+        body = IsValid(body) and body:EntIndex() or 0,
+    }, ply)
+
     Omerta.Net.Send("injury.state", {
         state = Omerta.Injury.STATE_INDEX[state] or 1,
         -- Clamped to the field, not to the truth: a long clock reads as "a
@@ -217,6 +222,21 @@ function Omerta.Injury.Die(characterId, cause, actorCharacterId, cb)
 end
 
 function Internal.OnDeath(characterId, opts)
+    -- The client is told BEFORE the status change, because SetStatus routes
+    -- them straight to new-character creation and the death sequence needs to
+    -- play first. The character is dead in the database either way; only the
+    -- moment the form appears is being deferred, and M4's creation gate is
+    -- what holds it.
+    local ply = Internal.PlayerFor(characterId)
+    local body = Omerta.Injury.BodyOf(characterId)
+    if IsValid(ply) then
+        local at = IsValid(body) and body:GetPos() or ply:GetPos()
+        Omerta.Net.Send("injury.died", {
+            body = IsValid(body) and body:EntIndex() or 0,
+            x = math.floor(at.x), y = math.floor(at.y), z = math.floor(at.z),
+        }, ply)
+    end
+
     -- What M19 owns. Everything else listens.
     Omerta.Characters.SetStatus(characterId, Omerta.Characters.STATUS.DEAD,
         opts and opts.cause or "died", function(ok, err)
@@ -226,8 +246,15 @@ function Internal.OnDeath(characterId, opts)
             end
         end)
 
+    -- The body STAYS. A corpse is evidence (M15), it is what M20's funeral is
+    -- for, and a city where the dead vanish is one where nobody can prove
+    -- anything happened. Only the injury row and the live state are cleared.
     Internal.Repo.RemoveBody(characterId)
-    Internal.RemoveBody(characterId, true)
+    if IsValid(body) then
+        body.OmertaCharacter = nil -- no longer searchable, still a corpse
+        body:SetNWBool("OmertaBody", false)
+    end
+    Internal.Bodies[characterId] = nil
 
     Omerta.Log.Audit("injury.died", {
         actor = opts and opts.actorSteamId or "world",
@@ -239,12 +266,15 @@ function Internal.OnDeath(characterId, opts)
     -- M22's archive listen when they exist. M20 owns the rest of Tech §18.
     hook.Run("Omerta.CharacterDied", characterId, opts and opts.cause,
         opts and opts.actorCharacterId)
+end
 
-    local ply = Internal.PlayerFor(characterId)
-    if IsValid(ply) then
-        Internal.ReleaseView(ply)
-        Omerta.Chat.Notice(ply, "You are dead.")
-    end
+-- The player has watched the end and pressed a key. Nothing about the
+-- character changes here — it died when the clock ran out — this only releases
+-- them into the new-character flow.
+function Internal.AcknowledgeDeath(ply)
+    if not IsValid(ply) then return end
+    Internal.ReleaseView(ply)
+    Omerta.Net.Send("injury.body", { body = 0 }, ply)
 end
 
 --------------------------------------------------------------------------------
@@ -498,11 +528,18 @@ end
 function MODULE:OnEnable()
     if not Omerta.InEngine then return end
 
+    -- Mounting makes a file available to the SERVER; only this sends it to
+    -- clients. Registered here, in the milestone that actually plays them,
+    -- exactly as content/README.md asks.
+    resource.AddFile("sound/omertarp/trombone-crescendo.wav")
+    resource.AddFile("sound/omertarp/death-piano.wav")
+
     Internal.RegisterModifiers()
     Internal.RegisterSpeechLimits()
     Internal.RegisterInteractions()
     Internal.RegisterTreatments()
     Internal.RegisterSearch()
+    Internal.RegisterBodyCleanup()
     Internal.RegisterIdentity()
     Internal.RegisterDisconnect()
     Internal.RegisterCommands()

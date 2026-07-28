@@ -22,6 +22,15 @@ local gamemodePath = "gamemodes/omertarp/gamemode/"
 -- guarded by Omerta.InEngine — chiefly IsValid, used in player-cache lookups.
 -- Everything genuinely engine-bound stays behind the InEngine flag and never
 -- runs here.
+-- GMod adds these to the math table; the pure presentation curves use them.
+function math.Clamp(value, low, high)
+    return math.max(low, math.min(high, value))
+end
+
+function Lerp(t, from, to)
+    return from + (to - from) * t
+end
+
 function IsValid(x)
     if x == nil or x == false then return false end
     if type(x) == "table" and x.__invalid then return false end

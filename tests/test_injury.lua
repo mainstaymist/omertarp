@@ -367,3 +367,89 @@ check("the clinic became a surgery", function()
     end
     assert(medical, "the clinic still cannot treat anybody")
 end)
+
+--------------------------------------------------------------------------------
+suite("injury.presentation")
+--------------------------------------------------------------------------------
+
+-- The curves the client draws. They live in the shared file precisely so they
+-- can be checked here — arithmetic in a cl_ file is arithmetic nothing tests.
+
+check("the vignette closes in as the blood runs out, and never blacks out", function()
+    loadModules()
+    local V = Omerta.Injury.VignetteReach
+    assert(V(0, 0) < V(0.5, 0), "halfway is tighter than the start")
+    assert(V(0.5, 0) < V(1, 0), "the end is tighter than halfway")
+    -- Eases in: barely there early, so being shot is not instantly a tunnel.
+    assert(V(0.25, 0) < 0.3, "too aggressive too early")
+    -- Never fully closed: a black screen would hide the body somebody is
+    -- kneeling over, which is the one thing worth seeing.
+    assert(V(1, 0) <= 0.95, "the screen must never fully close")
+    for i = 0, 10 do
+        local reach = V(i / 10, 3.0)
+        assert(reach >= 0 and reach <= 0.95, "out of range with the pulse riding on it")
+    end
+end)
+
+check("the heartbeat quickens as the end nears", function()
+    loadModules()
+    local P = Omerta.Injury.PulseRate
+    assert(P(1) > P(0), "the beat has to quicken or it is just a throb")
+    assert(P(0) > 0, "and it has to beat at all")
+end)
+
+check("the death camera holds before it pulls away", function()
+    loadModules()
+    local D = Omerta.Injury.DEATH
+    local phase = Omerta.Injury.DeathPhase(0)
+    assert(phase == "hold", "the camera must sit on the body first")
+    assert(Omerta.Injury.DeathPhase(D.HOLD) == "rise", "then rise")
+    local _, t = Omerta.Injury.DeathPhase(D.HOLD + D.RISE * 2)
+    assert(t == 1, "and stop when it gets there, not keep climbing")
+end)
+
+check("the rise eases out rather than sliding like a lift", function()
+    loadModules()
+    local E = Omerta.Injury.RiseEase
+    assert(E(0) == 0 and E(1) == 1, "both ends are pinned")
+    assert(E(0.5) > 0.5, "most of the distance is covered early")
+    local previous = -1
+    for i = 0, 10 do
+        local value = E(i / 10)
+        assert(value >= previous, "the camera must never travel backwards")
+        previous = value
+    end
+end)
+
+check("the screen blacks out before the words arrive", function()
+    loadModules()
+    local T = Omerta.Injury.DEATH_TIMING
+    assert(Omerta.Injury.DeathFade(0) == 0, "not black at the moment of death")
+    assert(Omerta.Injury.DeathFade(T.BLACK_AT) == 1, "black on schedule")
+    assert(Omerta.Injury.DeathTextAlpha(T.BLACK_AT) == 0,
+        "the words must not start before the screen is black")
+    assert(Omerta.Injury.DeathTextAlpha(T.TEXT_AT + T.TEXT_OVER) == 1, "fully readable")
+end)
+
+-- The loop seam: a quick dip at both ends so it is a breath, not a click.
+check("the music dips at both ends of its loop", function()
+    loadModules()
+    local L = Omerta.Injury.LoopVolume
+    assert(L(0, 60, 2) == 0, "silent at the very start")
+    assert(L(2, 60, 2) == 1, "up to full after the fade")
+    assert(L(30, 60, 2) == 1, "full through the middle")
+    assert(L(59, 60, 2) == 0.5, "easing out at the end")
+    assert(L(60, 60, 2) == 0, "silent at the seam")
+    -- Degenerate inputs must not silence the track entirely.
+    assert(L(0, 0, 2) == 1, "no length, no envelope")
+    assert(L(1, 3, 2) == 1, "a fade longer than the track is ignored")
+end)
+
+check("the prompt after death does not promise a soul coming back", function()
+    loadModules()
+    -- D-012 and GDD §19.3: the next character inherits nothing. Wording that
+    -- implied otherwise would be the UI contradicting the design.
+    local prompt = Omerta.Injury.DEATH_PROMPT
+    assert(type(prompt) == "string" and prompt ~= "")
+    assert(not prompt:lower():find("respawn"), "respawn is the wrong idea entirely")
+end)

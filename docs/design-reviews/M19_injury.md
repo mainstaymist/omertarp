@@ -248,3 +248,35 @@ Implemented as `modules/injury/` — nine files plus `omerta_body`. Suite grew f
 - **The engine must never see zero health.** `EntityTakeDamage` clamps lethal damage and sets health to 1; `PlayerDeath` logs an error if a loaded character ever reaches it, because that means damage bypassed the state machine and the milestone has silently failed for that case.
 
 In-engine acceptance (user-side): pull, restart, then `omerta_injury_selftest` (13 steps). Then manually: `omerta_injury_state incapacitated` on yourself to go down, watch the body appear and the urgency text fade in; have a second character pick you up, carry you (slowly), drop you, search you; `omerta_item_give medical.bandage` and stabilize; `omerta_injury_list` and `omerta_injury_history <id>`. **To see D-037 end to end, set `injury.bleed_out_seconds` low in `data/omertarp/config/server.txt` and leave somebody alone.**
+
+---
+
+## 14. Amendment — the body, the camera, and the end (2026-07-28)
+
+A presentation pass over what §4a and §4b actually feel like. The state machine is unchanged; what happens on screen is not.
+
+**The body is a real ragdoll.** The first implementation was a scripted `omerta_body` posed at a fixed angle, which read as a mannequin rather than a person. A scripted entity cannot *be* a ragdoll — `base_anim` is a `CBaseAnimating` and ragdoll bone data belongs to `CRagdollProp` — so the body is now a genuine `prop_ragdoll` that the module owns and tags. It inherits the character's pose bone-for-bone and their momentum, so somebody shot mid-sprint goes down travelling.
+
+Three consequences, each handled rather than worked around:
+
+- **`omerta_body.lua` is gone.** Interaction predicates, search and identity all key on `ent.OmertaCharacter`, which is server-side and works on any entity, so nothing there changed.
+- **The interaction dot needed a predicate, not a class.** `RegisterInteractableClass("prop_ragdoll")` would light up for every ragdoll on the map, so M8 gained `RegisterInteractablePredicate`. The body answers it through a networked boolean that says *somebody is on the floor here* — visible from across the street anyway — and nothing about who.
+- **`prop_ragdoll` has no `ENT:Use`**, so the E shortcut is a `PlayerUse` hook. Same server-side path as the menu.
+
+**The camera stays in your head.** `CalcView` rides the ragdoll's `eyes` attachment, so as you fall the view falls with you and ends up looking at whatever your face ends up looking at. This is the reason the ragdoll mattered: a posed prop has nothing to hang a camera on. Mouse look, the viewmodel and the weapon selector are all suppressed while down — a mouse that moves nothing reads as broken rather than as helpless.
+
+**The screen closes in.** A red vignette built from four edge gradients rather than a radial texture, so there is no asset that can fail to load. It eases in — barely there early, unmistakable at the end — and pulses on a heartbeat that quickens with the loss. It never fully closes: a black screen would hide the person kneeling over you, which is the one thing worth seeing. A ring above the text empties as the clock runs down.
+
+**Stabilizing visibly stops it.** The vignette and the ring are driven by `IsDying`, which is `incapacitated` only. A bandage stops the clock, so the screen stops closing with it — the player learns the bandage worked without being shown a number.
+
+**The end.** Trombone on the instant of death, no fade of its own since the file opens on one. The camera holds on the body for a beat, then pulls up and away to a **map-relative** top-down shot — traced against the ceiling first, so dying in a stairwell gives a lower shot rather than a view of the inside of the floor above. Screen fades to black, "You have died…" fades in at headline size with the prompt under it, and the piano fades in once the words have fully landed, looping with a quick dip at each end so the seam is a breath rather than a click.
+
+**"press any key to begin again"**, not "reincarnate". Reincarnation means a soul returning, and nothing of the sort happens: a dead character stays dead, keeps nothing, and passes nothing on (GDD §19.3, D-012). What comes next is a different person in the same city, starting from nothing. Both strings are constants in `sh_injury.lua`.
+
+**M4 gained a creation gate.** Death routes a player to new-character creation immediately, and a "make a new person" form appearing over the body of the old one is the wrong beat entirely. `Omerta.Characters.RegisterCreationGate` holds the window; M19 releases it on the keypress. M4 still knows nothing about injuries.
+
+**The corpse stays.** Death clears the injury row and the live state but leaves the ragdoll in the world. A body is evidence (M15), it is what M20's funeral is for, and a city where the dead vanish is one where nobody can prove anything happened.
+
+**Every presentation curve is in the shared file**, not the `cl_` files that draw them — the vignette reach, the heartbeat rate, the camera phases and easing, the fade timings, the loop envelope. Arithmetic in a `cl_` file is arithmetic nothing can test, which is the same reason M8 put `StepAlpha` in its shared file.
+
+Suite: 298 → 305 checks.
