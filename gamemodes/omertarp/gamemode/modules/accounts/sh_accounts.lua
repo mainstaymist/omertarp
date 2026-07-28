@@ -7,7 +7,3 @@
 -- module) at include time; the loader guarantees lifecycle order via
 -- `depends`, not include order.
 
-Omerta.Module.Register({
-    name = "accounts",
-    depends = { "database" },
-})

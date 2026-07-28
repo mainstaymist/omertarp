@@ -5,11 +5,7 @@
 -- register a module named after itself in BOTH realms — on the client this
 -- module is an empty shell by design.
 
-local MODULE = Omerta.Module.Register({
-    name = "database",
-    depends = {},
-})
-
+local MODULE = Omerta.Module.Get("database")
 function MODULE:OnEnable()
     if SERVER then
         Omerta.DB.Internal.Start()

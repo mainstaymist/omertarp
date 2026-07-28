@@ -5,10 +5,6 @@
 -- Channels are a registry so M11's radios and M12's phone calls can add their
 -- own delivery rules without this module learning about equipment.
 
-Omerta.Module.Register({
-    name = "chat",
-    depends = { "characters", "identity" },
-})
 
 Omerta.Chat = Omerta.Chat or {}
 

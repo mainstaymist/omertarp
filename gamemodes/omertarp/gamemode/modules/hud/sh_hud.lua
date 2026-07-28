@@ -10,10 +10,6 @@
 -- phone and M19's injury later) register an element rather than hooking
 -- HUDPaint, so "what is on screen right now, and why" stays answerable.
 
-Omerta.Module.Register({
-    name = "hud",
-    depends = { "characters" },
-})
 
 Omerta.HUD = Omerta.HUD or {}
 

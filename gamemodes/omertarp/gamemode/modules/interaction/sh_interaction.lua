@@ -7,10 +7,6 @@
 -- re-traces, re-checks range, re-runs the predicate, and only then executes.
 -- An action id the client was never offered simply fails its predicate.
 
-Omerta.Module.Register({
-    name = "interaction",
-    depends = { "characters", "hud" },
-})
 
 Omerta.Interaction = Omerta.Interaction or {}
 

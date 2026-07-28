@@ -3,19 +3,24 @@
 -- live in the shared file and are covered here.
 
 local MODULE_FILES = {
+    "gamemodes/omertarp/gamemode/modules/database/sh_module.lua",
     "gamemodes/omertarp/gamemode/modules/database/sh_database.lua",
     "gamemodes/omertarp/gamemode/modules/database/sv_schema.lua",
     "gamemodes/omertarp/gamemode/modules/database/sv_sqlbuild.lua",
     "gamemodes/omertarp/gamemode/modules/database/sv_database.lua",
+    "gamemodes/omertarp/gamemode/modules/accounts/sh_module.lua",
     "gamemodes/omertarp/gamemode/modules/accounts/sh_accounts.lua",
     "gamemodes/omertarp/gamemode/modules/accounts/sv_repository.lua",
     "gamemodes/omertarp/gamemode/modules/accounts/sv_accounts.lua",
+    "gamemodes/omertarp/gamemode/modules/seasons/sh_module.lua",
     "gamemodes/omertarp/gamemode/modules/seasons/sh_seasons.lua",
     "gamemodes/omertarp/gamemode/modules/seasons/sv_repository.lua",
     "gamemodes/omertarp/gamemode/modules/seasons/sv_seasons.lua",
+    "gamemodes/omertarp/gamemode/modules/characters/sh_module.lua",
     "gamemodes/omertarp/gamemode/modules/characters/sh_characters.lua",
     "gamemodes/omertarp/gamemode/modules/characters/sv_repository.lua",
     "gamemodes/omertarp/gamemode/modules/characters/sv_characters.lua",
+    "gamemodes/omertarp/gamemode/modules/hud/sh_module.lua",
     "gamemodes/omertarp/gamemode/modules/hud/sh_hud.lua",
     "gamemodes/omertarp/gamemode/modules/hud/sv_stamina.lua",
 }

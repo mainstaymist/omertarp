@@ -4,13 +4,6 @@
 -- you must know where they will be, or go and stand somewhere public and hope
 -- — and the awkwardness of that is the feature.
 
-Omerta.Module.Register({
-    name = "phone",
-    -- `chat` for the voice seam and the text path, `inventory` for quarters,
-    -- `treasury` (and through it `organizations`) because a private line is
-    -- something a family buys.
-    depends = { "chat", "inventory", "organizations", "treasury" },
-})
 
 Omerta.Phone = Omerta.Phone or {}
 Omerta.Phone.Internal = Omerta.Phone.Internal or {}

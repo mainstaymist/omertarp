@@ -11,9 +11,12 @@
 --     ambiguity is how server code leaks;
 --   * within a module, sh_ files are included BEFORE cl_/sv_ files, so realm
 --     files may use their module's shared definitions at include time;
---   * `depends` orders LIFECYCLE calls, not file inclusion. Include-time code
---     must only define things; references to OTHER modules belong in OnEnable
---     and later, by which point every module is loaded.
+--   * every module directory has an sh_module.lua containing nothing but its
+--     Register call. It is included first, for every module, so the whole
+--     dependency graph is known before any real code runs;
+--   * `depends` then orders BOTH file inclusion and lifecycle calls, so a
+--     module may use anything it declares at include time — and nothing it
+--     does not.
 --
 -- Lifecycle (each hook optional):
 --   OnLoad(self)   — after all modules' files are included, dependency order
@@ -44,6 +47,16 @@ end
 
 function Omerta.Module.IsEnabled(name)
     return enabled and defs[name] ~= nil
+end
+
+-- The resolved dependency order — the same list used to include files and to
+-- call lifecycle hooks, which is why they cannot drift apart. Nil until
+-- FinishLoading has run.
+function Omerta.Module.GetOrder()
+    if not order then return nil end
+    local copy = {}
+    for i, name in ipairs(order) do copy[i] = name end
+    return copy
 end
 
 local function resolveOrder()
@@ -86,22 +99,30 @@ end
 -- "shared" | "server" | "client", or nil + reason for an unprefixed file.
 local REALM_ORDER = { shared = 1, client = 2, server = 3 }
 
+-- sh_module.lua is deliberately absent from the plan: it was already included
+-- in phase 1, before anything else, so the dependency graph could be known.
+-- Including it again would register the module twice.
+Omerta.Module.REGISTRATION_FILE = "sh_module.lua"
+
 function Omerta.Module.PlanIncludes(basePath, dirName, fileNames)
     local plan = {}
     for _, f in ipairs(fileNames or {}) do
         local realm
-        if f:find("^sh_") then realm = "shared"
+        if f == Omerta.Module.REGISTRATION_FILE then realm = nil -- already included
+        elseif f:find("^sh_") then realm = "shared"
         elseif f:find("^sv_") then realm = "server"
         elseif f:find("^cl_") then realm = "client"
         else
             return nil, string.format(
                 "module file '%s/%s' has no realm prefix (sh_/sv_/cl_)", dirName, f)
         end
-        plan[#plan + 1] = {
-            path = basePath .. "/" .. dirName .. "/" .. f,
-            file = f,
-            realm = realm,
-        }
+        if realm then
+            plan[#plan + 1] = {
+                path = basePath .. "/" .. dirName .. "/" .. f,
+                file = f,
+                realm = realm,
+            }
+        end
     end
 
     -- Shared files load FIRST, not alphabetically: sh_ files define the
@@ -115,83 +136,6 @@ function Omerta.Module.PlanIncludes(basePath, dirName, fileNames)
         return a.file < b.file
     end)
     return plan
-end
-
---------------------------------------------------------------------------------
--- Directory ordering
---------------------------------------------------------------------------------
--- Modules are INCLUDED in dependency order, not alphabetical order.
---
--- `depends` used to govern only the lifecycle, while files were included by
--- directory name — which worked for eleven milestones purely because every
--- module happened to sort after the ones it needed. `business` was the first
--- that did not (b before inventory, organizations, treasury) and it failed at
--- boot indexing a namespace that had not been created yet.
---
--- Shared files legitimately use their dependencies at include time: an item
--- catalogue calls Omerta.Items.Register, a venue list validates against it.
--- Making the include order match the declared order is the fix; the
--- alternative is a rule every future module has to remember.
-
--- Pulls `name` and `depends` out of a module's source without running it.
--- Returns name, depends — or nil when this file registers no module.
--- Pure, so the parsing is covered headlessly rather than trusted.
-function Omerta.Module.ParseRegistration(source)
-    if type(source) ~= "string" then return nil end
-    local block = source:match("Omerta%.Module%.Register%s*%(%s*{(.-)}%s*%)")
-    if not block then return nil end
-    -- Comments are stripped first: a sentence mentioning depends = { ... }
-    -- inside the block would otherwise be read as the declaration.
-    block = block:gsub("%-%-[^\n]*", "")
-
-    local name = block:match("name%s*=%s*[\"']([%w_]+)[\"']")
-    if not name then return nil end
-
-    local depends = {}
-    local list = block:match("depends%s*=%s*{(.-)}")
-    for dep in (list or ""):gmatch("[\"']([%w_]+)[\"']") do
-        depends[#depends + 1] = dep
-    end
-    return name, depends
-end
-
--- Orders directories so a module is always included after everything it
--- declares. `scanned` is an array of { dir, name, depends }.
--- Directories whose registration could not be read keep alphabetical order and
--- go last, where they will fail loudly on their own terms.
--- Returns an array of directory names, or nil + reason.
-function Omerta.Module.PlanDirectoryOrder(scanned)
-    local byName, names, unscannable = {}, {}, {}
-    for _, entry in ipairs(scanned) do
-        if entry.name then
-            if byName[entry.name] then
-                return nil, "two directories register a module named '" .. entry.name .. "'"
-            end
-            byName[entry.name] = entry
-            names[#names + 1] = entry.name
-        else
-            unscannable[#unscannable + 1] = entry.dir
-        end
-    end
-    table.sort(names)       -- deterministic tiebreak
-    table.sort(unscannable)
-
-    local sorted, err = Omerta.Util.TopoSort(names, function(name)
-        -- A dependency on something that is not a directory here is a
-        -- lifecycle problem, not an ordering one — FinishLoading reports it
-        -- with better context, so ordering simply ignores it.
-        local out = {}
-        for _, dep in ipairs(byName[name].depends or {}) do
-            if byName[dep] then out[#out + 1] = dep end
-        end
-        return out
-    end)
-    if not sorted then return nil, err end
-
-    local order = {}
-    for _, name in ipairs(sorted) do order[#order + 1] = byName[name].dir end
-    for _, dir in ipairs(unscannable) do order[#order + 1] = dir end
-    return order
 end
 
 -- Engine edge: include a planned file with the realm rules applied.
@@ -236,43 +180,46 @@ function Omerta.Module.IncludeAll(basePath)
             #dirs, basePath, table.concat(dirs, ", "))
     end
 
-    -- Read each directory's registration before including anything, so the
-    -- include order can honour the dependency graph rather than the alphabet.
-    local scanned = {}
+    -- PHASE 1: registration only.
+    --
+    -- Every module directory carries an sh_module.lua containing nothing but
+    -- its Omerta.Module.Register call, so the whole graph can be known before
+    -- any real code runs. Order does not matter here — these files declare and
+    -- do nothing else.
+    --
+    -- This exists because `depends` used to govern only the lifecycle while
+    -- files were included by directory name. That worked for eleven milestones
+    -- purely because every module happened to sort after the ones it needed,
+    -- and then `business` did not (b before inventory, organizations,
+    -- treasury). Shared files legitimately use their dependencies at include
+    -- time — an item catalogue calls Omerta.Items.Register — so the include
+    -- order has to match the declared one.
     for _, dir in ipairs(dirs) do
-        local entry = { dir = dir }
-        for _, f in ipairs(file.Find(basePath .. "/" .. dir .. "/sh_*.lua", "LUA") or {}) do
-            local source = file.Read(basePath .. "/" .. dir .. "/" .. f, "LUA")
-            local name, depends = Omerta.Module.ParseRegistration(source or "")
-            if name then
-                entry.name, entry.depends = name, depends
-                break
-            end
+        local path = basePath .. "/" .. dir .. "/sh_module.lua"
+        if not file.Exists(path, "LUA") then
+            error(string.format("module directory '%s' has no sh_module.lua — " ..
+                "every module declares its name and dependencies there", dir))
         end
-        scanned[#scanned + 1] = entry
+        if SERVER then AddCSLuaFile(path) end
+        include(path)
+        if not defs[dir] then
+            error("module directory '" .. dir .. "' did not register a module named '" .. dir .. "'")
+        end
     end
 
-    local ordered, orderErr = Omerta.Module.PlanDirectoryOrder(scanned)
-    if not ordered then error("module include order: " .. orderErr) end
-    dirs = ordered
-
+    -- PHASE 2: everything else, in dependency order. resolveOrder is the same
+    -- topological sort the lifecycle uses, so include order and lifecycle
+    -- order cannot drift apart.
+    dirs = resolveOrder()
     Omerta.Log.Debug("module", "include order: %s", table.concat(dirs, ", "))
 
     for _, dir in ipairs(dirs) do
-        if defs[dir] then
-            error("module directory '" .. dir .. "' collides with an already-registered module")
-        end
-
         local files = file.Find(basePath .. "/" .. dir .. "/*.lua", "LUA")
         local plan, why = Omerta.Module.PlanIncludes(basePath, dir, files)
         if not plan then error(why) end
 
         for _, entry in ipairs(plan) do
             executePlanEntry(entry)
-        end
-
-        if not defs[dir] then
-            error("module directory '" .. dir .. "' did not register a module named '" .. dir .. "'")
         end
     end
 

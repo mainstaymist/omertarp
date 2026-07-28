@@ -42,13 +42,13 @@ end)
 
 suite("lint.module_registration")
 
--- The loader reads each module's `depends` out of its source, before running
--- anything, so it can include directories in dependency order. That parse is a
--- pattern over source, so a module written in a shape it cannot read would
--- silently fall back to alphabetical order and break at boot — exactly the
--- failure the ordering exists to prevent. So every module is checked here.
-check("every module directory declares a readable registration", function()
-    ReloadCore() -- this check uses the parser itself, so load it explicitly
+-- Every module directory carries an sh_module.lua containing nothing but its
+-- Register call. The loader includes those first, for every module, so the
+-- dependency graph is known before any real code runs and directories can be
+-- included in the order they declare. A module missing one, or registering
+-- under the wrong name, breaks that ordering at boot — on the client first,
+-- where the failure is hardest to read.
+check("every module directory registers itself in sh_module.lua", function()
     local dirs = {}
     local pipe = io.popen("find gamemodes/*/gamemode/modules -mindepth 1 -maxdepth 1 -type d 2>/dev/null")
     if pipe then
@@ -59,31 +59,52 @@ check("every module directory declares a readable registration", function()
 
     local offenders = {}
     for _, dir in ipairs(dirs) do
-        local found = nil
-        local files = io.popen("ls " .. dir .. "/sh_*.lua 2>/dev/null")
-        if files then
-            for path in files:lines() do
-                local handle = io.open(path, "r")
-                if handle then
-                    local source = handle:read("*a")
-                    handle:close()
-                    local name = Omerta.Module.ParseRegistration(source)
-                    if name then found = name break end
-                end
-            end
-            files:close()
-        end
-
         local expected = dir:match("([^/]+)$")
-        if not found then
-            offenders[#offenders + 1] = dir .. " (no readable registration)"
-        elseif found ~= expected then
-            offenders[#offenders + 1] = dir .. " (registers '" .. found .. "')"
+        local handle = io.open(dir .. "/sh_module.lua", "r")
+        if not handle then
+            offenders[#offenders + 1] = expected .. " (no sh_module.lua)"
+        else
+            local source = handle:read("*a")
+            handle:close()
+            if not source:find('name%s*=%s*"' .. expected .. '"') then
+                offenders[#offenders + 1] = expected .. " (registers a different name)"
+            end
         end
     end
 
     assert(#offenders == 0,
-        "module registration is unreadable or misnamed at " .. table.concat(offenders, ", "))
+        "module registration is missing or misnamed at " .. table.concat(offenders, ", "))
+end)
+
+-- The registration file declares and does nothing else. Anything it touched
+-- would run before every other module had even registered, which is the exact
+-- ordering problem the two-phase include exists to remove.
+check("a registration file does nothing but register", function()
+    local offenders = {}
+    local pipe = io.popen("find gamemodes/*/gamemode/modules -name sh_module.lua 2>/dev/null")
+    if pipe then
+        for path in pipe:lines() do
+            local handle = io.open(path, "r")
+            if handle then
+                local lineNumber = 0
+                local inBlock = false
+                for line in handle:lines() do
+                    lineNumber = lineNumber + 1
+                    local code = line:gsub("%-%-.*$", ""):gsub("%s+$", "")
+                    if code:find("Omerta%.Module%.Register") then inBlock = true end
+                    if inBlock and code:find("^%}%)") then inBlock = false
+                    elseif not inBlock and code ~= "" and code:find("Omerta%.") then
+                        offenders[#offenders + 1] = path .. ":" .. lineNumber
+                    end
+                end
+                handle:close()
+            end
+        end
+        pipe:close()
+    end
+
+    assert(#offenders == 0,
+        "a registration file does more than register at " .. table.concat(offenders, ", "))
 end)
 
 suite("lint.sql_aliases")

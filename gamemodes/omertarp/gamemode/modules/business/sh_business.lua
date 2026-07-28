@@ -4,10 +4,6 @@
 -- stock room you can empty. Types are definitions in code, like items and
 -- institutions, because what a speakeasy *is* belongs in version control.
 
-Omerta.Module.Register({
-    name = "business",
-    depends = { "organizations", "treasury", "inventory", "chat" },
-})
 
 Omerta.Business = Omerta.Business or {}
 Omerta.Business.Internal = Omerta.Business.Internal or {}

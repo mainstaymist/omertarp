@@ -3,12 +3,14 @@
 -- driver — the same technique that caught M1's queue bug before it shipped.
 
 local DB_FILES = {
+    "gamemodes/omertarp/gamemode/modules/database/sh_module.lua",
     "gamemodes/omertarp/gamemode/modules/database/sh_database.lua",
     "gamemodes/omertarp/gamemode/modules/database/sv_schema.lua",
     "gamemodes/omertarp/gamemode/modules/database/sv_sqlbuild.lua",
     "gamemodes/omertarp/gamemode/modules/database/sv_database.lua",
 }
 local ACCOUNT_FILES = {
+    "gamemodes/omertarp/gamemode/modules/accounts/sh_module.lua",
     "gamemodes/omertarp/gamemode/modules/accounts/sh_accounts.lua",
     "gamemodes/omertarp/gamemode/modules/accounts/sv_repository.lua",
     "gamemodes/omertarp/gamemode/modules/accounts/sv_accounts.lua",

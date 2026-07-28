@@ -6,10 +6,6 @@
 -- the same function on arrival and the database's unique index has the final
 -- word on collisions.
 
-Omerta.Module.Register({
-    name = "characters",
-    depends = { "database", "accounts", "seasons" },
-})
 
 Omerta.Characters = Omerta.Characters or {}
 

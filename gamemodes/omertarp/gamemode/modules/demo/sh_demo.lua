@@ -9,11 +9,7 @@
 -- sends a validated request, the server audits it and replies to that client
 -- only, and the client logs the round-trip.
 
-local MODULE = Omerta.Module.Register({
-    name = "demo",
-    depends = {},
-})
-
+local MODULE = Omerta.Module.Get("demo")
 if SERVER then
     Omerta.Config.Define("demo.enabled", {
         type = "boolean",

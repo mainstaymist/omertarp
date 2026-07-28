@@ -5,10 +5,6 @@
 -- is told one resolved name at a time, for one person it is currently looking
 -- at, and can never enumerate.
 
-Omerta.Module.Register({
-    name = "identity",
-    depends = { "database", "characters", "interaction", "hud" },
-})
 
 Omerta.Identity = Omerta.Identity or {}
 

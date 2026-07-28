@@ -5,10 +5,6 @@
 -- cannot find, which is why it ships with an audit (sv_population.lua) rather
 -- than trusting that the suppressions stay installed.
 
-Omerta.Module.Register({
-    name = "population",
-    depends = { "characters", "identity" },
-})
 
 Omerta.Population = Omerta.Population or {}
 

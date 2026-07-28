@@ -7,13 +7,6 @@
 -- than trusted, because it is the rule most likely to be broken by somebody in
 -- a hurry two years from now.
 
-Omerta.Module.Register({
-    name = "treasury",
-    -- `organizations` for the owner and the ladder, `inventory` because the
-    -- safe is a container full of real money, `chat` because every refusal
-    -- reaches the player as a notice.
-    depends = { "organizations", "inventory", "chat" },
-})
 
 Omerta.Procurement = Omerta.Procurement or {}
 Omerta.Treasury = Omerta.Treasury or {}

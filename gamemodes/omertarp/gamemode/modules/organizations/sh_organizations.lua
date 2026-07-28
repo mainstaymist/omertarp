@@ -10,13 +10,6 @@
 -- criminal underworld to anyone with a Lua console. M6's audit treats a second
 -- team as a leak precisely because of this.
 
-Omerta.Module.Register({
-    name = "organizations",
-    -- `inventory` because a uniform is an item (§4c); `identity` because
-    -- induction is an introduction (§4b) and the officer title resolves
-    -- through M5; `chat` because every refusal reaches the player as a notice.
-    depends = { "characters", "identity", "interaction", "chat", "inventory" },
-})
 
 Omerta.Organizations = Omerta.Organizations or {}
 Omerta.Organizations.Internal = Omerta.Organizations.Internal or {}

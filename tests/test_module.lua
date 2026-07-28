@@ -121,116 +121,114 @@ suite("module.include_order")
 
 -- `depends` used to govern only the lifecycle while files were included by
 -- directory name. That worked for eleven milestones by luck — every module
--- happened to sort after the ones it needed — and then `business` did not.
+-- happened to sort after the ones it needed — and then `business` did not,
+-- sorting before inventory, organizations and treasury.
+--
+-- The fix is a two-phase include: every module's sh_module.lua goes first, so
+-- the whole graph is known, and everything else follows in dependency order.
+-- An earlier attempt parsed `depends` out of the source instead, which worked
+-- on the server and silently did nothing on the client, where gamemode Lua
+-- lives in a cache that file.Read cannot see. Hence: no reading, just an
+-- ordering pass over what has already registered.
 
-check("a registration is read out of source without running it", function()
+check("the registration file is not included a second time", function()
     ReloadCore()
-    local P = Omerta.Module.ParseRegistration
-
-    local name, depends = P([[
-Omerta.Module.Register({
-    name = "business",
-    depends = { "organizations", "treasury", "inventory", "chat" },
-})
-]])
-    assert(name == "business", tostring(name))
-    assert(#depends == 4 and depends[1] == "organizations", "depends did not parse")
-
-    -- No dependencies at all.
-    name, depends = P('Omerta.Module.Register({ name = "database", depends = {} })')
-    assert(name == "database" and #depends == 0)
-
-    -- Depends omitted entirely.
-    name, depends = P('Omerta.Module.Register({ name = "solo" })')
-    assert(name == "solo" and #depends == 0)
-end)
-
-check("comments inside the block cannot be mistaken for the declaration", function()
-    ReloadCore()
-    local name, depends = Omerta.Module.ParseRegistration([[
-Omerta.Module.Register({
-    name = "phone",
-    -- `chat` for the voice seam. Not depends = { "nonsense" } but prose.
-    depends = { "chat", "inventory" },
-})
-]])
-    assert(name == "phone", tostring(name))
-    assert(#depends == 2 and depends[1] == "chat" and depends[2] == "inventory",
-        "a comment was parsed as the declaration")
-end)
-
-check("a file that registers nothing parses to nothing", function()
-    ReloadCore()
-    local P = Omerta.Module.ParseRegistration
-    assert(P("local x = 1") == nil)
-    assert(P("") == nil)
-    assert(P(nil) == nil)
-    -- A registration with no name is not a registration.
-    assert(P('Omerta.Module.Register({ depends = { "x" } })') == nil)
-end)
-
-check("directories are ordered so a module follows what it depends on", function()
-    ReloadCore()
-    -- Deliberately alphabetical-hostile: `business` sorts first and needs
-    -- almost everything. This is the real graph that broke the boot.
-    local order, err = Omerta.Module.PlanDirectoryOrder({
-        { dir = "business",  name = "business",  depends = { "inventory", "treasury" } },
-        { dir = "chat",      name = "chat",      depends = {} },
-        { dir = "inventory", name = "inventory", depends = { "chat" } },
-        { dir = "treasury",  name = "treasury",  depends = { "inventory" } },
+    -- Phase 1 already ran it; planning it again would register the module twice
+    -- and abort the boot.
+    local plan = Omerta.Module.PlanIncludes("base", "business", {
+        "sh_module.lua", "sh_business.lua", "sv_business.lua", "cl_business.lua",
     })
-    assert(order, tostring(err))
+    for _, entry in ipairs(plan) do
+        assert(entry.file ~= Omerta.Module.REGISTRATION_FILE,
+            "sh_module.lua must not be planned in phase 2")
+    end
+    assert(#plan == 3, "expected the other three files, got " .. #plan)
+end)
 
+check("a module directory with only a registration file plans nothing", function()
+    ReloadCore()
+    local plan = Omerta.Module.PlanIncludes("base", "empty", { "sh_module.lua" })
+    assert(plan and #plan == 0, "a registration-only module has nothing left to include")
+end)
+
+check("an unprefixed file is still refused", function()
+    ReloadCore()
+    local plan, why = Omerta.Module.PlanIncludes("base", "x", { "sh_module.lua", "helpers.lua" })
+    assert(plan == nil, "an unprefixed file must still be an error")
+    assert(why and why:find("realm prefix"), tostring(why))
+end)
+
+-- Include order and lifecycle order come from the same topological sort now,
+-- so they cannot drift apart. This drives the real shape that broke the boot.
+check("include order follows dependencies, not the alphabet", function()
+    ReloadCore()
+    Omerta.Module.Register({ name = "business", depends = { "inventory", "treasury" } })
+    Omerta.Module.Register({ name = "chat", depends = {} })
+    Omerta.Module.Register({ name = "inventory", depends = { "chat" } })
+    Omerta.Module.Register({ name = "treasury", depends = { "inventory" } })
+    Omerta.Module.FinishLoading()
+
+    local order = Omerta.Module.GetOrder()
     local position = {}
-    for i, dir in ipairs(order) do position[dir] = i end
+    for i, name in ipairs(order) do position[name] = i end
+
     assert(position.chat < position.inventory, "chat must come before inventory")
     assert(position.inventory < position.treasury, "inventory before treasury")
     assert(position.treasury < position.business, "treasury before business")
-    assert(position.business == 4, "business should be last, got " .. position.business)
+    assert(position.business == 4, "business sorts first alphabetically and must load last")
 end)
 
-check("the order is deterministic across equally-valid arrangements", function()
+check("independent modules keep a stable, alphabetical order", function()
     ReloadCore()
-    local first = Omerta.Module.PlanDirectoryOrder({
-        { dir = "b", name = "b", depends = {} },
-        { dir = "a", name = "a", depends = {} },
-        { dir = "c", name = "c", depends = {} },
-    })
-    local second = Omerta.Module.PlanDirectoryOrder({
-        { dir = "c", name = "c", depends = {} },
-        { dir = "b", name = "b", depends = {} },
-        { dir = "a", name = "a", depends = {} },
-    })
-    assert(table.concat(first, ",") == table.concat(second, ","),
-        "scan order should not change the include order")
-    assert(first[1] == "a", "independent modules keep alphabetical order")
+    Omerta.Module.Register({ name = "cc", depends = {} })
+    Omerta.Module.Register({ name = "aa", depends = {} })
+    Omerta.Module.Register({ name = "bb", depends = {} })
+    Omerta.Module.FinishLoading()
+    assert(table.concat(Omerta.Module.GetOrder(), ",") == "aa,bb,cc",
+        "registration order must not decide include order")
 end)
 
-check("a dependency on something absent is left to the lifecycle to report", function()
-    ReloadCore()
-    -- Ordering ignores it; FinishLoading refuses it with better context.
-    local order = Omerta.Module.PlanDirectoryOrder({
-        { dir = "lonely", name = "lonely", depends = { "nothing_here" } },
-    })
-    assert(order and order[1] == "lonely", "ordering should not fail on this")
-end)
+-- The strongest test of the ordering: boot the real module graph exactly as
+-- the server does. Phase 1 registers everything, phase 2 includes every shared
+-- and server file in the resolved order. If a module reaches for a dependency
+-- that has not loaded, this fails here rather than in a server console.
+check("the real module graph includes cleanly in dependency order", function()
+    local base = "gamemodes/omertarp/gamemode/modules"
+    local dirs = {}
+    local pipe = io.popen("ls -1 " .. base .. " 2>/dev/null")
+    if pipe then
+        for d in pipe:lines() do dirs[#dirs + 1] = d end
+        pipe:close()
+    end
+    assert(#dirs > 0, "no module directories found")
 
-check("a circular dependency is refused rather than guessed at", function()
     ReloadCore()
-    local order, err = Omerta.Module.PlanDirectoryOrder({
-        { dir = "a", name = "a", depends = { "b" } },
-        { dir = "b", name = "b", depends = { "a" } },
-    })
-    assert(order == nil, "a cycle must not produce an order")
-    assert(err and err:find("circular"), tostring(err))
-end)
+    for _, d in ipairs(dirs) do dofile(base .. "/" .. d .. "/sh_module.lua") end
+    Omerta.Module.FinishLoading()
 
-check("unreadable directories go last instead of stopping the boot", function()
-    ReloadCore()
-    local order = Omerta.Module.PlanDirectoryOrder({
-        { dir = "mystery" },
-        { dir = "chat", name = "chat", depends = {} },
-    })
-    assert(order[1] == "chat" and order[2] == "mystery",
-        "an unscannable directory should sort last and fail on its own terms")
+    local order = Omerta.Module.GetOrder()
+    assert(#order == #dirs, "every directory should have registered exactly one module")
+
+    for _, d in ipairs(order) do
+        local files = {}
+        local listing = io.popen("ls -1 " .. base .. "/" .. d .. "/sh_*.lua " ..
+            base .. "/" .. d .. "/sv_*.lua 2>/dev/null")
+        if listing then
+            for path in listing:lines() do files[#files + 1] = path end
+            listing:close()
+        end
+        -- Shared before server, alphabetical within each, matching PlanIncludes.
+        table.sort(files, function(a, b)
+            local ra = a:find("/sh_") and 1 or 2
+            local rb = b:find("/sh_") and 1 or 2
+            if ra ~= rb then return ra < rb end
+            return a < b
+        end)
+        for _, path in ipairs(files) do
+            if not path:find("sh_module%.lua$") then
+                local ok, err = pcall(dofile, path)
+                assert(ok, "including " .. path .. " failed: " .. tostring(err))
+            end
+        end
+    end
 end)
