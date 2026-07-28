@@ -1,6 +1,6 @@
 # Design Review — M12: Telephony (Payphones and Private Lines)
 
-Status: **APPROVED 2026-07-27 — IMPLEMENTED** (§4a, §4b and §4c all ruled (a); logged as D-027, D-028 and D-029). See §13.
+Status: **APPROVED 2026-07-27 — IMPLEMENTED AND VERIFIED IN-ENGINE** (lines installed, a call placed, rung, timed out, and recorded from both ends). §4a, §4b and §4c all ruled (a); logged as D-027, D-028 and D-029. See §13.
 Milestone: M12 (roadmap Track B). Depends on: M7 (speech and the voice hook), M9 (quarters), M11 (a private line is bought), S1 (answered — `docs/review/05_voice_routing_spike.md`). Consumed by: M13 (a business has a line), M14 (calling ahead, and calling for help), M15 (call records are evidence), M18 (the booking phone call), M21 (a tip-off to the newspaper).
 
 > **Three rulings needed** (§4): how a number becomes known, whether bystanders can hear the far end, and who may read call records.
