@@ -114,3 +114,123 @@ check("shared files load first, then realm files, deterministically", function()
         assert(a[i].file == b[i].file, "order differs at " .. i)
     end
 end)
+
+--------------------------------------------------------------------------------
+suite("module.include_order")
+--------------------------------------------------------------------------------
+
+-- `depends` used to govern only the lifecycle while files were included by
+-- directory name. That worked for eleven milestones by luck — every module
+-- happened to sort after the ones it needed — and then `business` did not.
+
+check("a registration is read out of source without running it", function()
+    ReloadCore()
+    local P = Omerta.Module.ParseRegistration
+
+    local name, depends = P([[
+Omerta.Module.Register({
+    name = "business",
+    depends = { "organizations", "treasury", "inventory", "chat" },
+})
+]])
+    assert(name == "business", tostring(name))
+    assert(#depends == 4 and depends[1] == "organizations", "depends did not parse")
+
+    -- No dependencies at all.
+    name, depends = P('Omerta.Module.Register({ name = "database", depends = {} })')
+    assert(name == "database" and #depends == 0)
+
+    -- Depends omitted entirely.
+    name, depends = P('Omerta.Module.Register({ name = "solo" })')
+    assert(name == "solo" and #depends == 0)
+end)
+
+check("comments inside the block cannot be mistaken for the declaration", function()
+    ReloadCore()
+    local name, depends = Omerta.Module.ParseRegistration([[
+Omerta.Module.Register({
+    name = "phone",
+    -- `chat` for the voice seam. Not depends = { "nonsense" } but prose.
+    depends = { "chat", "inventory" },
+})
+]])
+    assert(name == "phone", tostring(name))
+    assert(#depends == 2 and depends[1] == "chat" and depends[2] == "inventory",
+        "a comment was parsed as the declaration")
+end)
+
+check("a file that registers nothing parses to nothing", function()
+    ReloadCore()
+    local P = Omerta.Module.ParseRegistration
+    assert(P("local x = 1") == nil)
+    assert(P("") == nil)
+    assert(P(nil) == nil)
+    -- A registration with no name is not a registration.
+    assert(P('Omerta.Module.Register({ depends = { "x" } })') == nil)
+end)
+
+check("directories are ordered so a module follows what it depends on", function()
+    ReloadCore()
+    -- Deliberately alphabetical-hostile: `business` sorts first and needs
+    -- almost everything. This is the real graph that broke the boot.
+    local order, err = Omerta.Module.PlanDirectoryOrder({
+        { dir = "business",  name = "business",  depends = { "inventory", "treasury" } },
+        { dir = "chat",      name = "chat",      depends = {} },
+        { dir = "inventory", name = "inventory", depends = { "chat" } },
+        { dir = "treasury",  name = "treasury",  depends = { "inventory" } },
+    })
+    assert(order, tostring(err))
+
+    local position = {}
+    for i, dir in ipairs(order) do position[dir] = i end
+    assert(position.chat < position.inventory, "chat must come before inventory")
+    assert(position.inventory < position.treasury, "inventory before treasury")
+    assert(position.treasury < position.business, "treasury before business")
+    assert(position.business == 4, "business should be last, got " .. position.business)
+end)
+
+check("the order is deterministic across equally-valid arrangements", function()
+    ReloadCore()
+    local first = Omerta.Module.PlanDirectoryOrder({
+        { dir = "b", name = "b", depends = {} },
+        { dir = "a", name = "a", depends = {} },
+        { dir = "c", name = "c", depends = {} },
+    })
+    local second = Omerta.Module.PlanDirectoryOrder({
+        { dir = "c", name = "c", depends = {} },
+        { dir = "b", name = "b", depends = {} },
+        { dir = "a", name = "a", depends = {} },
+    })
+    assert(table.concat(first, ",") == table.concat(second, ","),
+        "scan order should not change the include order")
+    assert(first[1] == "a", "independent modules keep alphabetical order")
+end)
+
+check("a dependency on something absent is left to the lifecycle to report", function()
+    ReloadCore()
+    -- Ordering ignores it; FinishLoading refuses it with better context.
+    local order = Omerta.Module.PlanDirectoryOrder({
+        { dir = "lonely", name = "lonely", depends = { "nothing_here" } },
+    })
+    assert(order and order[1] == "lonely", "ordering should not fail on this")
+end)
+
+check("a circular dependency is refused rather than guessed at", function()
+    ReloadCore()
+    local order, err = Omerta.Module.PlanDirectoryOrder({
+        { dir = "a", name = "a", depends = { "b" } },
+        { dir = "b", name = "b", depends = { "a" } },
+    })
+    assert(order == nil, "a cycle must not produce an order")
+    assert(err and err:find("circular"), tostring(err))
+end)
+
+check("unreadable directories go last instead of stopping the boot", function()
+    ReloadCore()
+    local order = Omerta.Module.PlanDirectoryOrder({
+        { dir = "mystery" },
+        { dir = "chat", name = "chat", depends = {} },
+    })
+    assert(order[1] == "chat" and order[2] == "mystery",
+        "an unscannable directory should sort last and fail on its own terms")
+end)

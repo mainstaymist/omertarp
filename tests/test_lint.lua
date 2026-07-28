@@ -40,6 +40,52 @@ check("the GM global is never used inside a block", function()
         table.concat(offenders, ", "))
 end)
 
+suite("lint.module_registration")
+
+-- The loader reads each module's `depends` out of its source, before running
+-- anything, so it can include directories in dependency order. That parse is a
+-- pattern over source, so a module written in a shape it cannot read would
+-- silently fall back to alphabetical order and break at boot — exactly the
+-- failure the ordering exists to prevent. So every module is checked here.
+check("every module directory declares a readable registration", function()
+    ReloadCore() -- this check uses the parser itself, so load it explicitly
+    local dirs = {}
+    local pipe = io.popen("find gamemodes/*/gamemode/modules -mindepth 1 -maxdepth 1 -type d 2>/dev/null")
+    if pipe then
+        for line in pipe:lines() do dirs[#dirs + 1] = line end
+        pipe:close()
+    end
+    assert(#dirs > 0, "linter found no module directories to scan")
+
+    local offenders = {}
+    for _, dir in ipairs(dirs) do
+        local found = nil
+        local files = io.popen("ls " .. dir .. "/sh_*.lua 2>/dev/null")
+        if files then
+            for path in files:lines() do
+                local handle = io.open(path, "r")
+                if handle then
+                    local source = handle:read("*a")
+                    handle:close()
+                    local name = Omerta.Module.ParseRegistration(source)
+                    if name then found = name break end
+                end
+            end
+            files:close()
+        end
+
+        local expected = dir:match("([^/]+)$")
+        if not found then
+            offenders[#offenders + 1] = dir .. " (no readable registration)"
+        elseif found ~= expected then
+            offenders[#offenders + 1] = dir .. " (registers '" .. found .. "')"
+        end
+    end
+
+    assert(#offenders == 0,
+        "module registration is unreadable or misnamed at " .. table.concat(offenders, ", "))
+end)
+
 suite("lint.sql_aliases")
 
 -- A reserved word is just as reserved when it is a column ALIAS: renaming a

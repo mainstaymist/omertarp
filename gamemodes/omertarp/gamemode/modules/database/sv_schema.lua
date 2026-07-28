@@ -4,8 +4,12 @@
 --
 -- Everything in this file is pure (no engine calls), so the headless suite
 -- covers it directly. Cross-file references (Internal.FormatValue) happen at
--- call time, never at include time — module files must not call siblings while
--- loading, because include order is alphabetical.
+-- call time, never at include time — within a directory, files load in realm
+-- order and then alphabetically, so a sibling may not have run yet.
+--
+-- Across directories the loader now includes in dependency order (M13), so a
+-- module CAN use its declared dependencies at include time. It still may not
+-- use anything it has not declared.
 
 Omerta.DB = Omerta.DB or {}
 Omerta.DB.Internal = Omerta.DB.Internal or {}

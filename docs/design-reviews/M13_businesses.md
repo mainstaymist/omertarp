@@ -167,6 +167,12 @@ M0 (config, net, log), M1 (migration 11), M2 (audit), M3 (`Seasons.WhenReady`), 
 
 Implemented as `modules/business/`. The headless suite grew from 238 to 255 checks.
 
+**A load-order fault in the module system, found by being the first module to trip it.** `depends` governed only the *lifecycle*; files were included in directory-name order. That worked for eleven milestones purely because every module happened to sort after the ones it needed — and `business` is the first that does not (`b` before `inventory`, `organizations`, `treasury`). It failed at boot indexing `Omerta.Items` before the inventory module existed.
+
+Shared files legitimately use their dependencies at include time: an item catalogue calls `Omerta.Items.Register`, a venue list validates prices against `Omerta.Money`. So the fix is the loader, not this milestone. Directories are now scanned for their `depends` declaration *before* anything is included — a pattern over source, no execution — and included in dependency order through the topological sort the lifecycle already used. A lint asserts every module's registration stays readable by that parser, because a module written in a shape it cannot read would silently fall back to alphabetical and break at boot: precisely the failure the ordering exists to prevent.
+
+The real graph now resolves to `database, accounts, seasons, characters, hud, interaction, identity, chat, inventory, organizations, treasury, business, demo, phone, population`, with every dependency ahead of its dependent.
+
 **Owning the place is not the same as running it.** The role resolver turned out to be the interesting part: a soldier in the family that owns a bar is *not* automatically behind its counter. Rather than inventing a second ladder, it asks a question M10 already answers — whoever holds `TREASURY_VIEW` handles the family's money, so they can run its premises; everybody else has to be hired onto the roster like anybody else. A rival family's Capo is nobody here, rank or no rank.
 
 **Q-12's rule has nowhere to express "was standing in the room", by construction.** `IsForceable` takes two sets — organizations with a connected member, and connected characters — and no position at all. That is the ruling made structural rather than remembered: there is no argument to pass that would let presence creep back in. M13 has no forcing path of its own, so the rule is exposed and tested here and consulted by M14; saying so plainly is better than pretending the milestone enforces something it cannot yet reach.
