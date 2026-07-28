@@ -18,7 +18,7 @@ That completes Track A.
 
 **M11 (treasury and procurement) is implemented and verified in-engine.** A treasury is a **safe** — physical cash in a container with a location on the map — and the ledger beside it is append-only. The two are allowed to disagree, and that disagreement is embezzlement, a robbery, or a Don who has been skimming (D-024). Spending is capped by rank, with larger amounts needing a second member present who can cover them (D-025), and procurement buys objects from a data-driven catalogue, never statistics (D-026).
 
-**M12 (telephony) is in design review and awaiting approval.** The S1 voice-routing spike is answered: participant-only call audio and spatial local speech are both supported, and they do not compete — but there must be exactly one voice hook in the gamemode, which is a constraint M12 has to honour rather than discover.
+**M12 (telephony) is implemented; in-engine verification pending** (`omerta_phone_selftest`, run in the server console). Payphones and location-bound private lines, with call audio routed to the participants only — a bystander hears the half of the conversation spoken in front of them and nothing of the far end (D-028). Numbers are learned rather than listed, and a payphone's is written on the box so you can be called back there (D-027). Calls are fed with real quarters and stop mid-sentence when they run out (D-003); every call leaves a record of who called whom, for how long, and never a word of what was said (D-029).
 
 ## Repository layout
 
@@ -51,7 +51,7 @@ That completes Track A.
 | [`docs/design-reviews/M9_inventory.md`](docs/design-reviews/M9_inventory.md) | M9 design review — approved and implemented (rules D-018/D-019/D-020). |
 | [`docs/design-reviews/M10_factions.md`](docs/design-reviews/M10_factions.md) | M10 design review — approved, implemented, verified in-engine (rules D-021/D-022/D-023). |
 | [`docs/design-reviews/M11_treasury.md`](docs/design-reviews/M11_treasury.md) | M11 design review — approved, implemented, verified in-engine (rules D-024/D-025/D-026). |
-| [`docs/design-reviews/M12_telephony.md`](docs/design-reviews/M12_telephony.md) | M12 design review — **awaiting approval**; requests three rulings. |
+| [`docs/design-reviews/M12_telephony.md`](docs/design-reviews/M12_telephony.md) | M12 design review — approved and implemented (rules D-027/D-028/D-029). |
 | [`docs/rules/metagaming.md`](docs/rules/metagaming.md) | Player-facing metagaming policy (ships with M6). |
 | [`docs/GLOSSARY.md`](docs/GLOSSARY.md) | Plain-language definitions of the engineering terms used in the design reviews. |
 

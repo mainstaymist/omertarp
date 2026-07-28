@@ -1,6 +1,6 @@
 # Design Review — M12: Telephony (Payphones and Private Lines)
 
-Status: **AWAITING APPROVAL — no implementation until approved.**
+Status: **APPROVED 2026-07-27 — IMPLEMENTED** (§4a, §4b and §4c all ruled (a); logged as D-027, D-028 and D-029). See §13.
 Milestone: M12 (roadmap Track B). Depends on: M7 (speech and the voice hook), M9 (quarters), M11 (a private line is bought), S1 (answered — `docs/review/05_voice_routing_spike.md`). Consumed by: M13 (a business has a line), M14 (calling ahead, and calling for help), M15 (call records are evidence), M18 (the booking phone call), M21 (a tip-off to the newspaper).
 
 > **Three rulings needed** (§4): how a number becomes known, whether bystanders can hear the far end, and who may read call records.
@@ -158,4 +158,39 @@ M0 (config, net, log), M1 (migration 10), M2 (audit), M3 (season scoping and `Wh
 
 ---
 
-**Requesting approval to implement M12 as specified**, with rulings on §4a (how numbers are known — recommend learned, never listed), §4b (bystanders and the far end — recommend they hear only the near half), and §4c (who reads call records — recommend nobody in M12, staff tooling only).
+## 13. Implementation Notes (post-implementation)
+
+Implemented as `modules/phone/`. The headless suite grew from 224 to 238 checks. All three rulings came back as recommended.
+
+**M7's voice hook became a seam before anything else was written**, because S1 said it had to. `Omerta.Chat.RegisterVoiceOverride(id, fn)` is consulted by the gamemode's one and only `PlayerCanHearPlayersVoice` hook; a provider that errors defers rather than silencing anybody. `sv_alltalk` is now checked at boot and forced off with a warning — with it on the engine bypasses the hook entirely and the whole design evaporates without a single error line.
+
+**The first coin goes in when the call connects, not when it is placed.** A payphone that ate a quarter for an unanswered ring would be a fee with a friendly name, and D-003 asked for something you *feed*. Dialling checks you have a quarter; answering spends the first one; the timer spends the rest, one at a time, until your pocket is empty and the call stops mid-sentence.
+
+**Picking up the receiver is one gesture, and the server decides what it meant.** Answering a ringing handset and opening a dial pad are the same physical act, so `Use` calls one function that works out which it was. The one number a handset will tell you is *its own*, printed on the box (D-027) — that is what makes being called back at a payphone possible.
+
+**The text path goes through M7 rather than beside it.** What a mic-less player types is sent to the far end *and* spoken aloud in the room through `Omerta.Chat.Send`, which brings rate limiting, sanitisation, logging and range with it. That gives text exactly the asymmetry D-028 gives voice — bystanders see the near half and nothing of the far one — instead of a second, subtly different conversation system.
+
+**An unassigned number rings and goes unanswered**, rather than refusing. A dial pad that reports "no such line" is a tool for sweeping the map for private lines; one that rings into nothing is a telephone.
+
+**`phone_calls` has no content column and the test asserts it.** A rule somebody has to remember not to break is weaker than a table with nowhere to put the thing.
+
+**A private line installs itself where the family already keeps its money.** M11's procurement seam takes an `onPurchase`, so buying a line places a handset beside the organization's safe and tells the buyer the number. No new placement flow, and it reinforces that the safe is the premises.
+
+Not built, deliberately: reading records in-game (D-029 — that authority is M18's to design), wiretapping (M15), speakerphone (D-028 defers it behind a deliberate action), and any per-pair volume, which S1 §4 established the engine cannot express.
+
+In-engine acceptance (user-side): pull, restart, then **`omerta_phone_selftest` in the SERVER console** — expect 10/10. Then, standing where a payphone should go:
+
+```
+omerta_phone_place payphone
+omerta_phone_place private
+omerta_phone_list
+omerta_money_give 5 <your steamID64>
+```
+
+Walk to the payphone, press **E**, and dial the private line's number. The other handset rings — and so does the screen, for anyone standing near it who cannot hear the bell. Answer it, watch the credit tick down, and let it run out mid-sentence. `omerta_phone_records <number>` prints the record.
+
+**The three-player test is also S1 §5's outstanding confirmation**, and is worth doing before M13: one player at each end of a call, a third standing beside one of them. The third should hear one half of the conversation, positionally, and nothing of the other.
+
+---
+
+**Delivered.** Rulings §4a, §4b and §4c all (a) as recommended; logged as D-027, D-028 and D-029.

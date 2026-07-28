@@ -34,6 +34,34 @@ function Omerta.Chat.RegisterChannel(id, def)
     return def
 end
 
+--------------------------------------------------------------------------------
+-- Voice routing seam (S1)
+--------------------------------------------------------------------------------
+-- There is exactly ONE PlayerCanHearPlayersVoice hook in this gamemode, and
+-- there has to be: hook.Run returns the first non-nil result and listener order
+-- is undefined, so a second hook would make call audio depend on which happened
+-- to run first. The symptom would not be a crash but intermittently inaudible
+-- telephone calls, which is close to undiagnosable from a player report.
+--
+-- Anything that wants a say registers here instead. fn(listener, talker)
+-- returns (canHear, is3D) to decide, or nil to defer to distance.
+
+local voiceOverrides = {}
+
+function Omerta.Chat.RegisterVoiceOverride(id, fn)
+    voiceOverrides[id] = fn
+end
+
+-- Returns canHear, is3D — or nil when nobody has an opinion.
+function Omerta.Chat.VoiceOverride(listener, talker)
+    for _, fn in pairs(voiceOverrides) do
+        local ok, canHear, is3D = pcall(fn, listener, talker)
+        -- A provider that errors defers rather than silencing anyone.
+        if ok and canHear ~= nil then return canHear, is3D end
+    end
+    return nil
+end
+
 -- GetOrdered is what assigns `index`, and the index is what goes on the wire.
 -- Returning a channel before that has ever run hands the caller a definition
 -- with a nil index, which then fails validation inside net.Send — a crash that

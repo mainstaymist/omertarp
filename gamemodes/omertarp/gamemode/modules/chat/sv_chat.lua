@@ -175,13 +175,29 @@ function MODULE:OnEnable()
 
     -- Voice: audible by distance alone, always 3D, never global. Called for
     -- every listener/talker pair, so it stays a distance comparison.
+    -- The gamemode's only voice hook (S1). Systems that route audio some other
+    -- way — M12's telephone, later radios — register an override rather than
+    -- adding a second hook whose ordering nobody controls.
     hook.Add("PlayerCanHearPlayersVoice", "omerta.chat.voice", function(listener, talker)
         if not (IsValid(listener) and IsValid(talker)) then return false end
         if not Omerta.Characters.IsLoaded(talker) then return false end
         if not Omerta.Characters.IsLoaded(listener) then return false end
+
+        local canHear, is3D = Omerta.Chat.VoiceOverride(listener, talker)
+        if canHear ~= nil then return canHear, is3D end
+
         local range = Omerta.Config.Get("chat.voice_range")
         return listener:GetPos():Distance(talker:GetPos()) <= range, true
     end)
+
+    -- With sv_alltalk on, the engine bypasses the hook entirely and everybody
+    -- hears everybody — the whole design evaporates without an error (S1 §4).
+    local allTalk = GetConVar("sv_alltalk")
+    if allTalk and allTalk:GetBool() then
+        Omerta.Log.Warn("chat", "sv_alltalk is on — forcing it off; " ..
+            "it bypasses voice routing entirely")
+        RunConsoleCommand("sv_alltalk", "0")
+    end
 
     hook.Add("PlayerDisconnected", "omerta.chat.bucket_cleanup", function(ply)
         buckets[ply:SteamID64() or "?"] = nil

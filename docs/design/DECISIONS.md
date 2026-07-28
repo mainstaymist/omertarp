@@ -92,6 +92,36 @@ Resolves Q-4. Ending a season automatically retires every living character ("lea
 
 ---
 
+## D-029 — Call records are metadata, and nobody reads them in M12 (DECIDED, 2026-07-27)
+
+Every call writes a record: which line called which line, when, for how long, how it ended. **Never content.** The `phone_calls` table has no column a recording or transcript could go in, so no later milestone can begin storing one without a migration and a conversation.
+
+Records accumulate from day one and are readable by **staff only**. Player-facing access — what a detective may pull, under what authority, and what a wiretap adds — belongs to M15 and M17/M18. Building the read path in M12 would mean inventing police procedure a milestone early, in a review that has no business deciding it.
+
+**Affects:** Tech §23; `docs/design-reviews/M12_telephony.md` §4c; M15 (wiretaps attach here), M18 (the authority to pull a record).
+
+## D-028 — Bystanders hear only the half of a call spoken in front of them (DECIDED, 2026-07-27)
+
+Call audio reaches the participants and nobody else. Somebody standing beside a caller hears **that caller**, positionally, exactly as they would hear any other speech — and hears nothing of the far end. The text path behaves identically: what a mic-less player types is spoken aloud in the room and sent down the line, so they are not playing a different game.
+
+Speakerphone is technically free (S1 §2 — it is one cell of the routing table) and is **deferred, not rejected**: it belongs behind a deliberate action rather than as the default.
+
+**Rationale:** it is what a telephone sounds like from across a room, and it makes overhearing genuinely partial. A witness who heard one side of a conversation is more interesting than one who heard both, and partial information is what this design runs on.
+
+**Affects:** `docs/design-reviews/M12_telephony.md` §4b; `docs/review/05_voice_routing_spike.md`; M7 (gains the voice-override seam); M15 (what a witness can testify to).
+
+## D-027 — Telephone numbers are learned, never listed (DECIDED, 2026-07-27)
+
+There is **no directory**, no lookup and no call history in the dial. A number is four digits — short enough to shout across a bar or write on a scrap of paper, which are the two ways it will ever travel.
+
+A **payphone's number is written on the box**, so anyone standing at one can read it and be called back there. That is the mechanic, not a detail: *"go to the box on Third Street, I'll ring you in ten minutes."* A **private line's** number is known to whoever bought it and to whoever they choose to tell.
+
+Dialling an unassigned number rings and goes unanswered exactly as a real one would, and is rate-limited, so the dial pad cannot be used to sweep the map for private lines.
+
+**Rationale:** a directory hands every player a map of who has what, which is the omniscience this project exists to refuse. Numbers belong to *places*, not people, so they are deliberately not part of M5's identity knowledge — that is the whole point of D-003.
+
+**Affects:** D-003; `docs/design-reviews/M12_telephony.md` §4a; M9 (a number written down is an item).
+
 ## D-026 — Procurement buys objects from an abstract supplier, never statistics (DECIDED, 2026-07-27)
 
 An institution orders from a **data-driven catalogue**. Money leaves the safe and the goods appear in it immediately; the fiction is that your people know a guy. Delivery goes through a single function so that a delay, a courier or a supplier NPC can replace it later without touching payment or authorisation.
