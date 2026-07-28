@@ -5,6 +5,7 @@
 -- ends up looking at whatever your face ends up looking at. That is the whole
 -- reason the body is a real ragdoll rather than a prop lying at a fixed angle.
 
+Omerta.Injury.Client = Omerta.Injury.Client or {}
 local C = Omerta.Injury.Client
 
 --------------------------------------------------------------------------------

@@ -255,38 +255,113 @@ check("no entity networks a private identifier", function()
         table.concat(offenders, ", "))
 end)
 
-suite("lint.repo_capture")
+suite("lint.include_order")
 
--- Files inside a module are included shared-first then ALPHABETICALLY, so
--- sv_injury.lua loads before sv_repository.lua and sv_bodies.lua before both.
--- A file-scope `local Repo = Internal.Repo` therefore captures nil whenever the
--- repository happens to sort later — a load-order bug that is invisible until
--- the first query, and the fourth of its kind on this project.
+-- The fifth load-order bug on this project, made into something a machine
+-- checks rather than something a person remembers.
 --
--- Every shipped module already does the safe thing: reference Internal.Repo at
--- CALL time. This makes the convention enforceable rather than remembered.
-check("no file captures Internal.Repo into a file-scope local", function()
+-- Files inside a module are included shared first, then CLIENT, then server,
+-- alphabetically within each realm. So cl_death.lua loads before cl_injury.lua
+-- and sv_injury.lua before sv_repository.lua. A file-scope
+--
+--     local C = Omerta.Injury.Client
+--
+-- therefore captures nil whenever the file that creates that table sorts
+-- later, and nothing goes wrong until the first hook fires — at which point it
+-- errors once per frame.
+--
+-- The safe idiom, which every shipped module already uses for Internal, is to
+-- create the table in the same file before capturing it:
+--
+--     Omerta.Injury.Client = Omerta.Injury.Client or {}
+--     local C = Omerta.Injury.Client
+--
+-- so whichever file loads first makes it and the rest share the same table.
+-- This lint models the loader's own ordering and flags every capture that is
+-- neither guarded that way nor satisfied by an earlier file.
+
+local REALM_ORDER = { sh = 1, cl = 2, sv = 3 }
+
+local function includeRank(fileName)
+    local prefix = fileName:sub(1, 2)
+    return (REALM_ORDER[prefix] or 9) * 1000, fileName
+end
+
+local function moduleDirs()
+    local dirs = {}
+    local pipe = io.popen("find gamemodes/*/gamemode/modules -mindepth 1 -maxdepth 1 -type d 2>/dev/null")
+    if pipe then
+        for line in pipe:lines() do dirs[#dirs + 1] = line end
+        pipe:close()
+    end
+    return dirs
+end
+
+local function filesIn(dir)
+    local files = {}
+    local pipe = io.popen("ls " .. dir .. "/*.lua 2>/dev/null")
+    if pipe then
+        for path in pipe:lines() do
+            files[#files + 1] = { path = path, name = path:match("([^/]+)$") }
+        end
+        pipe:close()
+    end
+    table.sort(files, function(a, b)
+        local ra = REALM_ORDER[a.name:sub(1, 2)] or 9
+        local rb = REALM_ORDER[b.name:sub(1, 2)] or 9
+        if ra ~= rb then return ra < rb end
+        return a.name < b.name
+    end)
+    return files
+end
+
+check("no file captures a table that has not been created yet", function()
+    local dirs = moduleDirs()
+    assert(#dirs > 0, "linter found no module directories to scan")
+
     local offenders = {}
-    local pipe = io.popen("find gamemodes -path '*/modules/*' -name '*.lua' 2>/dev/null")
-    assert(pipe, "linter could not scan module files")
-    for path in pipe:lines() do
-        -- The repository file itself creates the table, so it is allowed to
-        -- hold a reference to what it just made.
-        if not path:find("sv_repository%.lua$") then
+    for _, dir in ipairs(dirs) do
+        local files = filesIn(dir)
+
+        -- Pass one: which file first creates each namespace path, and which
+        -- files guard it with the `or {}` idiom.
+        local createdAt, guardedIn = {}, {}
+        for index, file in ipairs(files) do
+            for line in io.lines(file.path) do
+                local code = line:gsub("%-%-.*$", "")
+                local lhs, rhs = code:match("^([%w_%.]+)%s*=%s*(.-)$")
+                if lhs and lhs:find("%.") then
+                    if not createdAt[lhs] then createdAt[lhs] = index end
+                    if rhs:find(lhs .. "%s+or%s*{}", 1) or rhs:find("^" .. lhs:gsub("%.", "%%.") .. "%s+or") then
+                        guardedIn[file.name .. "|" .. lhs] = true
+                    end
+                end
+            end
+        end
+
+        -- Pass two: every file-scope capture, checked against that.
+        for index, file in ipairs(files) do
             local lineNumber = 0
-            for line in io.lines(path) do
+            for line in io.lines(file.path) do
                 lineNumber = lineNumber + 1
                 local code = line:gsub("%-%-.*$", "")
-                if code:find("^local%s+[%w_]+%s*=%s*[%w_%.]*Internal%.Repo%s*$")
-                        or code:find("^local%s+[%w_]+%s*=%s*[%w_%.]*Internal%.Repo%s*[^%.%w(]") then
-                    offenders[#offenders + 1] = path .. ":" .. lineNumber
+                local path = code:match("^local%s+[%w_]+%s*=%s*([%w_%.]+)%s*$")
+                -- Needs at least two dots to be a module sub-table rather than
+                -- a plain global, and must not be a call.
+                if path and select(2, path:gsub("%.", "")) >= 2 then
+                    local origin = createdAt[path]
+                    local guarded = guardedIn[file.name .. "|" .. path]
+                    if origin and origin > index and not guarded then
+                        offenders[#offenders + 1] = string.format(
+                            "%s:%d captures %s, created later in %s",
+                            file.path, lineNumber, path, files[origin].name)
+                    end
                 end
             end
         end
     end
-    pipe:close()
 
     assert(#offenders == 0,
-        "Internal.Repo captured at file scope (reference it at call time) at " ..
-        table.concat(offenders, ", "))
+        "file-scope capture of a not-yet-created table (add `X = X or {}` first) at " ..
+        table.concat(offenders, "; "))
 end)

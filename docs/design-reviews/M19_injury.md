@@ -280,3 +280,11 @@ Three consequences, each handled rather than worked around:
 **Every presentation curve is in the shared file**, not the `cl_` files that draw them — the vignette reach, the heartbeat rate, the camera phases and easing, the fade timings, the loop envelope. Arithmetic in a `cl_` file is arithmetic nothing can test, which is the same reason M8 put `StepAlpha` in its shared file.
 
 Suite: 298 → 305 checks.
+
+### 14a. The fifth load-order bug (2026-07-28)
+
+`cl_death.lua` captured `Omerta.Injury.Client` at file scope, and the table is created in `cl_injury.lua`. Files load shared → **client** → server, alphabetically within each realm, so `cl_death` is the *first* non-shared file in the module and the capture got nil. Nothing failed at load; it errored once per frame from the first `Think`.
+
+That is the fifth bug of this shape on this project, and the lint I added with M19 only checked `Internal.Repo` — the exact table that had bitten us before, not the pattern. It is now `lint.include_order`, which models the loader's own ordering: for every file-scope capture of a module sub-table, it finds which file first creates that table and flags the capture if that file sorts later and the capturing file has no `X = X or {}` guard of its own.
+
+Verified by reintroducing the bug and confirming the lint names the file, the line, the table and the file it is created in. A lint that passes on a clean tree proves nothing; the test was whether it fails on the dirty one.

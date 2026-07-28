@@ -5,6 +5,7 @@
 -- cannot fail to move is worth more than one wired to a sound file that might
 -- not have downloaded.
 
+Omerta.Injury.Client = Omerta.Injury.Client or {}
 local C = Omerta.Injury.Client
 
 Omerta.Injury.SOUND = {
