@@ -1,6 +1,6 @@
 # Omertà RP — Development Roadmap (Phase 2)
 
-Milestones are sized to be independently implementable and testable, each gated by its own design review (the project's Phase 3/4 process). Ordering follows Tech §24's five phases, expanded with the foundation the Tech doc assumes (M0–M1), the justice loop (M18, from P-002), and explicit spikes for the high-risk areas in Tech §25.
+Milestones are sized to be independently implementable and testable, each gated by its own design review (the project's Phase 3/4 process). Ordering follows Tech §24's five phases, expanded with the foundation the Tech doc assumes (M0–M1), the justice loop (M18, from P-002), the presentation track (M25–M29, from D-035), and explicit spikes for the high-risk areas in Tech §25.
 
 **Definition of done for every milestone:** design review approved → implementation → self-review against the design → testing per the milestone's "testable when" → written handoff (what was built, why, extension points, integration points, test strategy). Placeholder art is always acceptable (D-005).
 
@@ -116,6 +116,74 @@ Archive-then-reset as a single resumable, audited job: season summaries, award c
 Staff-only UI over the audit log (Tech §23): introductions, transactions, deaths, warrants, faction transitions; leak-proof (no ordinary-gameplay exposure); moderation workflows for the rules specs.
 **Depends on:** M2 onward (log exists); build UI once systems stabilize. **Testable when:** staff can answer "who knew X, who paid Y, who killed Z" from the UI alone; non-staff clients never receive audit data.
 
+## Track E — Presentation and player experience
+
+Everything up to M24 makes the game *work*. This track makes it feel like one product rather than twenty-nine milestones each with its own taste in buttons.
+
+The track is deliberately late, because a visual language cannot be finalized before the screens it has to cover exist. But the **toolkit comes first within the track**, and that ordering is the whole point: screens built after M25 are born consistent, so the standardization pass at the end only has to retrofit the interfaces that predate it. Building all of Track E's screens ad-hoc and standardizing everything afterwards would mean writing several of them twice.
+
+### M25 — UI design system and toolkit
+The shared visual language, as a written style guide and as code. Font hierarchy by role rather than by size (generalizing M8's `Omerta.HUD.Font`); a spacing scale; the palette; and the widget set every screen draws from — buttons, panels, tabs, lists, text fields, scroll areas, confirmation dialogs, tooltips. Open/close animations and transitions as shared curves rather than a per-panel timer each. A UI sound set (open, close, confirm, cancel, deny, hover) wired centrally so no screen picks its own. Keyboard focus traversal, and M8's accessibility baseline (text scaling, sound-independent cues) extended from HUD elements to panels.
+
+**Deliverables:** `docs/design/UI_STYLE_GUIDE.md`, the reference every later interface is reviewed against; and `omerta_ui_gallery`, a command drawing every widget in every state on one screen, so drift becomes visible rather than something discovered three milestones later.
+
+**Depends on:** M8 (fonts, scaling, the fade controller this generalizes). **Testable when:** the gallery renders every widget in every state at 0.75×, 1.0× and 1.5× scale with no clipping or overlap; a screen built only from toolkit widgets contains no colour, font or spacing literal of its own; a lint rejects raw `surface.CreateFont`, hardcoded `Color(...)` and off-toolkit fonts in module code — the same mechanism that already guards entity bases and SQL aliases.
+
+### M26 — Client preferences, settings menu, and screen effects
+A declared client-preference registry: the client-side counterpart to M0's `Omerta.Config`. Each preference declares a type, bounds, a category and a label; it is validated, persisted client-side, and **surfaced in the settings window automatically** rather than hand-placed — so a later milestone adding an option cannot forget to expose it.
+
+The settings window itself (built on M25) with the categories the design needs: Display, HUD, Audio, Graphics, Keybinds, Accessibility, Gameplay. Reachable from the pause menu now, and from the main menu once M27 exists. Also the pause menu, which is what opens it in-game.
+
+Ships the **vignette** as the first effect built on the registry: a subtle full-screen overlay drawn under the HUD, present during normal gameplay, with a strength preference and an off switch. Deliberately understated — it is atmosphere, not a filter, and a player who notices it as an effect means it is too strong. Folded in here rather than given its own milestone because a preference registry with nothing to configure is not testable end-to-end, and a toggleable effect with nowhere to toggle it is half a feature.
+
+Retires the two ad-hoc client convars that exist today (`omerta_ui_scale` from M8, `omerta_inventory_key` from M9) into the registry; keybinds become rebindable data rather than a convar holding a key number.
+
+**Engineering note, paid for once already:** the pause menu binds through `PlayerButtonDown` against a rebindable preference defaulting to F1 — **not** through `GM:ShowHelp`. That hook only fires if the player happens to have F1 bound to `gm_showhelp`, and M9 lost an evening to exactly this failure with F3 and `gm_showspare1`. ESC is not available for a pause menu: it belongs to the engine's own game UI.
+
+**Depends on:** M25. **Testable when:** every declared preference appears in the settings window without being placed there by hand; preferences survive a restart; rebinding takes effect immediately and cannot bind over a reserved engine key; the pause menu opens on a fresh install with no user bindings; the vignette can be turned off completely and leaves no residue.
+
+### M27 — Main menu and the camera system
+The full-screen main menu shown on connect, ahead of character selection, and the camera system behind it. Three modes, selected by configuration:
+
+- **Static** — position, rotation, FOV.
+- **Orbit** — orbit centre, radius, height offset, starting angle, direction (clockwise/counter-clockwise), speed, FOV.
+- **Sequence** — a looping list of shots, each with start/end position, start/end rotation, start/end FOV, duration, a static flag, and fade-between-scenes. No text overlays; the menu itself is the text.
+
+Camera definitions are **map-scoped** and live in a structured data file (see the architectural note below), not in `Omerta.Config` — a scene list is not a scalar.
+
+**Depends on:** M25 (the menu is a screen), M4 (it hands off to character selection), **S4 outcome**. **Testable when:** all three modes run with no character spawned and no HUD drawn; switching mode needs only a data-file edit and a reload, no code change; a malformed camera file fails loudly naming the offending scene, and the menu falls back to a static default rather than dropping the player into a broken view; leaving the menu restores normal view control exactly once.
+
+### M28 — Intro cinematic
+An arbitrary-length scene sequence played on a player's first entry and replayable on demand. It **shares M27's camera rig and scene interpolator rather than owning a second one** — the two features are the same interpolation problem with different framing, and two copies would drift apart the first time either is tuned.
+
+Per scene: start/end position, start/end rotation, start/end FOV, duration, fade-to-next, static flag, optional overlay text, optional text display duration. Per sequence: enabled, skippable, letterbox bars on/off, bar height. Movement, rotation and FOV interpolate smoothly; a static scene simply holds.
+
+**Depends on:** M27 (camera rig, interpolator, data loading), M25 (overlay text and the skip prompt are toolkit widgets). **Testable when:** a cinematic mixing static and moving scenes plays end to end with no camera pop at any scene boundary; skip returns control immediately from any scene and can never leave a player letterboxed or camera-locked; disabling it in the data file skips it entirely with no code change; a sequence with zero scenes is a no-op rather than a hang.
+
+### M29 — UI standardization pass
+The final sweep: every interface in the game reviewed against M25's style guide and brought onto the toolkit. This is where the screens built before M25 pay their debt.
+
+**In scope — every interface, without exception:** main menu (M27), character creation and character selection (M4), settings (M26), pause menu (M26), inventory (M9), notebook / character knowledge (unassigned — see Q-16), police case files (M17), business management (M13), family management (M10), treasury (M11), telephone (M12), newspaper (M21), library and archives (M22), administration tooling (M24), every contextual HUD element (M8), every confirmation dialog, and every notice.
+
+**Audited against:** font hierarchy, spacing, button styles, panel styling, animations, transitions, sounds, and one visual identity across all of it.
+
+**Depends on:** every milestone that ships an interface — in practice M24, and M27/M28 for the presentation screens. **Testable when:** the M25 lint passes across every module with zero exemptions; a reviewer walking every screen in one sitting finds no two panels differing in padding, corner treatment, button style or open animation; every confirmation in the game routes through one dialog; every screen is usable at 0.75× and 1.5× scale; every audio cue still has its visual counterpart (Tech §8).
+
+### Architectural note — structured configuration is not `Omerta.Config`
+
+`Omerta.Config` (M0) holds **scalars**: a declared key, one of number/string/boolean, schema-validated, server-scope, overridden from `data/omertarp/config/server.txt`, failing the boot loudly on anything it does not recognise. That is exactly right for `movement.walk_speed` and exactly wrong for a list of camera scenes — and stretching it to carry nested tables would cost the validation that makes it worth having.
+
+M27 therefore introduces a second, complementary core primitive, **`Omerta.Data`**: the same sandboxed-Lua-file-returning-a-table pattern and the same fail-loudly discipline, but validated against a **declared record structure** (a list of records with typed fields, defaults and bounds) rather than a flat key list. Files live under `data/omertarp/` beside the config. If an earlier milestone turns out to need list-shaped configuration, it lands there instead and M27 consumes it.
+
+Two constraints decide its design, and are much cheaper to know now than to discover during M27:
+
+- **The files live on the SERVER.** A client's `garrysmod/data` is its own directory; a server-side file is not readable by clients. Camera and cinematic definitions are therefore parsed and validated **server-side**, and the validated structure is replicated to clients on join. That is also what makes them server-*authored*: every player sees the intro the operator configured, not one they wrote for themselves.
+- **Validation happens once, at load, on the server.** Clients only ever receive structures already known to be well-formed, so no client-side path has to defend against a malformed scene.
+
+### Open — the notebook has no milestone (Q-16)
+
+"Notebook / character knowledge" is named in the interfaces to standardize, and **no milestone in this roadmap owns it.** The need is real and already implied: D-027 makes telephone numbers something you learn and are never shown a list of, and M5 stores identity knowledge with no in-world place to write anything down. It is a gameplay system, not a presentation one, and it carries design questions that are the project lead's to answer — chiefly whether the notebook is a physical item that can be taken off a body, which would fit M9's everything-is-an-object rule and D-027 rather well. Logged as **Q-16**; it needs a ruling and a milestone of its own before M29 can standardize a screen that does not exist.
+
 ---
 
 ## Technical spikes (timeboxed, run during Track A)
@@ -125,12 +193,14 @@ Staff-only UI over the audit log (Tech §23): introductions, transactions, death
 | S1 — Voice routing | Can call audio be routed participant-only while local speech stays spatial? Is any speakerphone approximation viable? | M12 scope | Before M12's design review |
 | S2 — Portrait rendering | Prototype Option E: deterministic client-side composite portrait from an appearance snapshot, newspaper-styled | M21, M4 (snapshot format) | Before M4 freezes the appearance schema |
 | S3 — Identity-leak audit harness | Automated scan of networked state/messages for character-identity leaks; catalog of engine-level leaks we must accept and cover by rules | M6 and continuously | Alongside M5/M6 |
+| S4 — Menu camera and view control | Can a client be held in a menu camera state with no character spawned — `CalcView` override, HUD suppression, player freeze/hide — and does it survive spawn, respawn and map change? Where does a letterboxed cinematic conflict with M8's HUD controller, and how is a skip guaranteed to restore view control exactly once? | M27, M28 | Before M27's design review (Track E, not Track A) |
 
 ## Parallel content workstream (not code milestones)
 
 - **Map**: the single largest external dependency (Q-9). Prototype all systems on an existing urban map with placeholder props (D-005); commission/build the final compact neighborhood in parallel; required locations: 2–4 family properties, PD, speakeasy + required businesses (GDD §11), stores, bank, library, hospital, payphone placements.
 - **Weapons**: small period arsenal (BA §27) per Q-10 decision.
 - **Playermodels/clothing**: timeless-era dress (D-002); disguise items must map to the witness descriptor system (Tech §12) — placeholder models acceptable until then.
+- **UI assets (Track E)**: a font hierarchy needs actual licence-cleared fonts; the UI sound set (open, close, confirm, cancel, deny, hover) is a small commission; and the main-menu and intro-cinematic camera positions are **per-map authoring work that lands with the map** (Q-9), not with the code — M27/M28 ship the system and one placeholder set, and the shots are written once the final map exists.
 
 ## Dependency graph
 
@@ -161,12 +231,24 @@ graph TD
     M17 --> M22[M22 Library/archive]
     M21 --> M22 --> M23[M23 Seasonal reset]
     M2 --> M24[M24 Admin tooling]
+    M8 --> M25[M25 UI design system] --> M26[M26 Preferences/settings/vignette]
+    M25 --> M27[M27 Main menu + camera]
+    M4 --> M27
+    S4[S4 Menu camera spike] -.-> M27
+    M27 --> M28[M28 Intro cinematic]
+    M24 --> M29[M29 UI standardization pass]
+    M26 --> M29
+    M28 --> M29
 ```
 
 ## Foundational systems
 
 M0–M9 are foundational: every later milestone consumes the module loader, the DB layer, audit, seasons/characters, identity resolution, and inventory. They must be built carefully and reviewed strictly — rework here multiplies. Tracks C and D contain the parallelization opportunities (M19 can proceed alongside Track C; M24 is incremental throughout).
 
+M25 is foundational in the same sense for everything drawn after it: once the toolkit exists, every new interface must be built on it, or M29 inherits work that need never have existed.
+
 ## MVP line
 
 The GDD §22 MVP is satisfied at **M23 complete** plus the bank-robbery fast-follow (C4) and the content workstream's map. Tech §24 Phase 5 items (informants beyond the justice loop's needs, corrupt-police tooling, sit-down mechanics, territory/influence, advanced records, funerals, bank *operations*) remain post-MVP.
+
+**The MVP line and the release line are not the same line.** Track E is not an MVP requirement — the game is feature-complete at M23 — but it *is* a release requirement: a game that plays correctly and looks like a dozen unrelated addons is not shippable, and first impressions are made by the main menu and the first sixty seconds, which are the last things this roadmap builds. **Release = M23 + C4 + map + Track E complete.**

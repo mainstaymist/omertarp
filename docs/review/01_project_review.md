@@ -77,6 +77,7 @@ Decisions the documents never make, ordered by how early they block implementati
 | Q-13 | Consequence of D-003: SMS removal. Text-call sessions cover accessibility, notes cover async messages — confirm this is acceptable | M12 | Confirm; optionally add telegram offices later as a paid async channel with a paper trail |
 | Q-14 | Police joining flow and NPC judge thresholds | M10/M17 | Police path selected at season start (Q-2); NPC judge is a deterministic threshold table over evidence strength (Tech §14 already leans this way) |
 | Q-15 | Justice loop design selection | M18 | See `04_justice_system_proposals.md` (P-002) — recommended hybrid attached there |
+| Q-16 | The notebook has no milestone. D-027 makes telephone numbers something you *learn* and are never shown a list of, and M5 stores identity knowledge with nowhere in-world to write it down — but no milestone owns a notebook, and one is named in the interfaces Track E must standardize (D-035) | M29, and any milestone that produces knowledge worth recording | Give it a milestone of its own, and make it a **physical item that can be taken off a body** — which fits M9's everything-is-an-object rule and turns D-027's learned numbers into something with a theft surface, rather than a menu that cannot be stolen. Needs a ruling on whether entries are free text or system-written, since free text is a metagaming surface (Tech §4) |
 
 ## 6. Implementation Risks
 

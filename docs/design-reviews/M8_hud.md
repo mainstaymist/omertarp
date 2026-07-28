@@ -1,6 +1,6 @@
 # Design Review — M8: Contextual HUD Framework
 
-Status: **APPROVED 2026-07-27 — IMPLEMENTED AND VERIFIED IN-ENGINE** (`omerta_hud_selftest` 6/6, including the headline check that the screen is empty when idle; 7 elements registered). §4a ruled *keep* hunger, inventory-only; §4b ruled (b); logged as D-016 and D-017. See §13. Amended 2026-07-28 with entity labels (D-033) and jump stamina — see §14.
+Status: **APPROVED 2026-07-27 — IMPLEMENTED AND VERIFIED IN-ENGINE** (`omerta_hud_selftest` 6/6, including the headline check that the screen is empty when idle; 7 elements registered). §4a ruled *keep* hunger, inventory-only; §4b ruled (b); logged as D-016 and D-017. See §13. Amended 2026-07-28 with entity labels (D-033) and jump stamina (§14), and base movement speeds (D-034, §15).
 Milestone: M8 (roadmap Track A). Depends on: M0–M7. Consumed by: M9 (inventory), M12 (telephony), M19 (injury), M21 (newspaper) — every system that ever needs to show the player something.
 
 > **Two things need your ruling** (§4): confirmation of Q-7 (no hunger mechanic), and the crosshair, which the GDD says to remove and which materially changes how the game feels to play.
@@ -143,3 +143,21 @@ The scope rule and its consequences are in D-033. Two lints hold the line: every
 Charged on `KeyPress`/`IN_JUMP` while on the ground, not per tick: billing `IN_JUMP` every tick charges for holding the key, and the ground check is what stops a bunny-hopper being billed once per bounce for free height. Jump power is computed in `applySpeeds` alongside walk and run and diffed against the last applied value, so it obeys the same speed modifiers everything else does and is set only when it changes.
 
 Suite: 266 → 274 checks.
+
+---
+
+## 15. Amendment — base movement speeds (2026-07-28, D-034)
+
+Base movement drops from the engine's 200/400 to **walk 100 / jog 200**, and all three base values — walk, jog and jump power — become configuration (`movement.walk_speed`, `movement.jog_speed`, `movement.jump_power`) rather than constants in this file. This module has owned movement speed since M9's single-owner rule, so it is the only place the change had to land.
+
+The reasoning is atmosphere, and it is load-bearing: a character who crosses a street in two seconds cannot be tailed, cannot be watched from a window, and cannot be *approached*. Half the design — surveillance points, witnesses, waiting at a payphone, following someone to find out where they drink — assumes distance takes time.
+
+Two consequences fell out of it that were worth more than the speed change itself.
+
+**The slow floor is now a fraction, not a number.** `applySpeeds` clamped the walk at an absolute 50, which against a base of 200 meant modifiers stopped biting at a combined 0.25. Left absolute against a base of 100 it would have bitten at 0.5 — silently halving the range available to hunger, encumbrance and M19's injuries, with no edit to any of those systems and nothing to notice until an injured, starving character felt no slower than a merely starving one. It is now `Internal.MIN_SPEED_FRACTION` (0.25) of the configured walk, so the base can move and the calibration cannot. **M19 must calibrate its injury modifiers against 100, not 200.**
+
+**Spawning silently reset the speeds, and always had.** The engine's player class restores its own walk/run speeds on spawn, and `lastSpeeds` cached what we last applied — so after a respawn the cache agreed with a value the engine had already thrown away, and nothing re-applied until some modifier happened to change. This was invisible for four milestones because our numbers *were* the engine's numbers; at 100/200 it would have put every respawned character back to a sprint. Fixed with a `PlayerSpawn` hook that drops the cache and re-applies. Worth recording as the general shape: a cache of "what we last told the engine" is wrong whenever the engine can change it behind you.
+
+The three values are now computed together in one pure `Internal.MovementFor(base, factor, isExhausted)` — the jog may never fall below the walk, and both share one modifier stack, so deciding them apart invites them to disagree.
+
+Suite: 274 → 279 checks.

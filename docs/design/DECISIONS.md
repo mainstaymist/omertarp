@@ -92,6 +92,38 @@ Resolves Q-4. Ending a season automatically retires every living character ("lea
 
 ---
 
+## D-036 — Structured configuration is a data file, not a config key (DECIDED, 2026-07-28)
+
+`Omerta.Config` holds **scalars only** — a declared key, one of number/string/boolean, schema-validated, server-scope, overridden from `data/omertarp/config/server.txt`, boot-failing loudly on anything unrecognised. Configuration that is list- or record-shaped (camera scenes, cinematic sequences, anything with an arbitrary count) uses a second core primitive, **`Omerta.Data`**, introduced by M27: the same sandboxed-Lua-file pattern and the same fail-loudly discipline, validated against a declared record structure. Files live under `data/omertarp/` beside the config.
+
+Structured data files are **parsed and validated on the server** and the validated structure is replicated to clients. A client's `garrysmod/data` is its own directory and a server-side file is not readable by clients; validating once, server-side, is also what makes such files server-*authored*, so every player gets the intro the operator configured rather than one they wrote for themselves.
+
+**Rationale:** stretching the key/value store to carry nested tables would cost exactly the schema validation that makes it worth having, and would put a malformed scene list on the path that currently guarantees a mistyped database backend fails the boot instead of silently defaulting.
+
+**Affects:** `docs/review/02_development_roadmap.md` (Track E architectural note); M27, M28; any future milestone with list-shaped configuration.
+
+## D-035 — Presentation is a track, not a polish pass (DECIDED, 2026-07-28)
+
+The roadmap gains **Track E (M25–M29)**: UI design system and toolkit, client preferences/settings/vignette, main menu and camera system, intro cinematic, and a final UI standardization pass covering every interface in the game.
+
+The track sits near the end, after the gameplay systems, because a visual language cannot be finalized before the screens it must cover exist. **Within the track the toolkit comes first (M25) and the standardization pass comes last (M29)** — screens built after M25 are born consistent, so the retrofit at the end is bounded to the interfaces that predate it rather than to all of them.
+
+**Track E is a release requirement, not an MVP requirement.** The game is feature-complete at M23; it is *shippable* at M23 + C4 + map + Track E. Those are now recorded as two separate lines.
+
+**Rationale:** the alternative — every milestone styling its own screens and a single standardization pass at the end — rewrites a dozen interfaces, which is precisely the rework the project's development principles exist to avoid. Consistency is cheapest when it is a dependency rather than a cleanup.
+
+**Affects:** `docs/review/02_development_roadmap.md` (new Track E, new spike S4, dependency graph, MVP/release lines, content workstream); M25 becomes a hard dependency for every interface built after it.
+
+## D-034 — Default movement is a walk, not a jog (DECIDED, 2026-07-28)
+
+Base movement speeds are **walk 100** and **jog 200**, replacing the engine-default 200/400. Both are configuration values (`movement.walk_speed`, `movement.jog_speed`), as is jump power (`movement.jump_power`), overridable from `data/omertarp/config/server.txt`.
+
+**Rationale:** default Source movement is far too fast for the atmosphere. A character who crosses a street in two seconds cannot be tailed, cannot be watched from a window, and cannot be *approached* — which quietly costs the game the observation and surveillance play the design is built around. Halving it makes distance mean something again.
+
+**Consequence worth recording:** the movement floor that stops modifiers reducing a character to a crawl is now expressed as a *fraction* of the configured walk speed rather than the absolute 50 it was. Against a base of 200 that floor bit at a 0.25 combined modifier; left absolute against a base of 100 it would have bitten at 0.5, silently halving the range available to hunger, encumbrance and M19's injuries.
+
+**Affects:** `modules/hud/sv_stamina.lua` (the single owner of movement speed); M19, which must calibrate its injury modifiers against the new base.
+
 ## D-033 — Objects name themselves; people never do (DECIDED, 2026-07-28)
 
 The interaction indicator (D-017) now carries a short label naming what is under the player's gaze. What a label may say is bounded by a single rule: **it repeats only what the object itself would tell a stranger standing in front of it**, and it is the object that decides, not the HUD.

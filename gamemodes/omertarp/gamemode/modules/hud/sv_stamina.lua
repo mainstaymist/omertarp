@@ -8,6 +8,26 @@ Omerta.HUD = Omerta.HUD or {}
 Omerta.HUD.Internal = Omerta.HUD.Internal or {}
 local Internal = Omerta.HUD.Internal
 
+-- Base movement (D-034). The engine's defaults are 200/400, which is far too
+-- fast for the atmosphere: a character who crosses a street in two seconds
+-- cannot be tailed, watched from a window, or approached — which quietly costs
+-- the game the observation play the whole design is built around.
+--
+-- Configured rather than constant, so a server operator tunes the feel of the
+-- city from data/omertarp/config/server.txt without touching code.
+Omerta.Config.Define("movement.walk_speed", {
+    type = "number", default = 100, min = 20, max = 600, scope = "server",
+    description = "Normal movement speed. The engine default is 200.",
+})
+Omerta.Config.Define("movement.jog_speed", {
+    type = "number", default = 200, min = 20, max = 1000, scope = "server",
+    description = "Speed while holding sprint. The engine default is 400.",
+})
+Omerta.Config.Define("movement.jump_power", {
+    type = "number", default = 200, min = 50, max = 500, scope = "server",
+    description = "How hard a rested character jumps.",
+})
+
 Omerta.Config.Define("stamina.drain_per_second", {
     type = "number", default = 18, min = 1, max = 100, scope = "server",
     description = "Stamina points lost per second while sprinting (of 100).",
@@ -58,6 +78,28 @@ function Internal.JumpPower(base, factor, isExhausted, exhaustedScale)
     return math.max(1, math.floor(base * factor * (isExhausted and exhaustedScale or 1)))
 end
 
+-- The slowest a stack of modifiers may leave someone, as a FRACTION of the
+-- configured walk speed rather than an absolute number.
+--
+-- This is load-bearing since D-034 halved the base. Against 200 the old
+-- absolute floor of 50 bit at a combined modifier of 0.25; left absolute
+-- against 100 it would bite at 0.5, silently halving the range available to
+-- hunger, encumbrance and M19's injuries without anyone editing those systems.
+-- Expressed as a fraction, the base moves and the calibration does not.
+Internal.MIN_SPEED_FRACTION = 0.25
+
+-- All three movement values together, because they are decided together: the
+-- jog may never drop below the walk, and both share one modifier stack.
+function Internal.MovementFor(base, factor, isExhausted)
+    local walk = math.max(math.floor(base.walk * Internal.MIN_SPEED_FRACTION),
+        math.floor(base.walk * factor))
+    -- Exhaustion does not slow the walk, it takes the jog away: that is what
+    -- makes it a limit on fleeing rather than a general punishment.
+    local jog = isExhausted and walk or math.max(walk, math.floor(base.jog * factor))
+    local jump = Internal.JumpPower(base.jump, factor, isExhausted, base.exhaustedJumpScale)
+    return walk, jog, jump
+end
+
 -- Modifiers multiply rather than add, so two systems that each halve a value
 -- quarter it instead of cancelling out. A modifier that errors or returns
 -- nonsense is ignored rather than allowed to freeze the player in place.
@@ -79,11 +121,7 @@ end
 local stamina = {}   -- sid -> 0..100
 local exhausted = {} -- sid -> bool
 local lastSent = {}  -- sid -> last value networked
-local lastSpeeds = {} -- sid -> { walk = , run = }
-
-Internal.BASE_WALK_SPEED = 200
-Internal.BASE_RUN_SPEED = 400
-Internal.BASE_JUMP_POWER = 200
+local lastSpeeds = {} -- sid -> { walk = , jog = , jump = }
 
 --------------------------------------------------------------------------------
 -- Movement speed
@@ -100,22 +138,28 @@ local regenModifiers = {}
 function Omerta.Stamina.RegisterSpeedModifier(id, fn) speedModifiers[id] = fn end
 function Omerta.Stamina.RegisterRegenModifier(id, fn) regenModifiers[id] = fn end
 
+-- Read fresh each time rather than cached, so an operator editing the config
+-- and reloading does not have to reconnect every player to see it.
+function Internal.BaseMovement()
+    return {
+        walk = Omerta.Config.Get("movement.walk_speed"),
+        jog = Omerta.Config.Get("movement.jog_speed"),
+        jump = Omerta.Config.Get("movement.jump_power"),
+        exhaustedJumpScale = Omerta.Config.Get("stamina.exhausted_jump_scale"),
+    }
+end
+
 local function applySpeeds(ply, sid, isExhausted)
-    local factor = Internal.CombineModifiers(speedModifiers, ply)
-    local walk = math.max(50, math.floor(Internal.BASE_WALK_SPEED * factor))
-    -- Exhaustion does not slow the walk, it takes the run away: that is what
-    -- makes it a limit on fleeing rather than a general punishment.
-    local run = isExhausted and walk
-        or math.max(walk, math.floor(Internal.BASE_RUN_SPEED * factor))
+    local walk, jog, jump = Internal.MovementFor(Internal.BaseMovement(),
+        Internal.CombineModifiers(speedModifiers, ply), isExhausted)
 
-    local jump = Internal.JumpPower(Internal.BASE_JUMP_POWER, factor, isExhausted,
-        Omerta.Config.Get("stamina.exhausted_jump_scale"))
-
+    -- SetRunSpeed is the engine's name for the sprint speed; the design calls
+    -- it a jog, because at 200 that is what it is.
     local last = lastSpeeds[sid]
     if not last or last.walk ~= walk then ply:SetWalkSpeed(walk) end
-    if not last or last.run ~= run then ply:SetRunSpeed(run) end
+    if not last or last.jog ~= jog then ply:SetRunSpeed(jog) end
     if not last or last.jump ~= jump then ply:SetJumpPower(jump) end
-    lastSpeeds[sid] = { walk = walk, run = run, jump = jump }
+    lastSpeeds[sid] = { walk = walk, jog = jog, jump = jump }
 end
 
 function Omerta.Stamina.Get(ply)
@@ -187,6 +231,18 @@ function MODULE:OnEnable()
     hook.Add("PlayerDisconnected", "omerta.hud.stamina_cleanup", function(ply)
         local sid = ply:SteamID64() or ""
         stamina[sid], exhausted[sid], lastSent[sid], lastSpeeds[sid] = nil, nil, nil, nil
+    end)
+
+    -- Spawning restores the engine's own player-class speeds, so the cache of
+    -- "what we last applied" is stale the moment it happens. This was invisible
+    -- until D-034: our numbers used to be the engine's numbers, so a spawn that
+    -- silently reset them changed nothing. At 100/200 it would leave a
+    -- respawned character walking at the default 200 until a modifier happened
+    -- to change. Drop the cache and re-apply.
+    hook.Add("PlayerSpawn", "omerta.hud.stamina_respeed", function(ply)
+        local sid = ply:SteamID64() or ""
+        lastSpeeds[sid] = nil
+        if IsValid(ply) then applySpeeds(ply, sid, exhausted[sid] or false) end
     end)
 
     -- A fresh character starts rested.

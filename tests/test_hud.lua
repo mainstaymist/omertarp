@@ -132,6 +132,75 @@ check("the jump cost is configured, not hardcoded", function()
 end)
 
 --------------------------------------------------------------------------------
+suite("hud.movement")
+--------------------------------------------------------------------------------
+
+-- D-034. The engine's 200/400 is far too fast for a game about watching people.
+check("base movement is a walk, and it is configuration", function()
+    loadModules()
+    assert(Omerta.Config.Get("movement.walk_speed") == 100, "D-034 walk")
+    assert(Omerta.Config.Get("movement.jog_speed") == 200, "D-034 jog")
+    assert(Omerta.Config.Get("movement.jump_power") == 200, "jump power is a knob too")
+end)
+
+local BASE = { walk = 100, jog = 200, jump = 200, exhaustedJumpScale = 0.55 }
+
+check("all three values are decided together", function()
+    loadModules()
+    local M = Omerta.HUD.Internal.MovementFor
+
+    local walk, jog, jump = M(BASE, 1, false)
+    assert(walk == 100 and jog == 200 and jump == 200, "rested and unencumbered")
+
+    walk, jog, jump = M(BASE, 0.75, false)
+    assert(walk == 75 and jog == 150 and jump == 150,
+        "one modifier scales everything, so nothing is exempt from being slowed")
+end)
+
+-- Exhaustion is a limit on FLEEING, not a general punishment: it takes the jog
+-- away and leaves the walk alone.
+check("exhaustion removes the jog rather than slowing the walk", function()
+    loadModules()
+    local M = Omerta.HUD.Internal.MovementFor
+
+    local walk, jog = M(BASE, 1, true)
+    assert(walk == 100, "an exhausted character still walks normally")
+    assert(jog == walk, "but cannot outrun a walk")
+
+    walk, jog = M(BASE, 0.5, true)
+    assert(jog == walk, "still true once a modifier is stacked on top")
+end)
+
+-- The floor is a fraction of the base, not an absolute number. Left absolute
+-- at 50, halving the base would have halved the range available to hunger,
+-- encumbrance and M19's injuries without anyone touching those systems.
+check("the slow floor tracks the configured base", function()
+    loadModules()
+    local M = Omerta.HUD.Internal.MovementFor
+
+    local walk = M(BASE, 0.1, false)
+    assert(walk == 25, "a quarter of 100, not an absolute 50")
+
+    local fast = { walk = 200, jog = 400, jump = 200, exhaustedJumpScale = 0.55 }
+    walk = M(fast, 0.1, false)
+    assert(walk == 50, "the same quarter against the old base")
+
+    -- The calibration point: the fraction bites at the same modifier either way.
+    assert(M(BASE, 0.25, false) == 25 and M(fast, 0.25, false) == 50,
+        "0.25 is the floor at any base")
+end)
+
+check("the jog never drops below the walk", function()
+    loadModules()
+    local M = Omerta.HUD.Internal.MovementFor
+    -- A base whose jog is slower than its walk is a misconfiguration, not a
+    -- reason to make sprinting a penalty.
+    local silly = { walk = 100, jog = 50, jump = 200, exhaustedJumpScale = 0.55 }
+    local walk, jog = M(silly, 1, false)
+    assert(jog >= walk, "holding sprint may never be slower than not holding it")
+end)
+
+--------------------------------------------------------------------------------
 suite("hud.labels")
 --------------------------------------------------------------------------------
 
