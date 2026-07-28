@@ -92,6 +92,42 @@ Resolves Q-4. Ending a season automatically retires every living character ("lea
 
 ---
 
+## D-032 — A business earns from customers and from being staffed, and its till is physical (DECIDED, 2026-07-27)
+
+A business's income is **sales to players**, plus a small trickle that accrues **only while the place is open AND a real person is behind the counter**. An unstaffed business earns nothing at all. The trickle is deliberately small enough that it never beats a real customer; it exists so that tending a bar is worth doing — which is the role GDD §4.3 promises independents and never explains how to fill.
+
+**The till is physical cash in a container on the premises**, not a balance. Somebody has to empty it and carry the money to a treasury, and that errand is the most robbable moment in the economy. D-024's reasoning, applied a second time.
+
+There is **no per-business ledger**. Collections write M11's append-only books with a `business` category, because two sets of accounts that can disagree is worse than one.
+
+**Rationale:** passive income is the idle-game money printer BA §13 warns against, and sales-only means a bar in a thirty-player city is empty most of the time and owning one is a liability.
+
+**Affects:** D-024; Tech §11 (its "income/expense ledger" is M11's); GDD §4.3, §11; `docs/design-reviews/M13_businesses.md` §4b; M14 (the collection run is a target).
+
+## D-031 — The rumour mill takes real events and paid lies, and tells them apart for nobody (DECIDED, 2026-07-27)
+
+The rumour pool is fed from two places: **events that actually happened** (a seam M14 and M15 fill) and **rumours players pay to plant**. The barman never distinguishes them and neither does anyone listening.
+
+Rumours expire, are served one at a time on request, are never repeated to the same listener, and are written down nowhere the listener can go back to — remembering what you were told is your job, exactly as it is with names and telephone numbers.
+
+Planted rumours cost money and are **audited with their author**, because "who started that" is occasionally a question about rule-breaking rather than about the fiction.
+
+**Rationale:** a rumour you can verify is a fact, and the design already has facts. Making disinformation purchasable turns the bar into an instrument rather than a decoration, and it gives the barman something to say from day one instead of three milestones from now.
+
+**Affects:** Tech §11; `docs/design-reviews/M13_businesses.md` §4c; M14/M15 (they call `Omerta.Rumours.Add`); M21.
+
+## D-030 — Premises are forceable only while the owning side is online (DECIDED, 2026-07-27; resolves Q-12)
+
+Forced entry into an owned business or headquarters requires at least one member of the owning organization — or the owning independent — to be **connected**. Not present: **online**. A family with nobody logged in cannot be robbed; a family with three people logged in is a target whether or not any of them is standing in the room.
+
+The **police warrant path is exempt** (M17): an institution with authority enters regardless, because that is what a warrant is.
+
+**Rationale:** M11 made this urgent by putting a family's money in a physical container with a location. If that could be emptied at four in the morning, a season would be decided by who sleeps least, and the correct strategy would be to play at unpopular hours. Time-locked vulnerability sounds fairer and quietly makes the optimal play "leave somebody idling in the back room forever". This rule rewards presence instead of punishing absence, and it puts a person on the other end of every raid.
+
+Accepted cost: a family that logs off with the takings uncollected is safe.
+
+**Affects:** Q-12 (resolved); `docs/design-reviews/M13_businesses.md` §4a; M14 (consults the rule), M16/M17 (heat and warrants).
+
 ## D-029 — Call records are metadata, and nobody reads them in M12 (DECIDED, 2026-07-27)
 
 Every call writes a record: which line called which line, when, for how long, how it ended. **Never content.** The `phone_calls` table has no column a recording or transcript could go in, so no later milestone can begin storing one without a migration and a conversation.

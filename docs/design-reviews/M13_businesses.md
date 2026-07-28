@@ -1,6 +1,6 @@
 # Design Review — M13: Businesses and the Speakeasy
 
-Status: **AWAITING APPROVAL — no implementation until approved.**
+Status: **APPROVED 2026-07-27 — IMPLEMENTED** (§4a (a), §4b (a), §4c (b); logged as D-030, D-032 and D-031). See §13.
 Milestone: M13 (roadmap Track B). Depends on: M9 (stock and money are objects), M10 (ownership), M11 (the till is collected into a treasury), M12 (a business has a line). Consumed by: M14 (a store worth robbing, and a place to plan it), M15 (the bar is where witnesses are), M16/M17 (premises to raid), M21 (the newspaper is picked up somewhere).
 
 > **Three rulings needed** (§4): Q-12's offline asset protection, where a business's money actually comes from, and what feeds the rumour mill.
@@ -163,4 +163,34 @@ M0 (config, net, log), M1 (migration 11), M2 (audit), M3 (`Seasons.WhenReady`), 
 
 ---
 
-**Requesting approval to implement M13 as specified**, with rulings on §4a (Q-12 offline protection — recommend premises live only while the owning side is online), §4b (income — recommend sales plus a staffed-only trickle, with a physical till that must be collected), and §4c (rumours — recommend real events plus paid plants, indistinguishable to the listener).
+## 13. Implementation Notes (post-implementation)
+
+Implemented as `modules/business/`. The headless suite grew from 238 to 255 checks.
+
+**Owning the place is not the same as running it.** The role resolver turned out to be the interesting part: a soldier in the family that owns a bar is *not* automatically behind its counter. Rather than inventing a second ladder, it asks a question M10 already answers — whoever holds `TREASURY_VIEW` handles the family's money, so they can run its premises; everybody else has to be hired onto the roster like anybody else. A rival family's Capo is nobody here, rank or no rank.
+
+**Q-12's rule has nowhere to express "was standing in the room", by construction.** `IsForceable` takes two sets — organizations with a connected member, and connected characters — and no position at all. That is the ruling made structural rather than remembered: there is no argument to pass that would let presence creep back in. M13 has no forcing path of its own, so the rule is exposed and tested here and consulted by M14; saying so plainly is better than pretending the milestone enforces something it cannot yet reach.
+
+**The till has no door.** Money enters through sales and leaves through `CollectTill`; there is no entity to open and rummage in, because you do not rummage in a register — you empty it. The access predicate still guards the till container, so M14 finds a locked thing rather than an open one.
+
+**A sale that half-succeeds puts everything back.** Money moves first, then stock leaves the shelf, then the goods reach the customer's hands — and if that last step fails because their pockets are full, the stock goes back on the shelf and the money goes back to them. The alternative is a customer who paid for a drink they cannot hold.
+
+**No M9 change was needed after all.** §12 anticipated relaxing the container class check so a counter could host the till; making the till doorless removed the reason. The stock room is an ordinary `omerta_container` and M11's access predicate already covers it.
+
+**The seven GDD §11 types are all registered, and four of them are honestly rooms.** A clinic without injuries and a funeral home without bodies have nothing to do until M19 and M20; they exist so the framework is exercised by more than one shape and so those milestones have somewhere to attach. Inventing a mechanic to justify the door would have been content dressed as a system.
+
+In-engine acceptance (user-side): pull, restart, then **`omerta_business_selftest` in the SERVER console** — expect 10/10. Then:
+
+```
+omerta_business_place speakeasy marino The Blue Room
+omerta_business_stockroom 1
+omerta_money_give 20 <your steamID64>
+```
+
+Put stock in the room (`omerta_item_give drink.whiskey 6 <steamID64>`, then store it via **C** → Search on the stock crate). Walk to the counter, press **E**, open up, and buy a drink from yourself — the money should land in the register and the whiskey in your hands. Empty the register and confirm the cash is on you. Ask the barman what is going around, then tell him something and ask again from a second character.
+
+The **two-player test** is the one that matters: one tends the bar, the other buys. Nobody behind the counter means no sale, which is D-032 doing its job.
+
+---
+
+**Delivered.** §4a (a), §4b (a) and §4c (b); logged as D-030, D-032 and D-031.
