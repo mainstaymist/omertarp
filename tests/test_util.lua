@@ -61,3 +61,41 @@ check("never exceeds burst after a long idle", function()
     assert(Omerta.Util.TokenBucketAllow(b, 1000))
     assert(not Omerta.Util.TokenBucketAllow(b, 1000), "refill must cap at burst")
 end)
+
+--------------------------------------------------------------------------------
+suite("util.models")
+--------------------------------------------------------------------------------
+
+-- A model path names a file the client either has or does not, and nothing in
+-- this repository can tell which — the content lives in the game. A wrong one
+-- produced an invisible counter in M13, which is a bad way to find out.
+check("the first candidate that actually exists wins", function()
+    local R = Omerta.Util.ResolveModel
+    local exists = { ["models/b.mdl"] = true, ["models/c.mdl"] = true }
+    local function isValid(path) return exists[path] == true end
+
+    assert(R({ "models/b.mdl" }, nil, isValid) == "models/b.mdl")
+    -- The first choice is missing, so the next real one is taken.
+    assert(R({ "models/a.mdl", "models/b.mdl" }, nil, isValid) == "models/b.mdl")
+    assert(R({ "models/a.mdl", "models/c.mdl", "models/b.mdl" }, nil, isValid) == "models/c.mdl",
+        "order is a preference, not a search")
+end)
+
+check("a path that exists nowhere degrades to one that does", function()
+    local R = Omerta.Util.ResolveModel
+    local function isValid() return false end
+
+    assert(R({ "models/gone.mdl" }, nil, isValid) == Omerta.Util.FALLBACK_MODEL)
+    assert(R({ "models/gone.mdl" }, "models/mine.mdl", isValid) == "models/mine.mdl",
+        "an explicit fallback wins over the default")
+    assert(R({}, nil, isValid) == Omerta.Util.FALLBACK_MODEL, "nothing declared")
+    assert(R(nil, nil, isValid) == Omerta.Util.FALLBACK_MODEL, "nil declared")
+end)
+
+check("a single path is accepted as well as a list", function()
+    local R = Omerta.Util.ResolveModel
+    local function isValid(path) return path == "models/ok.mdl" end
+    assert(R("models/ok.mdl", nil, isValid) == "models/ok.mdl",
+        "callers with one model should not have to wrap it")
+    assert(R("models/no.mdl", nil, isValid) == Omerta.Util.FALLBACK_MODEL)
+end)

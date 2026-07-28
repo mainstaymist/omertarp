@@ -885,6 +885,11 @@ function Internal.RegisterCommands()
         Omerta.Log.Info("inventory", "container #%d spawned with capacity %d", id, capacity)
     end)
 
+    concommand.Add("omerta_model_audit", function(caller)
+        if IsValid(caller) and not caller:IsSuperAdmin() then return end
+        Internal.AuditModels()
+    end)
+
     concommand.Add("omerta_inventory_dump", function(caller)
         if IsValid(caller) and not caller:IsSuperAdmin() then return end
         if not IsValid(caller) then return end
@@ -1012,6 +1017,33 @@ function MODULE:OnEnable()
         end)
     end)
 
+    -- Every item's model is a path guessed in source against content that
+    -- lives in the game. Checking them all once at boot turns "why is this
+    -- crate invisible" into one line in the startup log.
+    Internal.AuditModels()
+
     Internal.StartHunger()
     Internal.RegisterCommands()
+end
+
+-- Reports every registered item whose model does not exist. Also available as
+-- omerta_model_audit, since content can change under a running server.
+function Internal.AuditModels()
+    if not Omerta.InEngine then return 0 end
+
+    local missing = {}
+    for _, def in ipairs(Omerta.Items.GetOrdered()) do
+        if def.model and not util.IsValidModel(def.model) then
+            missing[#missing + 1] = def.id .. " (" .. def.model .. ")"
+        end
+    end
+
+    if #missing == 0 then
+        Omerta.Log.Info("inventory", "all %d item models resolve",
+            #Omerta.Items.GetOrdered())
+    else
+        Omerta.Log.Warn("inventory", "%d item model(s) do not exist and will " ..
+            "fall back to a crate: %s", #missing, table.concat(missing, ", "))
+    end
+    return #missing
 end

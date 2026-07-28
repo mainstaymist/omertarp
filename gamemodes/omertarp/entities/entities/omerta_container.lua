@@ -16,11 +16,11 @@ ENT.Author = "Omertà RP"
 ENT.Spawnable = false
 ENT.AdminOnly = true
 
-local MODEL = "models/props_junk/wood_crate001a.mdl"
+local MODELS = { "models/props_junk/wood_crate001a.mdl" }
 
 if SERVER then
     function ENT:Initialize()
-        self:SetModel(MODEL)
+        self:SetModel(Omerta.Util.ResolveModel(MODELS))
         self:PhysicsInit(SOLID_VPHYSICS)
         self:SetMoveType(MOVETYPE_VPHYSICS)
         self:SetSolid(SOLID_VPHYSICS)

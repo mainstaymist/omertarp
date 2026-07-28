@@ -42,7 +42,10 @@ if SERVER then
     end
 
     function ENT:Initialize()
-        self:SetModel(self.OmertaModel or FALLBACK_MODEL)
+        -- An item definition's model is a guess made in source; resolving it
+        -- here means a wrong one is a warning and a crate, not an invisible
+        -- object somebody spends an evening looking for.
+        self:SetModel(Omerta.Util.ResolveModel(self.OmertaModel, FALLBACK_MODEL))
         self:PhysicsInit(SOLID_VPHYSICS)
         self:SetMoveType(MOVETYPE_VPHYSICS)
         self:SetSolid(SOLID_VPHYSICS)

@@ -15,11 +15,18 @@ ENT.Author = "Omertà RP"
 ENT.Spawnable = false
 ENT.AdminOnly = true
 
-local MODEL = "models/props_c17/FurnitureCounter001a.mdl"
+-- Best first. There is no FurnitureCounter in Half-Life 2 — the first version
+-- of this shipped one and produced an invisible counter — so the list is what
+-- makes a wrong guess survivable rather than something to discover in-game.
+local MODELS = {
+    "models/props_c17/FurnitureTable001a.mdl",
+    "models/props_interiors/pot_rack01a.mdl",
+    "models/props_c17/furnituredresser001a.mdl",
+}
 
 if SERVER then
     function ENT:Initialize()
-        self:SetModel(MODEL)
+        self:SetModel(Omerta.Util.ResolveModel(MODELS))
         self:PhysicsInit(SOLID_VPHYSICS)
         self:SetMoveType(MOVETYPE_VPHYSICS)
         self:SetSolid(SOLID_VPHYSICS)
