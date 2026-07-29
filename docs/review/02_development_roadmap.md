@@ -105,7 +105,9 @@ Deliberate, logged, interruptible confirm-kill interaction (Tech §18); death ca
 
 ### M21 — Newspaper
 Template-driven article generation from eligible events (Tech §20); scheduled issues (Q-6 cadence), frozen on publish; physical paper props/reading UI; Option E composite portraits from archived appearance data with silhouette fallback (P-001).
-**Depends on:** M14/M20 (events), M4 (appearance snapshots); **S2 outcome**. **Testable when:** an identified public death produces a correct next-issue article with portrait; hidden information (factions, unwitnessed killers) never appears; issues are immutable after publication.
+**Depends on:** M20 (the event log and the death event), M4 (portraits, per D-011). **No longer waits on S2** — that spike is closed as superseded.
+**Design review:** `docs/design-reviews/M21_newspaper.md` (delivered, awaiting approval — three rulings).
+**Testable when:** an identified public death produces a correct next-issue article with portrait; hidden information (factions, unwitnessed killers) never appears; issues are immutable after publication.
 
 ### M22 — Library and archive
 Archive indexes (Tech §21); library browsing/search UI over seasons, characters, headlines, cases; public/private record rules.
@@ -196,7 +198,7 @@ Two constraints decide its design, and are much cheaper to know now than to disc
 | Spike | Question | Feeds | Timing |
 |---|---|---|---|
 | S1 — Voice routing | Can call audio be routed participant-only while local speech stays spatial? Is any speakerphone approximation viable? | M12 scope | Before M12's design review |
-| S2 — Portrait rendering | Prototype Option E: deterministic client-side composite portrait from an appearance snapshot, newspaper-styled | M21, M4 (snapshot format) | Before M4 freezes the appearance schema |
+| ~~S2 — Portrait rendering~~ | **CLOSED, superseded.** The spike existed to prototype Option E (composite portraits from appearance data). **D-011 chose Option C instead** — a real mugshot captured in a photo booth at creation — and M4 shipped it, so the question the spike was going to answer is already decided and implemented. M21 consumes `characters.portrait`; nothing is pending. | — | — |
 | S3 — Identity-leak audit harness | Automated scan of networked state/messages for character-identity leaks; catalog of engine-level leaks we must accept and cover by rules | M6 and continuously | Alongside M5/M6 |
 | S4 — Menu camera and view control | Can a client be held in a menu camera state with no character spawned — `CalcView` override, HUD suppression, player freeze/hide — and does it survive spawn, respawn and map change? Where does a letterboxed cinematic conflict with M8's HUD controller, and how is a skip guaranteed to restore view control exactly once? | M27, M28 | Before M27's design review (Track E, not Track A) |
 
@@ -233,7 +235,6 @@ graph TD
     M10 --> M20
     M14 --> M20
     M20 --> M21[M21 Newspaper]
-    S2[S2 Portrait spike] -.-> M21
     M17 --> M22[M22 Library/archive]
     M21 --> M22 --> M23[M23 Seasonal reset]
     M2 --> M24[M24 Admin tooling]

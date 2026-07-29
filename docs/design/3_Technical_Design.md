@@ -623,9 +623,8 @@ Article data:
 
 Portrait (P-001):
 
-- Recommended approach: composite portrait rendered client-side on demand from archived appearance descriptors captured at character creation (Option E in `docs/review/03_portrait_evaluation.md`), with a silhouette fallback when no adequate public appearance data exists. No image upload, storage, or redistribution pipeline is required — only small structured appearance data persists.
-- Avoid exposing a masks-off face if no public image logically existed; use the file-photo rule — a portrait appears only when the paper could plausibly have one.
-- Pending project-lead confirmation of the recommendation.
+- **DECIDED (D-011): Option C.** A real image captured client-side in a controlled photo booth during character creation, uploaded once, stored server-side as base64. Option B (silhouette) is the fallback when no portrait exists. The Option E composite recommended here was superseded and spike S2 is closed; M4 implements the capture and storage.
+- Avoid exposing a masks-off face if no public image logically existed; use the file-photo rule — a portrait appears only when the paper could plausibly have one. (M21 §4c decides when that is.)
 
 Newspapers should be generated server-side and frozen once published.
 
