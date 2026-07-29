@@ -13,7 +13,7 @@ Status key: **☐ untested** · **☑ passed** · **☒ failed** (details inline
 
 | | Check | How |
 |---|---|---|
-| ☐ | **Server boots clean with 16 modules** | Look for `loaded 16 module(s): … injury, events, death, phone` and no Lua errors |
+| ☐ | **Server boots clean with 17 modules** | Look for `loaded 17 module(s): … injury, events, death, phone, weapons` and no Lua errors |
 | ☐ | **Client boots clean** | Join and check the client console — this has never been confirmed since the module count grew |
 | ☐ | **Migrations 12 and 13 apply on MySQL** | **This is the one that matters most.** D-008 makes MySQL the backend of record, and `character_injury`, `bodies`, `injury_events` (12) and `events` (13) have only ever run against SQLite. A DDL problem here is the class of bug that cost us the `key`/`rank` reserved-word incident |
 
