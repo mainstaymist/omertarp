@@ -95,6 +95,19 @@ check("drains while sprinting, recovers otherwise, bounded 0..100", function()
     assert(S(95, false, 1, 18, 11) == 100, "cannot exceed full")
 end)
 
+-- The arc of a jump was free rest: you paid on the way up and earned it back
+-- before landing, so a bunny-hopper recovered faster than somebody standing
+-- still. Catching your breath happens with your feet on the ground.
+check("nothing recovers while your feet are off the ground", function()
+    loadModules()
+    local S = Omerta.HUD.Internal.StepStamina
+    assert(S(50, false, 1, 18, 11, true) == 50, "no recovery mid-air")
+    assert(S(50, true, 1, 18, 11, true) == 50, "and no drain either")
+    assert(S(50, false, 1, 18, 11, false) == 61, "back on the ground it resumes")
+    -- Omitting the flag has to keep the old meaning, or every caller changes.
+    assert(S(50, false, 1, 18, 11) == 61, "grounded is the default")
+end)
+
 -- Hysteresis: a single threshold would flicker the sprint on and off every
 -- frame at the boundary.
 check("exhaustion latches and lifts at a higher mark", function()

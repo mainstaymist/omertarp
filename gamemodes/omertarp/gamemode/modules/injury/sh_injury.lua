@@ -234,22 +234,45 @@ function Omerta.Injury.PulseRate(progress)
     return 0.35 + 0.55 * math.Clamp(progress or 0, 0, 1)
 end
 
+-- The shape of the sequence.
+--
+-- The cut from the head to the top-down shot happens BEHIND BLACK. Cutting in
+-- vision was the first version and it read as a glitch; fading out, moving the
+-- camera while nobody can see it, and fading back in is how this shot is done
+-- everywhere else. The climb is deliberately slow — it is the last thing that
+-- happens to this character, and it should take its time.
 Omerta.Injury.DEATH = {
-    HOLD    = 1.4,  -- still on the body, letting the trombone land
-    RISE    = 5.5,  -- pulling up and away
-    CEILING = 12,   -- keep this far off whatever is overhead
-    START_HEIGHT = 80,  -- where the top-down shot cuts in, above the body
-    HEIGHT  = 420,  -- how far up it climbs with nothing in the way
+    HOLD_OUT = 0.9,   -- on the head, before anything starts fading
+    FADE_OUT = 1.1,   -- down to black; the camera cuts at the end of this
+    FADE_IN  = 1.3,   -- back up, now on the top-down shot
+    RISE     = 7.5,   -- the climb, measured from the cut
+    FADE_END = 2.6,   -- back to black, for the words
+    TEXT_OVER = 2.2,  -- how long the words take to arrive
+
+    CEILING = 12,        -- keep this far off whatever is overhead
+    START_HEIGHT = 80,   -- where the top-down shot begins, above the body
+    HEIGHT = 420,        -- how far up it climbs with nothing in the way
 }
 
+local D = Omerta.Injury.DEATH
+
+-- Derived, so the phases cannot drift out of step with the fades.
+D.CUT_AT     = D.HOLD_OUT + D.FADE_OUT   -- screen black; the camera moves here
+D.VISIBLE_AT = D.CUT_AT + D.FADE_IN      -- fully back in vision
+D.RISE_END   = D.CUT_AT + D.RISE         -- top of the climb
+D.FADE_AT    = D.RISE_END - D.FADE_END   -- the final fade begins
+D.TEXT_AT    = D.RISE_END                -- words start once it is black again
+
+-- "hold" while still on the head, "rise" once the camera has cut. The cut is
+-- at the moment the screen is fully black, so it is never seen.
 function Omerta.Injury.DeathPhase(elapsed)
-    local D = Omerta.Injury.DEATH
-    if (elapsed or 0) < D.HOLD then return "hold", math.Clamp((elapsed or 0) / D.HOLD, 0, 1) end
-    return "rise", math.Clamp(((elapsed or 0) - D.HOLD) / D.RISE, 0, 1)
+    elapsed = elapsed or 0
+    if elapsed < D.CUT_AT then return "hold", math.Clamp(elapsed / D.CUT_AT, 0, 1) end
+    return "rise", math.Clamp((elapsed - D.CUT_AT) / D.RISE, 0, 1)
 end
 
--- Eases out, so the pull-away starts quickly and settles, rather than sliding
--- at a constant speed like a lift.
+-- Eases out, so the pull-away gets moving and then settles, rather than
+-- sliding at a constant speed like a lift.
 function Omerta.Injury.RiseEase(t)
     t = math.Clamp(t or 0, 0, 1)
     return 1 - (1 - t) * (1 - t) * (1 - t)
@@ -267,22 +290,29 @@ Omerta.Injury.DEATH_TITLE = "You have died..."
 Omerta.Injury.DEATH_PROMPT = "press any key to begin again"
 
 Omerta.Injury.DEATH_TIMING = {
-    BLACK_AT   = 4.2,  -- screen fully black
-    BLACK_OVER = 2.6,  -- how long the fade to black takes
-    TEXT_AT    = 5.0,  -- words start to appear
-    TEXT_OVER  = 2.2,  -- how long they take to arrive
+    TEXT_AT    = D.TEXT_AT,
+    TEXT_OVER  = D.TEXT_OVER,
     MUSIC_FADE = 2.0,  -- the piano easing in once the words have landed
     LOOP_FADE  = 1.2,  -- the quick dip at each end of the loop
 }
 
+-- How black the screen is, 0..1. Three movements: down to black over the head
+-- shot, back up onto the top-down shot, and down again for the words.
 function Omerta.Injury.DeathFade(elapsed)
-    local T = Omerta.Injury.DEATH_TIMING
-    return math.Clamp(((elapsed or 0) - (T.BLACK_AT - T.BLACK_OVER)) / T.BLACK_OVER, 0, 1)
+    elapsed = elapsed or 0
+    if elapsed <= D.HOLD_OUT then return 0 end
+    if elapsed < D.CUT_AT then
+        return math.Clamp((elapsed - D.HOLD_OUT) / D.FADE_OUT, 0, 1)
+    end
+    if elapsed < D.VISIBLE_AT then
+        return 1 - math.Clamp((elapsed - D.CUT_AT) / D.FADE_IN, 0, 1)
+    end
+    if elapsed < D.FADE_AT then return 0 end
+    return math.Clamp((elapsed - D.FADE_AT) / D.FADE_END, 0, 1)
 end
 
 function Omerta.Injury.DeathTextAlpha(elapsed)
-    local T = Omerta.Injury.DEATH_TIMING
-    return math.Clamp(((elapsed or 0) - T.TEXT_AT) / T.TEXT_OVER, 0, 1)
+    return math.Clamp(((elapsed or 0) - D.TEXT_AT) / D.TEXT_OVER, 0, 1)
 end
 
 -- The loop's own envelope: a quick dip at both ends so the seam is a breath

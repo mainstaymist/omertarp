@@ -57,7 +57,14 @@ Omerta.Config.Define("stamina.exhausted_jump_scale", {
 -- Pure maths (headless-tested)
 --------------------------------------------------------------------------------
 
-function Internal.StepStamina(current, sprinting, dt, drainRate, regenRate)
+-- `airborne` holds the value where it is: no drain, and crucially no RECOVERY.
+--
+-- Without it, the arc of a jump is free rest — you spend the cost on the way
+-- up and earn it back before you land, so a bunny-hopper recovers faster than
+-- somebody standing still. Catching your breath is something you do with your
+-- feet on the ground.
+function Internal.StepStamina(current, sprinting, dt, drainRate, regenRate, airborne)
+    if airborne then return current end
     if sprinting then
         return math.max(0, current - drainRate * dt)
     end
@@ -190,7 +197,8 @@ local function tick(dt)
             current = Internal.StepStamina(current, sprinting, dt,
                 Omerta.Config.Get("stamina.drain_per_second"),
                 Omerta.Config.Get("stamina.regen_per_second")
-                    * Internal.CombineModifiers(regenModifiers, ply))
+                    * Internal.CombineModifiers(regenModifiers, ply),
+                not ply:OnGround())
             stamina[sid] = current
 
             local nowExhausted = Internal.StepExhausted(exhausted[sid] or false, current,

@@ -132,6 +132,20 @@ check("the legal-move table is the design, and it refuses the rest", function()
     assert(not T(S.HEALTHY, S.HEALTHY), "staying put is not a transition")
 end)
 
+-- A corpse is the thing you most need to be able to move: hiding a body is
+-- what M15's evidence and M20's funeral are both about. The first version
+-- untagged the ragdoll on death, which made it inert — no dot, no tooltip,
+-- nothing to take hold of, and no way to drag your own body away.
+check("the dead are still helpless, so they can still be moved and searched", function()
+    loadModules()
+    local S = Omerta.Injury.STATE
+    assert(Omerta.Injury.IsIncapable(S.DEAD), "a corpse must stay handleable")
+    assert(Omerta.Injury.IsIncapable(S.INCAPACITATED))
+    assert(Omerta.Injury.IsIncapable(S.STABILIZED))
+    assert(not Omerta.Injury.IsIncapable(S.RECOVERING), "back on their feet")
+    assert(not Omerta.Injury.IsIncapable(S.CRITICAL), "bleeding but still fighting")
+end)
+
 check("being down and being incapable are different questions", function()
     loadModules()
     local S = Omerta.Injury.STATE
@@ -498,11 +512,51 @@ end)
 check("the death camera holds before it pulls away", function()
     loadModules()
     local D = Omerta.Injury.DEATH
-    local phase = Omerta.Injury.DeathPhase(0)
-    assert(phase == "hold", "the camera must sit on the body first")
-    assert(Omerta.Injury.DeathPhase(D.HOLD) == "rise", "then rise")
-    local _, t = Omerta.Injury.DeathPhase(D.HOLD + D.RISE * 2)
+    assert(Omerta.Injury.DeathPhase(0) == "hold", "the camera must sit on the body first")
+    assert(Omerta.Injury.DeathPhase(D.CUT_AT) == "rise", "then rise")
+    local _, t = Omerta.Injury.DeathPhase(D.CUT_AT + D.RISE * 2)
     assert(t == 1, "and stop when it gets there, not keep climbing")
+end)
+
+-- The whole point of the rework: the camera moves while nobody can see it.
+-- Cutting in vision read as a glitch.
+check("the camera cuts behind black, never in vision", function()
+    loadModules()
+    local D = Omerta.Injury.DEATH
+    local F = Omerta.Injury.DeathFade
+    assert(math.abs(F(D.CUT_AT) - 1) < 0.0001,
+        "the screen must be fully black at the cut")
+    -- Which is also the first frame of the rise, so the two are the same
+    -- instant by construction rather than by two numbers agreeing.
+    assert(Omerta.Injury.DeathPhase(D.CUT_AT) == "rise")
+end)
+
+check("the shot fades back in, holds, then fades out for the words", function()
+    loadModules()
+    local D = Omerta.Injury.DEATH
+    local F = Omerta.Injury.DeathFade
+    -- The boundaries are sums and differences of decimals, so the ends land a
+    -- float's-breadth off. Compared with a tolerance rather than contorting
+    -- the curve to make an equality true.
+    local function near(a, b, what) assert(math.abs(a - b) < 0.0001, what) end
+
+    assert(F(0) == 0, "not black at the moment of death")
+    assert(F(D.HOLD_OUT) == 0, "still watching from the head")
+    near(F(D.VISIBLE_AT), 0, "back in vision on the top-down shot")
+    near(F((D.VISIBLE_AT + D.FADE_AT) * 0.5), 0, "and stays visible through the climb")
+    near(F(D.RISE_END), 1, "black again by the top of the climb")
+    near(Omerta.Injury.DeathTextAlpha(D.RISE_END), 0,
+        "the words must not start before the screen is black")
+    near(Omerta.Injury.DeathTextAlpha(D.TEXT_AT + D.TEXT_OVER), 1, "fully readable")
+end)
+
+-- The climb is the last thing that happens to this character; it should not be
+-- over before the fade back in has finished.
+check("the climb is slow enough to be seen", function()
+    loadModules()
+    local D = Omerta.Injury.DEATH
+    assert(D.RISE > D.FADE_IN * 2, "the shot would be over before it was visible")
+    assert(D.FADE_AT > D.VISIBLE_AT, "there has to be a stretch you can actually watch")
 end)
 
 check("the rise eases out rather than sliding like a lift", function()
@@ -516,16 +570,6 @@ check("the rise eases out rather than sliding like a lift", function()
         assert(value >= previous, "the camera must never travel backwards")
         previous = value
     end
-end)
-
-check("the screen blacks out before the words arrive", function()
-    loadModules()
-    local T = Omerta.Injury.DEATH_TIMING
-    assert(Omerta.Injury.DeathFade(0) == 0, "not black at the moment of death")
-    assert(Omerta.Injury.DeathFade(T.BLACK_AT) == 1, "black on schedule")
-    assert(Omerta.Injury.DeathTextAlpha(T.BLACK_AT) == 0,
-        "the words must not start before the screen is black")
-    assert(Omerta.Injury.DeathTextAlpha(T.TEXT_AT + T.TEXT_OVER) == 1, "fully readable")
 end)
 
 -- The loop seam: a quick dip at both ends so it is a breath, not a click.

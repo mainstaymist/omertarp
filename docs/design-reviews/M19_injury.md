@@ -329,3 +329,17 @@ The tension is **not networked**. The client has both positions and the rule is 
 **A body has a tooltip, and it is the identity system's answer.** `cl_identity.lua` only ever considered players, so the subject provider added in §12 had no client half and never fired. It now accepts registered predicates, so looking at a body resolves through `ResolveDisplayName` per observer — their name if you know them, Unknown if you do not, Unknown either way if their face is covered. D-033 keeps objects naming themselves and people not; a body is on the people side of that line, so the name comes from M5 and only the action hint ("Take hold, or search them") is drawn by M19.
 
 Suite: 307 → 313 checks.
+
+### 14d. Three defects from play (2026-07-28)
+
+**A jump was free rest.** `StepStamina` only knew "sprinting or not", so the arc of a jump counted as standing still and regenerated — you paid the jump cost on the way up and earned it back before landing, which made a bunny-hopper recover faster than somebody standing still. Stamina is now held while airborne: no drain, and crucially no recovery. Catching your breath happens with your feet on the ground.
+
+**A corpse could not be dragged, because death untagged it.** `OnDeath` cleared `OmertaCharacter` and the networked marker, with the comment "no longer searchable, still a corpse". That made the ragdoll inert — no dot, no tooltip, nothing to take hold of — which is backwards: **moving a body is the single most important thing anyone does with one.** Hiding it is what M15's evidence and M20's funeral are both about, and it is why the corpse was kept in the world in the first place.
+
+A corpse now keeps its tag, its entry and its database row. What changes is the character's *state*, and the predicates read that: `IsDown` became `IsIncapable` for dragging and searching, since a corpse is as helpless as it gets. `ListActive` now includes the dead so bodies come back after a restart — a city where the dead vanish overnight is one where nobody can prove anything happened. Dragging your own former body is explicitly allowed; there is no reason to forbid it.
+
+Also fixed a missing `return` in `Grab`: the "somebody already has them" branch reported the refusal and then took the body anyway.
+
+**The cut to the top-down shot happened in vision.** It read as a glitch. The sequence now fades to black over the head shot, moves the camera *while nobody can see it*, and fades back in already looking down — which is how this shot is done everywhere else. The climb went from 5.5 s to 7.5 s and the whole thing is timed off derived constants (`CUT_AT`, `VISIBLE_AT`, `RISE_END`, `FADE_AT`) rather than independent numbers, so the phases cannot drift out of step with the fades. A test asserts the screen is fully black at the exact instant the camera cuts, and that instant is the first frame of the rise by construction rather than by two numbers happening to agree.
+
+Suite: 313 → 317 checks.

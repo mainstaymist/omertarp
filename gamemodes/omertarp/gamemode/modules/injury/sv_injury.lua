@@ -261,15 +261,17 @@ function Internal.OnDeath(characterId, opts)
             end
         end)
 
-    -- The body STAYS. A corpse is evidence (M15), it is what M20's funeral is
-    -- for, and a city where the dead vanish is one where nobody can prove
-    -- anything happened. Only the injury row and the live state are cleared.
-    Internal.Repo.RemoveBody(characterId)
+    -- The body stays, AND stays a body.
+    --
+    -- The first version untagged the corpse here, which quietly made it inert:
+    -- no dot, no tooltip, and nothing to take hold of. Hiding a body is the
+    -- single most important thing anyone does with one — it is what M15's
+    -- evidence and M20's funeral are both about — so a corpse keeps its tag,
+    -- its entry and its row. What changes is the character's STATE, and every
+    -- predicate reads that.
     if IsValid(body) then
-        body.OmertaCharacter = nil -- no longer searchable, still a corpse
-        body:SetNWBool("OmertaBody", false)
+        Internal.Repo.MoveBody(characterId, body:GetPos())
     end
-    Internal.Bodies[characterId] = nil
 
     Omerta.Log.Audit("injury.died", {
         actor = opts and opts.actorSteamId or "world",

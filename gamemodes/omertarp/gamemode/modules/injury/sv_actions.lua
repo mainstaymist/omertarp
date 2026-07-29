@@ -127,8 +127,9 @@ function Internal.RegisterSearch()
         if actor and actor.id == characterId then return true end -- your own pockets
 
         -- Searchable is a property of being HELPLESS, not of having once been
-        -- hurt. The moment they are back on their feet the answer changes.
-        if not Omerta.Injury.IsDown(Omerta.Injury.GetByCharacter(characterId)) then
+        -- hurt. The moment they are back on their feet the answer changes —
+        -- and a corpse is as helpless as it gets, so the dead are included.
+        if not Omerta.Injury.IsIncapable(Omerta.Injury.GetByCharacter(characterId)) then
             return false, "they are not going to let you"
         end
         local body = Omerta.Injury.BodyOf(characterId)
@@ -187,7 +188,7 @@ function Internal.RegisterSearchAction()
         predicate = function(ply, characterId)
             local actor = Omerta.Characters.Get(ply)
             if not (actor and actor.id ~= characterId) then return false end
-            return Omerta.Injury.IsDown(Omerta.Injury.GetByCharacter(characterId))
+            return Omerta.Injury.IsIncapable(Omerta.Injury.GetByCharacter(characterId))
         end,
         onComplete = function(ply, characterId, cb)
             local actor = Omerta.Characters.Get(ply)

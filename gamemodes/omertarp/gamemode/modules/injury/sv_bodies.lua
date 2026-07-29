@@ -198,7 +198,9 @@ function Omerta.Injury.Grab(ply, characterId, cb)
 
     local body = bodies[characterId]
     if not IsValid(body) then cb(false, "there is nothing to take hold of") return end
-    if Internal.DraggerOf(characterId) then cb(false, "somebody already has them") end
+    if Internal.DraggerOf(characterId) then
+        cb(false, "somebody already has them") return
+    end
 
     local anchor = body:GetPos()
     dragging[ply:SteamID64() or ""] = {
@@ -365,10 +367,10 @@ function Internal.LoadBodies()
         end
         local placed = 0
         for _, row in ipairs(rows) do
-            -- Only for characters actually still down. A stale row for someone
-            -- who has since been treated is cleaned up rather than resurrected.
+            -- Down or dead. A stale row for somebody who has since been
+            -- treated and walked away is cleaned up rather than resurrected.
             local state = Omerta.Injury.GetByCharacter(row.character_id)
-            if Omerta.Injury.IsDown(state) then
+            if Omerta.Injury.IsIncapable(state) then
                 if Internal.SpawnBody(row.character_id,
                         Vector(row.pos_x, row.pos_y, row.pos_z + 8), row.ang_y) then
                     placed = placed + 1

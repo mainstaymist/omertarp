@@ -30,14 +30,17 @@ function Repo.GetState(characterId, cb)
         { characterId }, cb)
 end
 
--- Everyone currently neither healthy nor dead. Loaded once at boot so timers
--- RESUME rather than restart — a restart that resets the bleed-out clock would
--- rescue everyone who was about to die, making "wait for the nightly restart"
--- a medical procedure.
+-- Everyone who is not healthy — the dead included.
+--
+-- Loaded once at boot so timers RESUME rather than restart: a restart that
+-- resets the bleed-out clock would rescue everyone who was about to die,
+-- making "wait for the nightly restart" a medical procedure. The dead are in
+-- the list because their corpses have to come back too; a city where the dead
+-- vanish on restart is one where nobody can prove anything happened.
 function Repo.ListActive(cb)
     Omerta.DB.Query(
-        "SELECT * FROM {character_injury} WHERE state <> ? AND state <> ?",
-        { Omerta.Injury.STATE.HEALTHY, Omerta.Injury.STATE.DEAD },
+        "SELECT * FROM {character_injury} WHERE state <> ?",
+        { Omerta.Injury.STATE.HEALTHY },
         function(rows, err) cb(rows or {}, err) end)
 end
 
