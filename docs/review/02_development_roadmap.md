@@ -70,7 +70,7 @@ Business framework (Tech §11): ownership, manager rosters, inventory, ledgers, 
 **Depends on:** M9, M10/M11 for ownership and money flows. **Testable when:** a speakeasy sells stock from its inventory into its ledger; the rumor NPC serves rumor entries; access control follows ownership.
 
 ### M14 — Crime events, store robbery, NPC victims
-EventService (durable EventIDs — review improvement #1); robbery operation state machine (Tech §16); NPC victim reaction model (weapon/mask/aggression/personality → comply/stall/alarm/flee — GDD §12); store robbery end-to-end with proceeds as physical cash.
+Robbery operation state machine (Tech §16) built on **M20's EventService** (review improvement #1 — the dependency inverted once M20 turned out to need durable EventIDs first); NPC victim reaction model (weapon/mask/aggression/personality → comply/stall/alarm/flee — GDD §12); store robbery end-to-end with proceeds as physical cash.
 **Depends on:** M9, M13; weapons decision Q-10. **Testable when:** a two-player masked store robbery produces an event, an alarm path, physical proceeds, and correct state transitions through Escaped/Failed.
 **Note (C4):** bank robbery is a fast-follow content milestone on this framework — after M16/M17 prove the loop — rather than Phase 5 (pending approval of review improvement #3).
 
@@ -99,7 +99,9 @@ The 7-state machine (Tech §17); incapacitation interactions (carry, search, arr
 
 ### M20 — Confirmed death and succession
 Deliberate, logged, interruptible confirm-kill interaction (Tech §18); death cascade (status, rank removal, succession trigger, death event, body/evidence preservation, newspaper eligibility, archive references, new-character flow); no automatic transfer of anything (GDD §19.3); confirmed-death rules spec (deliverable).
-**Depends on:** M19, M10 (succession), M14 (events). **Testable when:** a confirmed kill on a Capo triggers the full cascade including acting-leadership handoff; the victim's player reaches new-character creation; every step is audited.
+**Depends on:** M19, M10 (succession). **Testable when:** a confirmed kill on a Capo triggers the full cascade including acting-leadership handoff; the victim's player reaches new-character creation; every step is audited.
+**Design review:** `docs/design-reviews/M20_death.md` (delivered, awaiting approval — three rulings and one scope decision).
+**Dependency inverted:** this milestone previously depended on M14 for events. M20 is the first milestone that actually needs a durable EventID, so **M20 builds the EventService** (review improvement #1) and M14 consumes it. See that review's §2.
 
 ### M21 — Newspaper
 Template-driven article generation from eligible events (Tech §20); scheduled issues (Q-6 cadence), frozen on publish; physical paper props/reading UI; Option E composite portraits from archived appearance data with silhouette fallback (P-001).
