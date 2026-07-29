@@ -16,7 +16,12 @@ Omerta.Organizations.Internal = Omerta.Organizations.Internal or {}
 
 Omerta.Organizations.TYPE = { FAMILY = "family", POLICE = "police" }
 Omerta.Organizations.STATUS = { ACTIVE = "active", DORMANT = "dormant" }
-Omerta.Organizations.MEMBER_STATUS = { ACTIVE = "active", LEFT = "left", EXPELLED = "expelled" }
+-- `died` is its own exit rather than a flavour of `left`, because the roster
+-- has to be able to answer "who did we lose" separately from "who walked out"
+-- — M21 prints one and M22 archives both.
+Omerta.Organizations.MEMBER_STATUS = {
+    ACTIVE = "active", LEFT = "left", EXPELLED = "expelled", DIED = "died",
+}
 
 local definitions = {}
 local ordered = nil

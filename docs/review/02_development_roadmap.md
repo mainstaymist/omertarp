@@ -100,7 +100,7 @@ The 7-state machine (Tech §17); incapacitation interactions (carry, search, arr
 ### M20 — Confirmed death and succession
 Deliberate, logged, interruptible confirm-kill interaction (Tech §18); death cascade (status, rank removal, succession trigger, death event, body/evidence preservation, newspaper eligibility, archive references, new-character flow); no automatic transfer of anything (GDD §19.3); confirmed-death rules spec (deliverable).
 **Depends on:** M19, M10 (succession). **Testable when:** a confirmed kill on a Capo triggers the full cascade including acting-leadership handoff; the victim's player reaches new-character creation; every step is audited.
-**Design review:** `docs/design-reviews/M20_death.md` (delivered, awaiting approval — three rulings and one scope decision).
+**Design review:** `docs/design-reviews/M20_death.md` (APPROVED, IMPLEMENTED — §4a/§4b/§4c all (a); logged as D-038).
 **Dependency inverted:** this milestone previously depended on M14 for events. M20 is the first milestone that actually needs a durable EventID, so **M20 builds the EventService** (review improvement #1) and M14 consumes it. See that review's §2.
 
 ### M21 — Newspaper

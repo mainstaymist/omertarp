@@ -1,6 +1,6 @@
 # Design Review — M20: Confirmed Death and Succession
 
-Status: **APPROVED 2026-07-28 — §4a (a) yes, down is down; §4b (a) empty the chair; §4c (a) it stays on the body.** All three as recommended. The §2 scope decision (M20 builds the EventService) was not contested and is taken as confirmed. Logged as D-038. **Implementation pending.**
+Status: **APPROVED 2026-07-28 — §4a (a) yes, down is down; §4b (a) empty the chair; §4c (a) it stays on the body.** All three as recommended. The §2 scope decision (M20 builds the EventService) was not contested and is taken as confirmed. Logged as D-038. **IMPLEMENTED** — see §13.
 Milestone: M20 (roadmap Track D). Depends on: M19 (the funnel and the seam), M10 (rosters, ranks, the leader's chair), M9 (what is in the pockets), M11 (what the family paid for). Consumed by: M21 (a death is the story), M22 (an archive is what is left), M15/M17 (a body is evidence and a case), M14 (a robbery that goes wrong).
 
 > **Three rulings** (§4, all answered): whether a man who has been bandaged can still be finished, whether death seats a successor or only empties the chair, and what happens to what the dead were carrying.
@@ -180,3 +180,29 @@ Changes to shipped code, and there are two:
 ---
 
 **Approved. Implementation begins from here.**
+
+---
+
+## 13. Implementation Notes (post-implementation)
+
+Implemented as two modules — `modules/events/` and `modules/death/` — plus one function in M10 and a rules specification. Suite grew from 323 to 339 checks; the module graph now resolves 16 modules.
+
+- **The cascade is a listener, not a caller.** `Omerta.Death.Confirm` and the bleed-out clock both reach `Omerta.Injury.Die`, which fires `Omerta.CharacterDied`, which M20 listens to. So the eight steps run identically whichever way somebody died, and there is no second path to keep in step with the first.
+
+- **M19 needed no change at all.** The confirm kill is a registration into `RegisterDownedAction`, which M19 shipped empty for exactly this. That is the test of whether the seam was cut in the right place, and it passed.
+
+- **M10 needed one function and one enum value.** `RecordDeath` takes the existing `leave` path with a new `died` status; the chair emptying, the acting ladder descending, and the audit row all fall out of code that has been running since M10. `died` is its own status rather than a flavour of `left` because the roster has to answer "who did we lose" separately from "who walked out" — M21 prints one of those and M22 archives both.
+
+- **The completion check is asked twice.** Once as the predicate that offers the action, and again at the instant it completes. A target who is treated and stood up during the seven-second cast does not die because somebody started while they were still down — which is what makes rescuing somebody mid-act actually work rather than merely look like it might.
+
+- **Attempts are audited, not just successes.** `death.attempt_failed` exists because the report staff will actually receive is "he kept trying", and a log of completions cannot answer it. This is the one piece of logging that exists for the rules document rather than for the game.
+
+- **`published_at` is in the events table from the start.** It is M21's and does nothing yet. A migration against a table four milestones read from is more disruptive than a column that sits empty for one.
+
+- **The event's `public` flag is eligibility, not a decision.** It says a killing is the *kind* of thing that could reach a newspaper. Whether any particular one does is M21's to decide, because it depends on who witnessed it — and building that judgement into the event row would have put M21's rules in M20's table.
+
+- **Nothing about a death is networked to anybody but the two people involved.** No feed, no notice, no announcement. The event row exists so the newspaper can find out; it is never pushed to a client. This is the single most tempting violation of §4a in the project and it would have been one line.
+
+**Deliverable:** `docs/rules/confirmed_death.md` — what the code enforces, what the rules require, and what staff should actually ask when judging a report ("the mechanics allowed it or it would not have happened").
+
+In-engine acceptance (user-side): pull, restart, then `omerta_death_selftest` (9 steps). Then manually: put a second character down and use the interaction menu on them — **Finish** is last in the list, takes seven seconds, and can be walked away from. Check `omerta_events` for the record and `omerta_injury_history <id>` for the trail. To see §4b, seat a Don with `omerta_org_seed`, kill him with a Capo online, and check `omerta_org_list` shows the chair empty while the Capo holds authority.

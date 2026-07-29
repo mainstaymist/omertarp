@@ -644,6 +644,15 @@ function Omerta.Organizations.Expel(actorPly, targetCharacterId, reason, cb)
     end)
 end
 
+-- A death takes somebody off the roster the same way every other exit does,
+-- which is the point (D-038 §4b): the seat empties, acting authority descends
+-- to the most senior person present, and a PERMANENT leader has to be
+-- appointed by somebody holding org.appoint. M20 adds the trigger; the
+-- succession behaviour has been running since M10.
+function Omerta.Organizations.RecordDeath(characterId, cb)
+    leave(characterId, MEMBER.DIED, nil, "died", cb or function() end)
+end
+
 function Omerta.Organizations.Resign(ply, cb)
     cb = cb or function() end
     local character = Omerta.Characters.Get(ply)
