@@ -385,17 +385,51 @@ check("the vignette closes in as the blood runs out, and never blacks out", func
     -- Never fully closed: a black screen would hide the body somebody is
     -- kneeling over, which is the one thing worth seeing.
     assert(V(1, 0) <= 0.95, "the screen must never fully close")
-    for i = 0, 10 do
-        local reach = V(i / 10, 3.0)
-        assert(reach >= 0 and reach <= 0.95, "out of range with the pulse riding on it")
+end)
+
+-- The bug this pins: a symmetric sine spent half of every beat RETREATING, so
+-- the screen read as breathing in and out rather than as the edges closing.
+-- The pulse must only ever add.
+check("the heartbeat pushes in and relaxes back, never below the base", function()
+    loadModules()
+    local V = Omerta.Injury.VignetteReach
+    for step = 0, 10 do
+        local progress = step / 10
+        local base = V(progress, 0)
+        local lowest = base
+        for phase = 0, 62 do
+            local reach = V(progress, phase / 10)
+            assert(reach >= base - 0.0001,
+                "the pulse pulled the vignette back below its base at " .. progress)
+            lowest = math.min(lowest, reach)
+        end
+        assert(math.abs(lowest - base) < 0.0001, "the base is the floor of the beat")
     end
 end)
 
-check("the heartbeat quickens as the end nears", function()
+-- Whatever the phase, a later moment is never more open than an earlier one.
+check("the vignette never opens back up as time runs out", function()
+    loadModules()
+    local V = Omerta.Injury.VignetteReach
+    local previous = -1
+    for step = 0, 20 do
+        -- Compared at the same point in the beat, so the comparison is of the
+        -- base and not of where the heart happens to be.
+        local reach = V(step / 20, 0)
+        assert(reach >= previous, "the edges retreated between two moments")
+        previous = reach
+    end
+end)
+
+check("the heartbeat quickens as the end nears, and stays slow", function()
     loadModules()
     local P = Omerta.Injury.PulseRate
     assert(P(1) > P(0), "the beat has to quicken or it is just a throb")
     assert(P(0) > 0, "and it has to beat at all")
+    -- Under one beat a second even at the very end. This is a heartbeat felt
+    -- from the inside, not a strobe; the first version ran to three a second
+    -- and read as a flicker.
+    assert(P(1) < 1, "too fast to read as a pulse")
 end)
 
 check("the death camera holds before it pulls away", function()

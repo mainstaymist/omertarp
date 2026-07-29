@@ -14,26 +14,59 @@ local C = Omerta.Injury.Client
 
 C.death = nil -- { startedAt, body, at, eye, eyeAng }
 
+-- Where a body's eyes are, right now.
+--
+-- The attachment is the good answer and every Half-Life 2 playermodel has it.
+-- The head bone is the fallback, because a custom model without an "eyes"
+-- attachment would otherwise drop the camera back to the frozen player entity
+-- — which is a view floating in mid-air where they were standing.
+local HEAD_BONES = {
+    "ValveBiped.Bip01_Head1", "ValveBiped.Bip01_Neck1", "bip_head",
+}
+
+function Omerta.Injury.EyesOf(body)
+    if not IsValid(body) then return nil end
+
+    local attachment = body:LookupAttachment("eyes")
+    if attachment and attachment > 0 then
+        local data = body:GetAttachment(attachment)
+        if data then return data.Pos, data.Ang end
+    end
+
+    for _, name in ipairs(HEAD_BONES) do
+        local bone = body:LookupBone(name)
+        if bone then
+            local pos, ang = body:GetBonePosition(bone)
+            if pos then return pos, ang or body:GetAngles() end
+        end
+    end
+    return nil
+end
+
 hook.Add("Omerta.CharacterDiedLocally", "omerta.injury.death_camera", function(index, at)
     local body = index > 0 and Entity(index) or nil
-    local eye, eyeAng = EyePos(), EyeAngles()
-    if IsValid(body) then
-        local attachment = body:LookupAttachment("eyes")
-        local data = attachment and attachment > 0 and body:GetAttachment(attachment)
-        if data then eye, eyeAng = data.Pos, data.Ang end
-    end
+    local pos, ang = Omerta.Injury.EyesOf(body)
 
     C.death = {
         startedAt = CurTime(),
         body = body,
         at = at,
-        eye = eye,
-        eyeAng = eyeAng,
+        -- Only a fallback. While the camera is holding on the body it tracks
+        -- the head live, so a ragdoll still settling carries the view with it.
+        eye = pos or EyePos(),
+        eyeAng = ang or EyeAngles(),
+        from = nil, -- captured on the first frame of the rise
     }
 end)
 
-hook.Add("Omerta.CharactersState", "omerta.injury.death_clear", function()
-    C.death = nil
+-- Cleared only when a NEW character is active.
+--
+-- This hook used to fire on any state change, and death sends NEEDS_CREATION —
+-- so the death state wiped itself the instant it was set. No fade, no camera
+-- move, no music, and the creation window opened over the body, all from this
+-- one line.
+hook.Add("Omerta.CharactersState", "omerta.injury.death_clear", function(state)
+    if state == Omerta.Characters.STATE.ACTIVE then C.death = nil end
 end)
 
 -- Straight down onto the body, MAP-relative: the camera looks down at the
@@ -56,42 +89,46 @@ local function overheadPosition(at, height)
 end
 
 hook.Add("CalcView", "omerta.injury.view", function(ply, pos, angles, fov)
-    -- Dead: the pull-away.
+    -- Dead: hold on the body, then pull up and away.
     if C.death then
         local D = Omerta.Injury.DEATH
         local elapsed = CurTime() - C.death.startedAt
         local phase, t = Omerta.Injury.DeathPhase(elapsed)
 
+        -- Track the head live rather than using the snapshot, so a ragdoll
+        -- still coming to rest takes the view down with it.
+        local livePos, liveAng = Omerta.Injury.EyesOf(C.death.body)
+        local eye = livePos or C.death.eye
+        local eyeAng = liveAng or C.death.eyeAng
+
         if phase == "hold" then
-            return { origin = C.death.eye, angles = C.death.eyeAng, fov = fov,
-                     drawviewer = true }
+            return { origin = eye, angles = eyeAng, fov = fov, drawviewer = true }
+        end
+
+        -- Frozen at the instant the rise begins: lerping from a live position
+        -- that is still settling makes the climb stutter.
+        if not C.death.from then
+            C.death.from = eye
+            C.death.fromAng = eyeAng
         end
 
         local at = IsValid(C.death.body) and C.death.body:GetPos() or C.death.at
         local eased = Omerta.Injury.RiseEase(t)
-        local top = overheadPosition(at, D.HEIGHT)
-        local origin = LerpVector(eased, C.death.eye, top)
+        local origin = LerpVector(eased, C.death.from, overheadPosition(at, D.HEIGHT))
         -- Pitch rolls over to straight down as it climbs; yaw is held so the
         -- world does not spin under the shot.
-        local ang = Angle(
-            Lerp(eased, C.death.eyeAng.p, 90),
-            C.death.eyeAng.y,
-            0)
+        local ang = Angle(Lerp(eased, C.death.fromAng.p, 90), C.death.fromAng.y, 0)
         return { origin = origin, angles = ang, fov = fov, drawviewer = true }
     end
 
     -- Down: first person, riding the ragdoll's head.
     if not Omerta.Injury.IsDown(C.state) then return end
-    local body = C.body
-    if not IsValid(body) then return end
-
-    local attachment = body:LookupAttachment("eyes")
-    local data = attachment and attachment > 0 and body:GetAttachment(attachment)
-    if not data then return end
+    local eye, eyeAng = Omerta.Injury.EyesOf(C.body)
+    if not eye then return end
 
     -- Not drawing the viewer: the camera is inside the head, and rendering the
     -- head from inside it is a view of the back of a face.
-    return { origin = data.Pos, angles = data.Ang, fov = fov, drawviewer = false }
+    return { origin = eye, angles = eyeAng, fov = fov, drawviewer = false }
 end)
 
 --------------------------------------------------------------------------------

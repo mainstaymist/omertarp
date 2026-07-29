@@ -288,3 +288,22 @@ Suite: 298 → 305 checks.
 That is the fifth bug of this shape on this project, and the lint I added with M19 only checked `Internal.Repo` — the exact table that had bitten us before, not the pattern. It is now `lint.include_order`, which models the loader's own ordering: for every file-scope capture of a module sub-table, it finds which file first creates that table and flags the capture if that file sorts later and the capturing file has no `X = X or {}` guard of its own.
 
 Verified by reintroducing the bug and confirming the lint names the file, the line, the table and the file it is created in. A lint that passes on a clean tree proves nothing; the test was whether it fails on the dirty one.
+
+### 14b. Presentation defects found in play (2026-07-28)
+
+Nine symptoms reported, two root causes.
+
+**One line wiped the entire death sequence.** `cl_view.lua` cleared the client's death state on `Omerta.CharactersState` — and death *sends* `NEEDS_CREATION`, so the state was destroyed the instant it was set. That alone accounted for five of the nine: no fade to black, no camera pull-away, no head attachment (the view fell back to the frozen player entity, floating where they had been standing), no piano, and the creation window opening immediately because the gate it consults was already nil. The hook now clears only on `ACTIVE` — a *new* character — which is what it always meant.
+
+**The clock never moved.** `Internal.SendState` is called on state *change*, so the remaining time was sent once and never again. Progress stayed at zero, so the timer sat full and the vignette never grew; the only thing moving was the sine, which is exactly what "grew and then shrunk a little" describes. The client is now given a deadline and counts down against it locally — smooth, and no new traffic. The message carries the whole window as well, so a client reconnecting mid-bleed draws the right fraction instead of restarting the bar.
+
+Four smaller ones:
+
+- **The pulse was a strobe.** Up to three beats a second. Now 0.35–0.9, well under a real pulse, because on screen anything faster stops reading as a heartbeat.
+- **The pulse retreated.** A symmetric sine spends half of every beat pulling the edges back out. It is now one-sided — `(1 - cos)/2`, which runs 0..1 — so the beat only ever pushes further in and relaxes to the base, never below it. Pinned by a test that fails against the old formula.
+- **The ring is a line.** A radial timer over a dying man read as a loading spinner. It is a thin line above the words, closing from both ends toward its middle — the same gesture the vignette is making.
+- **`sound.PlayFile` had the wrong flag.** `"noblock"` is a streaming flag for `PlayURL`; on a file it silently returns nothing, which is why the trombone played and the piano never did. Also made the request non-re-entrant: it is called from `Think`, so without a guard it fired a fresh load every frame until the first returned.
+
+Also added a bone fallback for the head camera. The `eyes` attachment exists on every Half-Life 2 playermodel, but a custom model without one would have dropped the camera back to the player entity — a view floating in mid-air, which is the failure that was already visible.
+
+Suite: 305 → 307 checks.

@@ -26,19 +26,29 @@ local function stopMusic()
     channel = nil
 end
 
+local requested = false
+
 local function startMusic()
-    if channel then return end
-    sound.PlayFile(Omerta.Injury.SOUND.PIANO, "noblock", function(built, errorId, errorName)
-        -- A missing or undownloaded file must cost the music, not the screen.
-        if not IsValid(C.death) and not C.death then
-            if built then built:Stop() end
-            return
-        end
+    -- `requested` rather than `channel`, because PlayFile is asynchronous: the
+    -- Think hook would otherwise fire a fresh request every frame until the
+    -- first one came back, and end up with a stack of overlapping pianos.
+    if requested or channel then return end
+    requested = true
+
+    -- No flags. "noblock" is a streaming flag for PlayURL and is wrong for a
+    -- file on disk — this is the sort of thing that silently returns nothing
+    -- rather than erroring, which is why the music simply never arrived.
+    sound.PlayFile(Omerta.Injury.SOUND.PIANO, "", function(built, errorId, errorName)
+        requested = false
         if not built then
+            -- A missing or undownloaded file costs the music, not the screen.
             Omerta.Log.Warn("injury", "death music did not load (%s: %s)",
                 tostring(errorId), tostring(errorName))
             return
         end
+        -- Died and moved on while it was loading.
+        if not C.death then built:Stop() return end
+
         channel = built
         channel:EnableLooping(true)
         channel:SetVolume(0)

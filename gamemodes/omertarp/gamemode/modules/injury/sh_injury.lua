@@ -204,20 +204,28 @@ end
 -- arithmetic in a cl_ file is arithmetic nothing can test. Same reason M8 put
 -- StepAlpha in its shared file.
 
--- How far the vignette has closed in, as a fraction of half the screen, with
--- the heartbeat riding on top. Eases in so it is barely there early and
--- unmistakable at the end.
+-- How far the vignette has closed in, as a fraction of half the screen.
+--
+-- The base is MONOTONIC — it only ever grows — and the pulse is ONE-SIDED, so
+-- the heartbeat pushes further in and relaxes back to where the base has got
+-- to, never below it. A symmetric sine here was the first version and it read
+-- as the screen breathing in and out rather than as the edges closing, because
+-- half of every beat was spent retreating.
 function Omerta.Injury.VignetteReach(progress, pulsePhase)
     progress = math.Clamp(progress or 0, 0, 1)
-    local base = 0.18 + 0.62 * (progress * progress)
-    -- The beat grows with the loss: a flutter at first, a hammer by the end.
-    local pulse = math.sin(pulsePhase or 0) * (0.02 + 0.06 * progress)
-    return math.Clamp(base + pulse, 0, 0.95)
+    local base = 0.16 + 0.66 * (progress * progress)
+    -- (1 - cos) / 2 runs 0..1 rather than -1..1: it adds and then returns to
+    -- zero, so the reach never dips below the base.
+    local beat = (1 - math.cos(pulsePhase or 0)) * 0.5
+    local amplitude = 0.015 + 0.05 * progress
+    return math.Clamp(base + beat * amplitude, 0, 0.94)
 end
 
--- Beats per second, quickening as blood is lost.
+-- Beats per second. Slow: this is a heartbeat felt from the inside, not a
+-- strobe. Roughly 21 bpm at the start rising to 54 at the end — well under a
+-- real pulse, because on screen anything faster reads as a flicker.
 function Omerta.Injury.PulseRate(progress)
-    return 1.1 + 1.9 * math.Clamp(progress or 0, 0, 1)
+    return 0.35 + 0.55 * math.Clamp(progress or 0, 0, 1)
 end
 
 Omerta.Injury.DEATH = {
@@ -306,11 +314,12 @@ Omerta.Net.Register("injury.state", {
     realm = "server_to_client",
     schema = {
         { name = "state",   type = "uint", bits = 3 },
-        { name = "seconds", type = "uint", bits = 12 }, -- 0 = no clock
+        { name = "seconds", type = "uint", bits = 12 }, -- remaining; 0 = no clock
+        { name = "total",   type = "uint", bits = 12 }, -- the whole window
     },
     handler = function(payload)
         local state = Omerta.Injury.STATE_BY_INDEX[payload.state]
-        hook.Run("Omerta.InjuryUpdated", state, payload.seconds)
+        hook.Run("Omerta.InjuryUpdated", state, payload.seconds, payload.total)
     end,
 })
 

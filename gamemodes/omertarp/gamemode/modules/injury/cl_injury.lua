@@ -8,25 +8,27 @@ Omerta.Injury.Client = Omerta.Injury.Client or {}
 local C = Omerta.Injury.Client
 
 C.state = Omerta.Injury.STATE.HEALTHY
-C.seconds = 0
-C.total = 0
+C.deadline = nil   -- CurTime() the clock runs out; counted down locally
+C.total = 0        -- the whole window, so a fraction can be drawn
 C.body = nil
 
 local prompt, promptUntil = nil, 0
 local carrying = false
 
-hook.Add("Omerta.InjuryUpdated", "omerta.injury.state", function(newState, left)
-    local wasDown = Omerta.Injury.IsDown(C.state)
+-- The server sends the clock ONCE, when the state changes. It is not a stream
+-- and must not become one — so the client is given a deadline and counts down
+-- against it locally. That is also smooth, where a once-per-second push would
+-- step the bar in visible jerks.
+hook.Add("Omerta.InjuryUpdated", "omerta.injury.state", function(newState, left, total)
     C.state = newState or Omerta.Injury.STATE.HEALTHY
-    C.seconds = left or 0
-    -- The first message of a bleed-out carries the full window, which is what
-    -- the ring needs to draw a fraction rather than a countdown.
-    if Omerta.Injury.IsDown(C.state) and not wasDown then
-        C.total = math.max(1, C.seconds)
-    elseif not Omerta.Injury.IsDown(C.state) then
-        C.total = 0
+
+    if (left or 0) > 0 then
+        C.deadline = CurTime() + left
+        -- `total` is the whole window; falling back to the remainder keeps a
+        -- reconnect sane rather than dividing by zero.
+        C.total = (total and total > 0) and total or left
     else
-        C.total = math.max(C.total, C.seconds)
+        C.deadline, C.total = nil, 0
     end
 end)
 
@@ -46,14 +48,21 @@ end)
 
 hook.Add("Omerta.CharactersState", "omerta.injury.reset", function()
     C.state = Omerta.Injury.STATE.HEALTHY
-    C.seconds, C.total, C.body = 0, 0, nil
+    C.deadline, C.total, C.body = nil, 0, nil
     prompt, carrying = nil, false
 end)
 
--- 0 at full health, 1 at the moment of death. Everything visual scales off it.
+-- Seconds left on the clock right now, counted locally.
+function C.SecondsLeft()
+    if not C.deadline then return 0 end
+    return math.max(0, C.deadline - CurTime())
+end
+
+-- 0 when the clock starts, 1 at the moment it runs out. Everything visual
+-- scales off this one number.
 function C.Progress()
     if not Omerta.Injury.IsDown(C.state) or C.total <= 0 then return 0 end
-    return math.Clamp(1 - (C.seconds / C.total), 0, 1)
+    return math.Clamp(1 - (C.SecondsLeft() / C.total), 0, 1)
 end
 
 -- Only a bleed-out closes in. Stabilized has stopped the clock, so the screen
@@ -121,30 +130,11 @@ Omerta.HUD.Register("injury.vignette", {
 })
 
 --------------------------------------------------------------------------------
--- The circular timer
+-- The clock
 --------------------------------------------------------------------------------
-
--- An arc as a polygon ring. Drawn rather than textured for the same reason as
--- the vignette: no asset to be missing.
-local function drawArc(cx, cy, radius, thickness, fraction, colour, segments)
-    if fraction <= 0 then return end
-    segments = segments or 96
-    local used = math.max(1, math.ceil(segments * fraction))
-    local inner = radius - thickness
-    surface.SetDrawColor(colour)
-    draw.NoTexture()
-    for i = 0, used - 1 do
-        -- Starts at twelve o'clock and runs clockwise, the way a clock does.
-        local a1 = math.rad(-90 + (i / segments) * 360)
-        local a2 = math.rad(-90 + ((i + 1) / segments) * 360)
-        surface.DrawPoly({
-            { x = cx + math.cos(a1) * inner,  y = cy + math.sin(a1) * inner },
-            { x = cx + math.cos(a1) * radius, y = cy + math.sin(a1) * radius },
-            { x = cx + math.cos(a2) * radius, y = cy + math.sin(a2) * radius },
-            { x = cx + math.cos(a2) * inner,  y = cy + math.sin(a2) * inner },
-        })
-    end
-end
+-- A line above the words, shrinking toward its own centre as the time goes.
+-- The first version was a radial ring, which read as a loading spinner sitting
+-- over a dying man; a line is quieter and says the same thing.
 
 Omerta.HUD.Register("injury.clock", {
     order = 12,
@@ -152,14 +142,20 @@ Omerta.HUD.Register("injury.clock", {
     visible = function() return C.IsDying() end,
     draw = function(alpha)
         local scale = Omerta.HUD.Scale()
-        local radius, thickness = 46 * scale, 4 * scale
-        local cx, cy = ScrW() * 0.5, ScrH() * 0.5 - 96 * scale
+        local full, height = 260 * scale, 2 * scale
+        local x, y = ScrW() * 0.5, ScrH() * 0.5 - 34 * scale
         local left = 1 - C.Progress()
 
-        -- The track it is emptying along, so the ring reads as a measure
-        -- rather than an arbitrary arc.
-        drawArc(cx, cy, radius, thickness, 1, Color(70, 20, 20, 120 * alpha))
-        drawArc(cx, cy, radius, thickness, left, Color(200, 70, 60, 235 * alpha))
+        -- The track it is emptying along, so the line reads as a measure
+        -- rather than an arbitrary mark.
+        surface.SetDrawColor(70, 22, 20, 110 * alpha)
+        surface.DrawRect(x - full * 0.5, y, full, height)
+
+        -- Closes from both ends toward the middle, which is the same gesture
+        -- the vignette is making and reads as the same thing running out.
+        local width = full * left
+        surface.SetDrawColor(198, 68, 58, 240 * alpha)
+        surface.DrawRect(x - width * 0.5, y, width, height)
     end,
 })
 

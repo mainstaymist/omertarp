@@ -115,6 +115,9 @@ function Internal.SendState(characterId)
         -- Clamped to the field, not to the truth: a long clock reads as "a
         -- while yet", which is all the character could judge anyway.
         seconds = math.min(4095, math.floor(seconds or 0)),
+        -- The whole window, so a client reconnecting halfway through a bleed
+        -- draws the right fraction instead of starting the bar over.
+        total = math.min(4095, math.floor(entry and entry.total or 0)),
     }, ply)
 end
 
