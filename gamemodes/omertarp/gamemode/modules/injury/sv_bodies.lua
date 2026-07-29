@@ -202,9 +202,26 @@ function Omerta.Injury.Grab(ply, characterId, cb)
         cb(false, "somebody already has them") return
     end
 
-    local anchor = body:GetPos()
+    -- Which part of them you actually took hold of. A ragdoll is many physics
+    -- objects, and grabbing an arm should pull the arm — the rest follows
+    -- through the joints, the way a body moves when you drag it by one.
+    local bone = 0
+    local trace = util.TraceLine({
+        start = ply:EyePos(),
+        endpos = ply:EyePos() + ply:GetAimVector() * Omerta.Interaction.MAX_RANGE,
+        filter = ply,
+    })
+    if trace.Entity == body and trace.PhysicsBone then
+        bone = math.Clamp(trace.PhysicsBone, 0,
+            math.max(0, body:GetPhysicsObjectCount() - 1))
+    end
+
+    local grabbed = body:GetPhysicsObjectNum(bone)
+    local anchor = IsValid(grabbed) and grabbed:GetPos() or body:GetPos()
+
     dragging[ply:SteamID64() or ""] = {
         characterId = characterId,
+        bone = bone,
         anchor = anchor,
         startedAt = CurTime(),
     }
@@ -212,6 +229,7 @@ function Omerta.Injury.Grab(ply, characterId, cb)
 
     Omerta.Net.Send("injury.dragging", {
         body = body:EntIndex(),
+        bone = bone,
         x = math.floor(anchor.x), y = math.floor(anchor.y), z = math.floor(anchor.z),
     }, ply)
     Omerta.Log.Audit("injury.dragged", {
@@ -244,7 +262,7 @@ function Omerta.Injury.LetGo(ply, cb)
     end
 
     if IsValid(ply) then
-        Omerta.Net.Send("injury.dragging", { body = 0, x = 0, y = 0, z = 0 }, ply)
+        Omerta.Net.Send("injury.dragging", { body = 0, bone = 0, x = 0, y = 0, z = 0 }, ply)
     end
     cb(true)
 end
@@ -319,8 +337,16 @@ function Internal.TickDrags()
         if not IsValid(dragger) or Omerta.Injury.IsPlayerDown(dragger) or not IsValid(body) then
             dragging[sid] = nil
         else
-            local target = dragger:GetPos()
-            local from = body:GetPos()
+            -- The hold point follows where they are LOOKING, not where they
+            -- are standing, so turning the mouse swings the body round. That
+            -- is what lets somebody haul a body sideways into an alley
+            -- instead of only ever dragging it in a straight line behind them.
+            local target = Omerta.Injury.HoldPoint(dragger:GetPos(),
+                dragger:GetAimVector())
+
+            local grabbed = body:GetPhysicsObjectNum(entry.bone or 0)
+            if not IsValid(grabbed) then grabbed = body:GetPhysicsObjectNum(0) end
+            local from = IsValid(grabbed) and grabbed:GetPos() or body:GetPos()
             local distance = from:Distance(target)
 
             if Omerta.Injury.DragBreaks(distance) then
@@ -328,23 +354,19 @@ function Internal.TickDrags()
                 Omerta.Injury.LetGo(dragger)
             else
                 local tension = Omerta.Injury.DragTension(distance)
-                if tension > 0 then
-                    -- Velocity toward the dragger rather than a force impulse:
-                    -- a ragdoll given impulses tumbles and snags on scenery,
-                    -- and a body being hauled should slide, not cartwheel.
+                if tension > 0 and IsValid(grabbed) then
+                    -- Applied to the ONE object that was grabbed. The joints
+                    -- drag the rest, which is why a body pulled by an arm
+                    -- trails rather than sliding rigidly.
                     local direction = (target - from)
                     direction.z = 0
                     direction:Normalize()
                     local speed = Omerta.Injury.DragSpeed(tension, scale)
+                    local velocity = grabbed:GetVelocity()
+                    grabbed:Wake()
+                    grabbed:SetVelocity(Vector(direction.x * speed,
+                        direction.y * speed, velocity.z))
 
-                    for i = 0, body:GetPhysicsObjectCount() - 1 do
-                        local phys = body:GetPhysicsObjectNum(i)
-                        if IsValid(phys) then
-                            local velocity = phys:GetVelocity()
-                            phys:SetVelocity(Vector(direction.x * speed,
-                                direction.y * speed, velocity.z))
-                        end
-                    end
                     if drain > 0 then Omerta.Stamina.Drain(dragger, drain * tension) end
                 end
             end

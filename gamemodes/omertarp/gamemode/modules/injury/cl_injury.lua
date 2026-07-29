@@ -55,8 +55,8 @@ hook.Add("Omerta.InjuryPrompt", "omerta.injury.prompt", function(text, duration)
     promptUntil = CurTime() + (duration or 4)
 end)
 
-hook.Add("Omerta.InjuryDragging", "omerta.injury.dragging", function(index, anchor)
-    C.drag = index > 0 and { bodyIndex = index, anchor = anchor } or nil
+hook.Add("Omerta.InjuryDragging", "omerta.injury.dragging", function(index, bone, anchor)
+    C.drag = index > 0 and { bodyIndex = index, bone = bone or 0, anchor = anchor } or nil
 end)
 
 -- The body currently being hauled, or nil. Resolved on demand for the same
@@ -71,10 +71,25 @@ end
 -- The client computes tension itself from two positions it already has, using
 -- the same pure rule the server enforces with. Nothing about the rope needs to
 -- travel over the wire every frame.
-function C.DragTension()
+-- Where the rope actually meets the body: the physics object that was taken
+-- hold of, not the entity origin. Grab a hand and the line ends at the hand.
+function C.DragGrip()
     local body = C.DragBody()
-    if not body then return 0 end
-    return Omerta.Injury.DragTension(LocalPlayer():GetPos():Distance(body:GetPos()))
+    if not body then return nil end
+    local phys = body:GetPhysicsObjectNum(C.drag.bone or 0)
+    if IsValid(phys) then return phys:GetPos() end
+    return body:GetPos()
+end
+
+-- The client computes tension itself from two positions it already has, using
+-- the same pure rules the server enforces with — including the hold point, so
+-- the line on screen tightens at exactly the moment the body starts to move.
+function C.DragTension()
+    local grip = C.DragGrip()
+    if not grip then return 0 end
+    local ply = LocalPlayer()
+    local hold = Omerta.Injury.HoldPoint(ply:GetPos(), ply:GetAimVector())
+    return Omerta.Injury.DragTension(grip:Distance(hold))
 end
 
 hook.Add("Omerta.CharactersState", "omerta.injury.reset", function()
@@ -276,26 +291,25 @@ Omerta.HUD.Register("injury.drag", {
     fade = 0.25,
     visible = function() return C.DragBody() ~= nil end,
     draw = function(alpha)
-        local body = C.DragBody()
-        if not body then return end
+        local grip = C.DragGrip()
+        if not grip then return end
 
         local tension = C.DragTension()
         local scale = Omerta.HUD.Scale()
 
-        -- Where the rope meets the body, on screen. Behind the camera means
-        -- there is nothing to draw a line to.
-        local at = body:GetPos():ToScreen()
-        if not at.visible then return end
+        -- The rope is anchored at the CROSSHAIR, not the bottom of the screen.
+        -- That is what makes the mouse part of the mechanic: the hold point in
+        -- the world follows where you are looking, so swinging the view swings
+        -- the body, and the line on screen is the handle you are swinging.
+        local fromX, fromY = ScrW() * 0.5, ScrH() * 0.5
 
-        -- Hands, roughly: low and slightly right of centre, so the line reads
-        -- as coming from the player rather than from the middle of the screen.
-        local fromX, fromY = ScrW() * 0.5, ScrH() * 0.86
+        local at = grip:ToScreen()
+        if not at.visible then return end
 
         -- A taut rope shivers. Amplitude rides on tension, so a slack line is
         -- perfectly still and a straining one is visibly working.
         local shudder = tension * tension * 3 * scale
-        local jitter = shudder > 0
-            and math.sin(CurTime() * 34) * shudder or 0
+        local jitter = shudder > 0 and math.sin(CurTime() * 34) * shudder or 0
 
         surface.SetDrawColor(
             150 + 90 * tension,
@@ -304,7 +318,7 @@ Omerta.HUD.Register("injury.drag", {
             (110 + 120 * tension) * alpha)
         surface.DrawLine(fromX, fromY, at.x + jitter, at.y)
 
-        -- The anchor: where you took hold. Watching it fall behind you is what
+        -- The anchor: where you took hold. Watching it fall behind is what
         -- makes hauling somebody across a street feel like distance covered.
         if C.drag and C.drag.anchor then
             local anchor = C.drag.anchor:ToScreen()
@@ -317,7 +331,7 @@ Omerta.HUD.Register("injury.drag", {
         local label = tension >= 0.98 and "Your grip is going"
             or tension > 0.05 and "Hauling" or "You have hold of them"
         draw.SimpleText(label, Omerta.HUD.Font("small"),
-            ScrW() * 0.5, ScrH() * 0.89,
+            ScrW() * 0.5, ScrH() * 0.62,
             Color(206, 182 - 60 * tension, 172 - 60 * tension, 220 * alpha),
             TEXT_ALIGN_CENTER, TEXT_ALIGN_TOP)
     end,

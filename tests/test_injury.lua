@@ -614,3 +614,79 @@ check("the pan starts above the body and climbs from there", function()
     assert(D.START_HEIGHT > 0, "the shot has to begin off the floor")
     assert(D.HEIGHT > D.START_HEIGHT, "and it has to climb, not descend")
 end)
+
+--------------------------------------------------------------------------------
+suite("injury.exit")
+--------------------------------------------------------------------------------
+
+-- Pressing a key used to cut straight to the creator, throwing the moment away
+-- in one frame. The exit is its own small sequence now.
+check("the words go before the black lifts", function()
+    loadModules()
+    local E = Omerta.Injury.EXIT
+    local T, F = Omerta.Injury.ExitTextAlpha, Omerta.Injury.ExitFade
+
+    assert(T(0) == 1, "the words are still there at the keypress")
+    assert(T(E.TEXT) == 0, "and gone by the end of their fade")
+    -- Solid black across the whole handover, so what is built behind it is
+    -- revealed rather than appearing on top of it.
+    assert(F(0) == 1 and F(E.TEXT) == 1, "the screen stays black while they go")
+    assert(F(E.BUILD_AT) == 1, "still black at the moment the next screen builds")
+    assert(F(E.TOTAL) == 0, "and clear by the end")
+    assert(E.BUILD_AT > E.TEXT, "the next screen must not build over the words")
+end)
+
+check("the music goes out with them rather than stopping dead", function()
+    loadModules()
+    local E = Omerta.Injury.EXIT
+    local M = Omerta.Injury.ExitMusic
+    assert(M(0) == 1, "full volume at the keypress")
+    assert(M(E.BUILD_AT) == 0, "silent by the handover")
+    local previous = 2
+    for i = 0, 10 do
+        local v = M((i / 10) * E.BUILD_AT)
+        assert(v <= previous, "the fade must not swell back up")
+        previous = v
+    end
+end)
+
+check("the sequence ends, rather than leaving the screen black forever", function()
+    loadModules()
+    assert(Omerta.Injury.ExitDone(Omerta.Injury.EXIT.TOTAL))
+    assert(not Omerta.Injury.ExitDone(0))
+end)
+
+--------------------------------------------------------------------------------
+suite("injury.hold")
+--------------------------------------------------------------------------------
+
+-- The hold point is what makes the mouse part of dragging: it follows where
+-- the hauler is LOOKING, so turning swings the body round a corner.
+check("the hold point sits in front of where you are looking", function()
+    loadModules()
+    local H = Omerta.Injury.HoldPoint
+    local origin = Vector(0, 0, 0)
+
+    local ahead = H(origin, Vector(1, 0, 0), 50)
+    assert(math.abs(ahead.x - 50) < 0.001 and math.abs(ahead.y) < 0.001,
+        "looking down +X should hold the rope down +X")
+
+    local left = H(origin, Vector(0, 1, 0), 50)
+    assert(math.abs(left.y - 50) < 0.001, "turning moves the hold point with you")
+end)
+
+-- Aiming at the sky must not lift a body off the ground.
+check("looking up does not hoist the body", function()
+    loadModules()
+    local H = Omerta.Injury.HoldPoint
+    local up = H(Vector(0, 0, 0), Vector(0.2, 0, 0.98), 50)
+    assert(math.abs(up.z) < 0.001, "the hold point is flattened to the floor")
+    -- Still a sensible horizontal distance rather than a collapsed point.
+    assert(math.abs(up.x - 50) < 0.001, "and keeps its full reach")
+end)
+
+check("straight up is not a division by zero", function()
+    loadModules()
+    local up = Omerta.Injury.HoldPoint(Vector(0, 0, 0), Vector(0, 0, 1), 50)
+    assert(up.z == 0 and up:Length() > 0, "a degenerate aim still yields a point")
+end)

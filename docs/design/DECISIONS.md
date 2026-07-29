@@ -92,6 +92,20 @@ Resolves Q-4. Ending a season automatically retires every living character ("lea
 
 ---
 
+## D-038 — A death empties the chair, and leaves everything where it fell (DECIDED, 2026-07-28)
+
+M20's three rulings, all as recommended:
+
+**A man who has been bandaged can still be finished** (§4a). Down is down. A stabilization item buys **time** — the thing worth buying, because time is what lets friends arrive — and never buys immunity. What protects a helpless man is whoever is standing over him, which is a scene rather than an inventory check.
+
+**Death empties the leader's chair; it does not seat a successor** (§4b). M10's acting-authority ladder descends to the most senior person present, exactly as it does for an absent leader, and a permanent leader must be appointed by somebody holding `org.appoint`. Since M10's acting rank sits one rung below the leader's, **an acting Capo can run a family but cannot name a successor to it** — killing a Don leaves a power vacuum with a shape, which somebody has to be found to fill. Tech §19's "permanent succession follows family rules", made mechanical.
+
+**What the dead were carrying stays on the body** (§4c), organization-tagged equipment included. Returning family guns to the treasury automatically would make death cheap for the only actors who can afford to make it expensive, and would remove the reason to go and get your dead — which is precisely what M19's dragging exists for and what makes a funeral mean anything later.
+
+**Scope, uncontested and therefore confirmed:** the roadmap gave M20 a dependency on M14 for events. M14 does not exist and is blocked on Q-10, and review improvement #1 already noted that deaths need EventIDs. **M20 builds the EventService and M14 consumes it.** Both roadmap entries record the inverted dependency.
+
+**Affects:** `docs/design-reviews/M20_death.md`; `docs/review/02_development_roadmap.md` (M14 and M20 entries); M10, which gains `RecordDeath`; M14/M21/M22/M15/M17, which all consume `Omerta.Events`.
+
 ## D-037 — Going down is a situation; bleeding out ends it (DECIDED, 2026-07-28)
 
 M19's three rulings, together:

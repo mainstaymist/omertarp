@@ -311,6 +311,45 @@ function Omerta.Injury.DeathFade(elapsed)
     return math.Clamp((elapsed - D.FADE_AT) / D.FADE_END, 0, 1)
 end
 
+--------------------------------------------------------------------------------
+-- Leaving the death screen
+--------------------------------------------------------------------------------
+-- Pressing a key used to cut straight to the character creator, which threw
+-- away the whole moment in a single frame. It is now its own small sequence:
+-- a sound to confirm the press, the words and the music going out together,
+-- and then the black lifting to reveal whatever comes next.
+
+Omerta.Injury.EXIT = {
+    TEXT   = 1.1,  -- the words fading out under the confirm sound
+    HOLD   = 0.5,  -- a beat of nothing at all
+    REVEAL = 1.6,  -- the black lifting off what is behind it
+}
+
+local E = Omerta.Injury.EXIT
+E.BUILD_AT  = E.TEXT + E.HOLD          -- the next screen is built behind black
+E.TOTAL     = E.BUILD_AT + E.REVEAL
+
+-- The words, going.
+function Omerta.Injury.ExitTextAlpha(elapsed)
+    return 1 - math.Clamp((elapsed or 0) / E.TEXT, 0, 1)
+end
+
+-- The black. Solid until the next screen has been built behind it, then lifts.
+function Omerta.Injury.ExitFade(elapsed)
+    elapsed = elapsed or 0
+    if elapsed < E.BUILD_AT then return 1 end
+    return 1 - math.Clamp((elapsed - E.BUILD_AT) / E.REVEAL, 0, 1)
+end
+
+-- The music, going out across the whole thing rather than stopping dead.
+function Omerta.Injury.ExitMusic(elapsed)
+    return 1 - math.Clamp((elapsed or 0) / E.BUILD_AT, 0, 1)
+end
+
+function Omerta.Injury.ExitDone(elapsed)
+    return (elapsed or 0) >= E.TOTAL
+end
+
 function Omerta.Injury.DeathTextAlpha(elapsed)
     return math.Clamp(((elapsed or 0) - D.TEXT_AT) / D.TEXT_OVER, 0, 1)
 end
@@ -344,7 +383,23 @@ Omerta.Injury.DRAG = {
     SLACK  = 52,   -- you can move this far before the line even goes tight
     TAUT   = 130,  -- fully taut here; past this you are hauling with everything
     BREAK  = 210,  -- and here your grip goes
+    HOLD   = 46,   -- how far in front of you the hauling hand sits
 }
+
+-- Where the hand holding the rope is: in front of the dragger, along the way
+-- they are LOOKING rather than the way they are standing.
+--
+-- That is what makes the mouse part of the mechanic. Turning swings the hold
+-- point, so a body can be pulled around a corner by looking round it, instead
+-- of only ever trailing directly behind whoever is walking.
+--
+-- Flattened: aiming at the sky must not lift a body off the ground.
+function Omerta.Injury.HoldPoint(origin, aim, distance)
+    local flat = Vector(aim.x, aim.y, 0)
+    if flat:LengthSqr() < 0.0001 then flat = Vector(1, 0, 0) end
+    flat:Normalize()
+    return origin + flat * (distance or Omerta.Injury.DRAG.HOLD)
+end
 
 -- 0 while there is slack, 1 when the line is as tight as it gets. Pure.
 function Omerta.Injury.DragTension(distance, slack, taut)
@@ -458,12 +513,16 @@ Omerta.Net.Register("injury.dragging", {
     realm = "server_to_client",
     schema = {
         { name = "body", type = "uint", bits = 16 }, -- 0 = let go
+        -- Which physics bone was taken hold of. A ragdoll is many objects, and
+        -- grabbing an arm should pull the arm — the rest follows through the
+        -- joints, the way a body actually moves when you drag it.
+        { name = "bone", type = "uint", bits = 6 },
         { name = "x", type = "int", bits = 20 },
         { name = "y", type = "int", bits = 20 },
         { name = "z", type = "int", bits = 20 },
     },
     handler = function(payload)
-        hook.Run("Omerta.InjuryDragging", payload.body,
+        hook.Run("Omerta.InjuryDragging", payload.body, payload.bone,
             Vector(payload.x, payload.y, payload.z))
     end,
 })

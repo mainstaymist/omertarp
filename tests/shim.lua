@@ -22,6 +22,44 @@ local gamemodePath = "gamemodes/omertarp/gamemode/"
 -- guarded by Omerta.InEngine — chiefly IsValid, used in player-cache lookups.
 -- Everything genuinely engine-bound stays behind the InEngine flag and never
 -- runs here.
+-- A minimal Vector. Enough for the pure geometry the modules do — the drag
+-- hold point today, and whatever M20's event positions and M15's evidence
+-- placement need next. Deliberately not the whole engine type: anything that
+-- needs more than this is doing engine work and belongs behind InEngine.
+local VectorMeta = {}
+VectorMeta.__index = VectorMeta
+
+function Vector(x, y, z)
+    return setmetatable({ x = x or 0, y = y or 0, z = z or 0 }, VectorMeta)
+end
+
+function VectorMeta.__add(a, b) return Vector(a.x + b.x, a.y + b.y, a.z + b.z) end
+function VectorMeta.__sub(a, b) return Vector(a.x - b.x, a.y - b.y, a.z - b.z) end
+
+function VectorMeta.__mul(a, b)
+    if type(a) == "number" then return Vector(b.x * a, b.y * a, b.z * a) end
+    if type(b) == "number" then return Vector(a.x * b, a.y * b, a.z * b) end
+    return Vector(a.x * b.x, a.y * b.y, a.z * b.z)
+end
+
+function VectorMeta.__eq(a, b) return a.x == b.x and a.y == b.y and a.z == b.z end
+
+function VectorMeta:LengthSqr() return self.x ^ 2 + self.y ^ 2 + self.z ^ 2 end
+function VectorMeta:Length() return math.sqrt(self:LengthSqr()) end
+
+function VectorMeta:Distance(other)
+    return math.sqrt((self.x - other.x) ^ 2 + (self.y - other.y) ^ 2
+        + (self.z - other.z) ^ 2)
+end
+
+-- Mutates in place, exactly as the engine's does. Callers rely on that.
+function VectorMeta:Normalize()
+    local length = self:Length()
+    if length > 0 then
+        self.x, self.y, self.z = self.x / length, self.y / length, self.z / length
+    end
+end
+
 -- GMod adds these to the math table; the pure presentation curves use them.
 function math.Clamp(value, low, high)
     return math.max(low, math.min(high, value))

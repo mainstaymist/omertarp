@@ -89,6 +89,11 @@ local function overheadPosition(at, height)
 end
 
 hook.Add("CalcView", "omerta.injury.view", function(ply, pos, angles, fov)
+    -- Leaving: the shot is frozen where the climb left it. Snapping back to
+    -- the player entity behind the black would be invisible, but the first
+    -- frame of the reveal would show it.
+    if C.leaving and C.leaving.view then return C.leaving.view end
+
     -- Dead: hold on the body, then pull up and away.
     if C.death then
         local D = Omerta.Injury.DEATH
@@ -121,7 +126,8 @@ hook.Add("CalcView", "omerta.injury.view", function(ply, pos, angles, fov)
             overheadPosition(at, D.START_HEIGHT), overheadPosition(at, D.HEIGHT))
         -- Yaw is held from where they fell, so the world does not spin.
         local ang = Angle(90, C.death.eyeAng.y, 0)
-        return { origin = origin, angles = ang, fov = fov, drawviewer = true }
+        C.lastDeathView = { origin = origin, angles = ang, fov = fov, drawviewer = true }
+        return C.lastDeathView
     end
 
     -- Down: first person, riding the ragdoll's head.
@@ -142,6 +148,8 @@ end)
 -- either: swinging a mouse that moves nothing reads as being broken rather
 -- than as being helpless.
 hook.Add("InputMouseApply", "omerta.injury.no_look", function()
+    -- Not during the exit: the character creator needs the mouse back the
+    -- moment it is built, which is before the black has finished lifting.
     if C.death or Omerta.Injury.IsDown(C.state) then return true end
 end)
 
@@ -155,7 +163,9 @@ local HIDDEN_WHILE_DOWN = {
 -- thing left to do. Once dead there is nothing to read and the screen belongs
 -- to the moment.
 hook.Add("HUDShouldDraw", "omerta.injury.hide_world_hud", function(name)
-    if C.death and (name == "CHudChat" or HIDDEN_WHILE_DOWN[name]) then return false end
+    if (C.death or C.leaving) and (name == "CHudChat" or HIDDEN_WHILE_DOWN[name]) then
+        return false
+    end
     if Omerta.Injury.IsDown(C.state) and HIDDEN_WHILE_DOWN[name] then return false end
 end)
 
@@ -163,11 +173,11 @@ end)
 -- piano are BASS channels (sound.PlayFile), which this hook does not touch —
 -- which is exactly why both moved off surface.PlaySound.
 hook.Add("EntityEmitSound", "omerta.injury.silence", function()
-    if C.death then return false end
+    if C.death or C.leaving then return false end
 end)
 
 hook.Add("CalcViewModelView", "omerta.injury.no_viewmodel", function()
-    if C.death or Omerta.Injury.IsDown(C.state) then
+    if C.death or C.leaving or Omerta.Injury.IsDown(C.state) then
         -- Far enough behind the camera to be certainly out of frame.
         return Vector(0, 0, -10000), Angle(0, 0, 0)
     end

@@ -1,9 +1,9 @@
 # Design Review — M20: Confirmed Death and Succession
 
-Status: **AWAITING APPROVAL**
+Status: **APPROVED 2026-07-28 — §4a (a) yes, down is down; §4b (a) empty the chair; §4c (a) it stays on the body.** All three as recommended. The §2 scope decision (M20 builds the EventService) was not contested and is taken as confirmed. Logged as D-038. **Implementation pending.**
 Milestone: M20 (roadmap Track D). Depends on: M19 (the funnel and the seam), M10 (rosters, ranks, the leader's chair), M9 (what is in the pockets), M11 (what the family paid for). Consumed by: M21 (a death is the story), M22 (an archive is what is left), M15/M17 (a body is evidence and a case), M14 (a robbery that goes wrong).
 
-> **Three rulings needed** (§4): whether a man who has been bandaged can still be finished, whether death seats a successor or only empties the chair, and what happens to what the dead were carrying.
+> **Three rulings** (§4, all answered): whether a man who has been bandaged can still be finished, whether death seats a successor or only empties the chair, and what happens to what the dead were carrying.
 >
 > **One scope decision** you should overrule if you disagree (§2): M20 builds the EventService, which the roadmap currently attributes to M14.
 
@@ -179,4 +179,4 @@ Changes to shipped code, and there are two:
 
 ---
 
-**Awaiting rulings on §4a, §4b and §4c, and confirmation of the §2 scope decision, before implementation begins.**
+**Approved. Implementation begins from here.**

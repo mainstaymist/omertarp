@@ -14,6 +14,9 @@ local C = Omerta.Injury.Client
 Omerta.Injury.SOUND = {
     TROMBONE = "sound/omertarp/trombone-crescendo.wav",
     PIANO    = "sound/omertarp/death-piano.wav",
+    -- Acknowledgement of the keypress. `load` warns and carries on if the file
+    -- is not there, so the transition works silently until it is dropped in.
+    CONFIRM  = "sound/omertarp/confirm.wav",
 }
 
 local TIMING = Omerta.Injury.DEATH_TIMING
@@ -65,7 +68,17 @@ local function startMusic()
 end
 
 hook.Add("Think", "omerta.injury.death_music", function()
-    if not C.death then stopAll() return end
+    if not (C.death or C.leaving) then stopAll() return end
+
+    if C.leaving then
+        -- Going out. Nothing new starts once the player has pressed a key.
+        if channel and channel:IsValid() then
+            local out = Omerta.Injury.ExitMusic(CurTime() - C.leaving.startedAt)
+            channel:SetVolume(C.leaving.volume * out)
+        end
+        return
+    end
+
     local elapsed = CurTime() - C.death.startedAt
 
     -- The piano waits for the words. It arrives once they are fully there, so
@@ -76,7 +89,8 @@ hook.Add("Think", "omerta.injury.death_music", function()
     local since = elapsed - (TIMING.TEXT_AT + TIMING.TEXT_OVER)
     local entry = math.Clamp(since / TIMING.MUSIC_FADE, 0, 1)
     local loop = Omerta.Injury.LoopVolume(channel:GetTime(), channel:GetLength())
-    channel:SetVolume(entry * loop)
+    C.leavingVolume = entry * loop
+    channel:SetVolume(C.leavingVolume)
 end)
 
 --------------------------------------------------------------------------------
@@ -86,7 +100,32 @@ end)
 -- answers "does this deserve to be visible right now"; this one is the answer
 -- to everything else, and it has to cover them rather than queue behind them.
 
-hook.Add("HUDPaintBackground", "omerta.injury.death_screen", function()
+-- PostRenderVGUI rather than HUDPaintBackground: the exit has to cover the
+-- character creator and then lift OFF it, and anything drawn in a HUD hook
+-- sits behind VGUI panels. Drawing the whole screen here keeps both halves in
+-- one place and one layer.
+hook.Add("PostRenderVGUI", "omerta.injury.death_screen", function()
+    if C.leaving then
+        local elapsed = CurTime() - C.leaving.startedAt
+        local black = Omerta.Injury.ExitFade(elapsed)
+        if black > 0 then
+            surface.SetDrawColor(0, 0, 0, 255 * black)
+            surface.DrawRect(0, 0, ScrW(), ScrH())
+        end
+
+        local fading = Omerta.Injury.ExitTextAlpha(elapsed)
+        if fading > 0 then
+            local scale = Omerta.HUD.Scale()
+            draw.SimpleText(Omerta.Injury.DEATH_TITLE, Omerta.HUD.Font("headline"),
+                ScrW() * 0.5, ScrH() * 0.5,
+                Color(226, 214, 198, 255 * fading), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+            draw.SimpleText(Omerta.Injury.DEATH_PROMPT, Omerta.HUD.Font("small"),
+                ScrW() * 0.5, ScrH() * 0.5 + 30 * scale,
+                Color(168, 152, 144, 235 * fading), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+        end
+        return
+    end
+
     if not C.death then return end
     local elapsed = CurTime() - C.death.startedAt
 
@@ -139,14 +178,49 @@ local function acceptingInput()
     return Omerta.Injury.DeathTextAlpha(CurTime() - C.death.startedAt) >= 1
 end
 
+C.leaving = nil -- { startedAt, volume, built }
+
 local function acknowledge()
     if not acceptingInput() then return end
+
+    -- The keypress is answered before anything else happens, so it registers
+    -- as a decision rather than as the screen simply vanishing.
+    load(Omerta.Injury.SOUND.CONFIRM, function(built)
+        built:SetVolume(1)
+        built:Play()
+    end)
+
+    C.leaving = {
+        startedAt = CurTime(),
+        volume = C.leavingVolume or 1,
+        built = false,
+        -- The camera is frozen where the climb left it. Snapping back to the
+        -- player entity is invisible behind black, but the first frame of the
+        -- reveal would show it.
+        view = C.lastDeathView,
+    }
     C.death = nil
-    stopAll()
     Omerta.Net.Request("injury.acknowledge_death", {})
-    -- M4 has been holding the creation window since the moment of death.
-    if Omerta.Characters.ReleaseCreation then Omerta.Characters.ReleaseCreation() end
 end
+
+hook.Add("Think", "omerta.injury.death_leaving", function()
+    if not C.leaving then return end
+    local elapsed = CurTime() - C.leaving.startedAt
+
+    -- The next screen is built while the black is still solid, so it is
+    -- REVEALED by the fade rather than appearing on top of it. M4 has been
+    -- holding the creation window since the moment of death.
+    if not C.leaving.built and elapsed >= Omerta.Injury.EXIT.BUILD_AT then
+        C.leaving.built = true
+        if Omerta.Characters.ReleaseCreation then Omerta.Characters.ReleaseCreation() end
+    end
+
+    if Omerta.Injury.ExitDone(elapsed) then
+        C.leaving = nil
+        C.leavingVolume = nil
+        stopAll()
+    end
+end)
 
 hook.Add("PlayerButtonDown", "omerta.injury.death_any_key", function(ply, button)
     if ply ~= LocalPlayer() then return end
@@ -156,6 +230,9 @@ end)
 
 -- The creation window waits while the screen is showing. Registered here
 -- rather than in M4, so M4 keeps knowing nothing about injuries.
+-- Held through the exit as well as the death screen: the window is released
+-- deliberately, at the moment the black is solid, by the sequence above.
 Omerta.Characters.RegisterCreationGate("injury.death", function()
-    return C.death ~= nil
+    if C.death then return true end
+    return C.leaving ~= nil and not C.leaving.built
 end)

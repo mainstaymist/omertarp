@@ -343,3 +343,22 @@ Also fixed a missing `return` in `Grab`: the "somebody already has them" branch 
 **The cut to the top-down shot happened in vision.** It read as a glitch. The sequence now fades to black over the head shot, moves the camera *while nobody can see it*, and fades back in already looking down — which is how this shot is done everywhere else. The climb went from 5.5 s to 7.5 s and the whole thing is timed off derived constants (`CUT_AT`, `VISIBLE_AT`, `RISE_END`, `FADE_AT`) rather than independent numbers, so the phases cannot drift out of step with the fades. A test asserts the screen is fully black at the exact instant the camera cuts, and that instant is the first frame of the rise by construction rather than by two numbers happening to agree.
 
 Suite: 313 → 317 checks.
+
+### 14e. Dragging by the hand, and leaving the death screen (2026-07-28)
+
+**The rope is anchored at the crosshair, and the hold point follows your aim.** Previously the body was pulled toward the hauler's *feet*, so the only way to move one was to walk — and the line on screen came from the bottom edge, which is not a thing you can aim. The hold point now sits in front of where the hauler is **looking** (`Omerta.Injury.HoldPoint`, flattened so aiming at the sky cannot hoist a body), and the line is drawn from screen centre. Turning the mouse swings the body, so a corpse can be hauled sideways into an alley by looking into it rather than by walking a circle around it.
+
+**You pull the part you grabbed.** `Grab` now traces for the physics bone under the crosshair and stores it; the pull is applied to that one object and the ragdoll's joints drag the rest. Take somebody by the wrist and the arm goes first with the body trailing after it, which is both what was asked for and what a body actually does.
+
+**Leaving the death screen is a sequence, not a cut.** The keypress used to clear everything in one frame and drop the character creator onto the screen. It now: plays a confirm sound, fades the words out over 1.1 s while the music goes out under them, holds on black, builds the next screen **behind** the black, and then lifts the black off it over 1.6 s. The creation window is therefore *revealed* rather than appearing.
+
+Two details that made it work rather than merely happen:
+
+- **The screen draws in `PostRenderVGUI`, not `HUDPaintBackground`.** Anything drawn in a HUD hook sits *behind* VGUI panels, so a fade drawn there would have had the creation window appear on top of it at full opacity and then watched the black disappear from underneath. Drawing over VGUI is what lets the black be lifted off the window.
+- **The camera is frozen where the climb left it.** Releasing the death state would otherwise snap the view back to the player entity — invisible under solid black, but visible on the first frame of the reveal.
+
+The shim gained a minimal `Vector` so the hold-point geometry is testable headlessly. It is deliberately small: enough for pure geometry, and anything needing more than that is engine work and belongs behind `Omerta.InEngine`.
+
+**Still outstanding:** `sound/omertarp/confirm.wav` did not come through with the request. The sequence is wired to that path and the loader warns and carries on when a file is missing, so the transition already runs — silently — and dropping the file in is the only remaining step.
+
+Suite: 317 → 323 checks.
