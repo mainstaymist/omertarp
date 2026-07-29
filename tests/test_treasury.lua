@@ -200,15 +200,15 @@ check("entries are validated", function()
     loadModules()
     local V = Omerta.Procurement.Validate
     assert(V("test.ok", { name = "Thing", category = "weapons", price = 100,
-        item = "weapon.revolver" }))
-    assert(not V("Test", { name = "x", category = "weapons", price = 100, item = "weapon.revolver" }),
+        item = "tool.crowbar" }))
+    assert(not V("Test", { name = "x", category = "weapons", price = 100, item = "tool.crowbar" }),
         "bad id")
-    assert(not V("test.a", { category = "weapons", price = 100, item = "weapon.revolver" }),
+    assert(not V("test.a", { category = "weapons", price = 100, item = "tool.crowbar" }),
         "missing name")
     assert(not V("test.b", { name = "x", category = "nonsense", price = 100,
-        item = "weapon.revolver" }), "unknown category")
+        item = "tool.crowbar" }), "unknown category")
     assert(not V("test.c", { name = "x", category = "weapons", price = 0,
-        item = "weapon.revolver" }), "free")
+        item = "tool.crowbar" }), "free")
     assert(not V("test.d", { name = "x", category = "weapons", price = 100,
         item = "no.such.item" }), "unknown item")
     -- Delivers nothing and does nothing.
@@ -218,7 +218,7 @@ end)
 check("a price has to be payable with coins that exist", function()
     loadModules()
     local ok, why = Omerta.Procurement.Validate("test.odd", {
-        name = "x", category = "weapons", price = 103, item = "weapon.revolver",
+        name = "x", category = "weapons", price = 103, item = "tool.crowbar",
     })
     assert(not ok, "103 cents cannot be paid")
     assert(why and why:find("coins in circulation"), tostring(why))
@@ -277,17 +277,8 @@ check("the catalogue shows only what this buyer may order", function()
     assert(sawUniform, "the department should be able to buy its own uniforms")
 end)
 
-check("a Thompson costs more than an underboss may spend alone", function()
-    loadModules()
-    -- Deliberate: arming a crew is an argument between two people, not a click.
-    local thompson = Omerta.Procurement.Get("supply.thompson")
-    local limit = Omerta.Treasury.LimitFor("family", 5)
-    assert(thompson.price > limit,
-        "a Thompson at " .. Omerta.Money.Format(thompson.price)
-        .. " should exceed an underboss's " .. Omerta.Money.Format(limit))
-    assert(Omerta.Treasury.CanSpend("family", 5, thompson.price, 6),
-        "and a Don should be able to approve one")
-end)
+-- "A Thompson costs more than an underboss may spend alone" moved to
+-- tests/test_weapons.lua with the procurement entry it pins (D-039).
 
 --------------------------------------------------------------------------------
 suite("treasury.containers")

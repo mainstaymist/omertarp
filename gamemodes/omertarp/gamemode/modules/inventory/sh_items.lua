@@ -107,16 +107,11 @@ Register("tool.lockpicks", {
     model = "models/props_c17/BriefCase001a.mdl",
 })
 
-Register("weapon.revolver", {
-    name = "Revolver", category = "weapon", bulk = 4, slot = "sidearm",
-    model = "models/weapons/w_pistol.mdl",
-})
-
-Register("weapon.thompson", {
-    name = "Thompson", category = "weapon", bulk = 22, slot = "primary",
-    concealable = false,
-    model = "models/weapons/w_smg1.mdl",
-})
+-- The firearms that stood here as placeholder objects from M9 to D-039 now
+-- live in the weapons module (modules/weapons/sh_weapons_arsenal.lua), where
+-- one registration produces the item AND the gun. Same ids on purpose: every
+-- instance already sitting in a pocket or a safe became functional the day
+-- the arsenal landed, with no migration and no re-issue.
 
 --------------------------------------------------------------------------------
 -- Everyday things

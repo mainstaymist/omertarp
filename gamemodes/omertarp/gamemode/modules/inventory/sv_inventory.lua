@@ -574,7 +574,14 @@ function Omerta.Inventory.Equip(ply, instanceId, cb)
     local function equip()
         Internal.Repo.SetEquippedSlot(instanceId, def.slot, ownerType, ownerId, function(ok, err)
             if not ok then cb(false, err) return end
-            Omerta.Inventory.Load({ type = ownerType, id = ownerId }, function() cb(true) end)
+            Omerta.Inventory.Load({ type = ownerType, id = ownerId }, function()
+                -- The seam anything physical hangs off: a coat changes your
+                -- capacity through the provider, but a weapon has to appear in
+                -- your hands, and that is the weapons module's business, not
+                -- this one's.
+                hook.Run("Omerta.ItemEquipped", ply, row, def)
+                cb(true)
+            end)
         end)
     end
 
@@ -600,9 +607,13 @@ function Omerta.Inventory.Unequip(ply, instanceId, cb)
     -- Taking a coat off can put you over your limit; the item stays in hand
     -- rather than vanishing, and the overweight state is what it is. Refusing
     -- would be worse: it would let a full inventory weld clothing on.
+    local def = Omerta.Items.Get(row.def_id)
     Internal.Repo.SetEquippedSlot(instanceId, nil, ownerType, ownerId, function(ok, err)
         if not ok then cb(false, err) return end
-        Omerta.Inventory.Load({ type = ownerType, id = ownerId }, function() cb(true) end)
+        Omerta.Inventory.Load({ type = ownerType, id = ownerId }, function()
+            hook.Run("Omerta.ItemUnequipped", ply, row, def)
+            cb(true)
+        end)
     end)
 end
 
@@ -1004,7 +1015,14 @@ function MODULE:OnEnable()
     if not Omerta.InEngine then return end
 
     hook.Add("Omerta.CharacterLoaded", "omerta.inventory.load", function(ply, character)
-        Omerta.Inventory.Load({ type = OWNER.CHARACTER, id = character.id })
+        Omerta.Inventory.Load({ type = OWNER.CHARACTER, id = character.id }, function()
+            -- Announced AFTER the rows exist: anything that restores physical
+            -- state from equipment (the weapons module putting a revolver back
+            -- in a hand) needs the inventory to actually be there first.
+            if IsValid(ply) then
+                hook.Run("Omerta.CharacterInventoryLoaded", ply, character)
+            end
+        end)
         Internal.LoadNeeds(ply, character)
     end)
 

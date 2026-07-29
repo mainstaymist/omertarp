@@ -241,7 +241,7 @@ suite("inventory.bulk")
 check("bulk is integer arithmetic, so fractions do not drift", function()
     loadModules()
     local U = Omerta.Inventory.UnitBulk
-    assert(U(Omerta.Items.Get("weapon.thompson")) == 2200)
+    assert(U(Omerta.Items.Get("tool.crowbar")) == 300)
     assert(U(Omerta.Items.Get("money.cent25")) == 2, "a quarter is 0.02")
     assert(U(nil) == 0, "an unknown item weighs nothing")
 
@@ -305,11 +305,11 @@ end)
 
 check("unstackable items get a row each, and never merge", function()
     loadModules()
-    local def = Omerta.Items.Get("weapon.revolver")
-    local rows = { { id = 1, def_id = "weapon.revolver", quantity = 1 } }
+    local def = Omerta.Items.Get("tool.crowbar")
+    local rows = { { id = 1, def_id = "tool.crowbar", quantity = 1 } }
     local plan = Omerta.Inventory.Internal.PlanAdd(rows, def, 3)
     assert(#plan.updates == 0, "nothing merges")
-    assert(#plan.insertions == 3, "three separate revolvers")
+    assert(#plan.insertions == 3, "three separate crowbars")
 end)
 
 -- An item carrying metadata is not interchangeable with one that does not:

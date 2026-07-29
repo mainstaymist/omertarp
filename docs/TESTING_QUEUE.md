@@ -2,8 +2,8 @@
 
 **What this is:** everything built but not yet confirmed working in-engine, in the order worth doing it. Kept current as work lands — when you report results, the statuses here get updated and anything that fails becomes a fix before new work starts.
 
-**Last updated:** 2026-07-28, after M20.
-**Headless suite:** 339 checks passing. `luac -p` clean across the tree. 16 modules resolving.
+**Last updated:** 2026-07-28, after W0 (the weapon foundation).
+**Headless suite:** 354 checks passing. `luac -p` clean across the tree. 17 modules resolving.
 
 Status key: **☐ untested** · **☑ passed** · **☒ failed** (details inline) · **◐ partly**
 
@@ -21,7 +21,27 @@ If migrations fail, stop and send me the error — everything below depends on t
 
 ---
 
-## 1. M20 — confirmed death and succession (nothing verified yet)
+## 1. W0 — the weapon foundation (nothing verified yet)
+
+Q-10 ruled and built: custom modular base, one registration per gun. Two reference weapons.
+
+| | Check | How | Expect |
+|---|---|---|---|
+| ☐ | The arsenal exists | `omerta_weapons_list` | revolver and thompson, classes `weapon_omerta_*` |
+| ☐ | Getting armed | `omerta_item_give weapon.revolver`, equip it in F3 | The revolver appears in your hands, **empty** |
+| ☐ | Rounds are items | `omerta_item_give ammo.38 12`, press R | Reload animation, clip fills, 6 rounds leave your inventory |
+| ☐ | Firing works and is server-real | Shoot a second character | They take damage through M19 — enough hits puts them down, never respawns them |
+| ☐ | The round counter is contextual | Draw, fire, then wait ~3 s | Count appears near the stamina bar, then fades away |
+| ☐ | Dry fire | Empty the clip, keep pressing | Click sound, "Empty — press R", nothing fires |
+| ☐ | Out of ammo | Reload with none carried | "You are out of .38 rounds." |
+| ☐ | **The Thompson cannot be pocketed** | `omerta_item_give weapon.thompson` with empty pockets | Refused — no room (bulk 22 vs capacity 20). Equip an overcoat first, then it fits |
+| ☐ | Going down disarms | Get put down while armed | Weapon leaves your hands; searching you finds it in your inventory |
+| ☐ | Standing up re-arms | Get treated | The equipped gun returns to your hands, still empty |
+| ☐ | Rounds are conserved | Load 6, unequip the gun | 6 rounds are back in your inventory |
+| ☐ | Disconnect refund | Load a clip, disconnect, rejoin | The rounds are in your inventory, the clip is empty |
+| ☐ | Procurement | `omerta_procure` as a family with funds | Revolver $85, Thompson $340 (needs a second approver), ammo boxes |
+
+## 2. M20 — confirmed death and succession (nothing verified yet)
 
 | | Check | How | Expect |
 |---|---|---|---|
@@ -36,7 +56,7 @@ If migrations fail, stop and send me the error — everything below depends on t
 
 ---
 
-## 2. M19 — the fixes from the last three rounds (unverified)
+## 3. M19 — the fixes from the last three rounds (unverified)
 
 Most of M19 you have already seen working. These are only the things changed since.
 
@@ -66,7 +86,7 @@ Most of M19 you have already seen working. These are only the things changed sin
 
 ---
 
-## 3. Older, still unconfirmed
+## 4. Older, still unconfirmed
 
 | | Check | How |
 |---|---|---|
@@ -75,7 +95,7 @@ Most of M19 you have already seen working. These are only the things changed sin
 
 ---
 
-## 4. Known gaps — not bugs, just not built
+## 5. Known gaps — not bugs, just not built
 
 - **Audio is 43 MB uncompressed.** Four WAVs, all sent to every client on first join. MP3 would take the set to ~6 MB. Local ffmpeg step; no encoder in my environment.
 - **Sound licensing** — the three Freesound files need their individual licences checked, and attribution recorded if any is CC-BY. "Cry Me a River" needs a licence or a replacement before release. Pre-release gate, tracked in the roadmap.

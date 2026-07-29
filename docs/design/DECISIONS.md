@@ -92,6 +92,29 @@ Resolves Q-4. Ending a season automatically retires every living character ("lea
 
 ---
 
+## D-040 — The justice loop is The Ledger (DECIDED, 2026-07-28; resolves P-002 and Q-15)
+
+**Proposal 1, "The Ledger", is selected** for M18: systemic consequences — records, fines, probation, standing — with no prison map. The recommended hybrid's "Deal" resolution layer was not selected; the Island's playable prison stays deferred indefinitely. M18's design review will detail the loop within this model, and the remaining per-milestone questions for M14–M17 are explicitly deferred ("we will confront the rest later").
+
+**Affects:** M18 (scope now fixed to the Ledger); M17 (cases feed records rather than a prison intake); `docs/review/04_justice_system_proposals.md` (selection recorded); P-002 closed.
+
+## D-039 — Weapons are a custom base where a weapon is data (DECIDED, 2026-07-28; resolves Q-10)
+
+**A small custom SWEP foundation, built modular**: the ruling's own words — "we will use this and modify it in the future and don't want to have to change the entire gamemode just to add a weapon."
+
+Made structural rather than aspirational:
+
+- **One `Omerta.Weapons.Register` call is the entire cost of a weapon.** It produces the M9 item (bulk, concealment, equip slot), the generated SWEP class, and the numbers every seam reads. The arsenal is a data file; adding a gun edits nothing else, anywhere.
+- **All behaviour lives on one shared base** (`weapon_omerta_base`). Changing how shooting works is one file; a new *kind* of weapon (melee, thrown) is a new base beside it, not surgery on it.
+- **The item is the truth.** The SWEP in a hand is a projection of an equipped inventory row — given when the row says so, stripped when it stops. That is what makes a weapon searchable off a body (M19), buyable through a treasury (M11), droppable, and impossible to duplicate from the client.
+- **Rounds are items** (D-004). The engine's ammo pool is unused; reloading moves rounds from inventory rows into the clip server-side, clips refund on strip/disconnect so ammunition is conserved, and a weapon is always given empty.
+- **The seams the ruling buys:** `Omerta.WeaponFired` on every server shot (M15's witnesses, M16's alarms, heat); serials derived from the instance id (M15's evidence, no storage); `weapons.damage_scale` as the one lethality knob.
+- Going down empties the hands into the inventory, where a search finds the gun — disarming somebody IS putting them on the floor.
+
+The M9 placeholder items (`weapon.revolver`, `weapon.thompson`) were handed over under the same ids, so every instance already in a pocket or safe became functional with no migration. M11's procurement entries moved into the arsenal with their prices and reasoning intact (the Thompson still costs more than an Underboss may approve alone).
+
+**Affects:** Q-10 closed; M14 unblocked; `modules/weapons/`, `entities/weapons/weapon_omerta_base.lua`; M9 (equip hooks added, placeholder items retired); M11 (`sh_supplies` weapons section relocated); M15/M16 (seams named above).
+
 ## D-038 — A death empties the chair, and leaves everything where it fell (DECIDED, 2026-07-28)
 
 M20's three rulings, all as recommended:
@@ -403,6 +426,6 @@ Binding implementation constraints (from the risks the evaluation did identify):
 
 **Affects:** `docs/review/03_portrait_evaluation.md` (recommendation superseded); Tech §20; M4 (capture + storage); M21 (display).
 
-## P-002 — Justice loop (RECOMMENDED, 2026-07-26)
+## P-002 — Justice loop (RESOLVED → D-040, 2026-07-28)
 
-Three complete justice-system designs delivered in `docs/review/04_justice_system_proposals.md` with a comparison and a recommended hybrid ("The Ledger" spine + "The Deal" resolution layer; "The Island" prison deferred to post-MVP). Awaiting project-lead selection before integration into the GDD, Technical Design, and roadmap milestone M18.
+Three complete justice-system designs delivered in `docs/review/04_justice_system_proposals.md`. **The project lead selected "The Ledger"** — see D-040. The recommended hybrid's Deal layer was not taken; the Island remains deferred.

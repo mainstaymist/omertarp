@@ -71,7 +71,7 @@ Business framework (Tech §11): ownership, manager rosters, inventory, ledgers, 
 
 ### M14 — Crime events, store robbery, NPC victims
 Robbery operation state machine (Tech §16) built on **M20's EventService** (review improvement #1 — the dependency inverted once M20 turned out to need durable EventIDs first); NPC victim reaction model (weapon/mask/aggression/personality → comply/stall/alarm/flee — GDD §12); store robbery end-to-end with proceeds as physical cash.
-**Depends on:** M9, M13; weapons decision Q-10. **Testable when:** a two-player masked store robbery produces an event, an alarm path, physical proceeds, and correct state transitions through Escaped/Failed.
+**Depends on:** M9, M13; ~~weapons decision Q-10~~ **Q-10 resolved (D-039) and the weapon foundation is built** — M14 consumes `Omerta.WeaponFired` and the arsenal. **Testable when:** a two-player masked store robbery produces an event, an alarm path, physical proceeds, and correct state transitions through Escaped/Failed.
 **Note (C4):** bank robbery is a fast-follow content milestone on this framework — after M16/M17 prove the loop — rather than Phase 5 (pending approval of review improvement #3).
 
 ### M15 — Witnesses and evidence
@@ -87,7 +87,7 @@ Case files (suspects, evidence links, per-allegation strength — Tech §14); de
 **Depends on:** M15; M16 for scene handoff. **Testable when:** linking sufficient evidence crosses the warrant threshold deterministically; out-of-scope searches are flagged and the evidence marked; the full store-robbery→case→warrant→arrest loop closes.
 
 ### M18 — Justice loop
-Post-arrest consequence system per the P-002 selection (`04_justice_system_proposals.md`): booking, charges, plea/deal resolution, fines, probation, criminal records, appeals — whatever the chosen design specifies. Scope finalizes at its design review.
+Post-arrest consequence system per **D-040: The Ledger** — records, fines, probation, standing; no prison map, no Deal layer. Scope details finalize at its design review.
 **Depends on:** M17; M11 (fines/bail money flows); M12 (the booking phone call). **Testable when:** per the selected proposal's flow — at minimum, an arrest resolves into recorded consequences without a raw jail timer, and an innocent release leaves the correct record trail.
 
 ## Track D — Consequences and history
@@ -205,7 +205,7 @@ Two constraints decide its design, and are much cheaper to know now than to disc
 ## Parallel content workstream (not code milestones)
 
 - **Map**: the single largest external dependency (Q-9). Prototype all systems on an existing urban map with placeholder props (D-005); commission/build the final compact neighborhood in parallel; required locations: 2–4 family properties, PD, speakeasy + required businesses (GDD §11), stores, bank, library, hospital, payphone placements.
-- **Weapons**: small period arsenal (BA §27) per Q-10 decision.
+- **Weapons**: **foundation built (D-039)** — `modules/weapons/`, one registration per gun, revolver and Thompson as the reference pair. The rest of BA §27's arsenal is data added when M14 knows what it wants each gun for.
 - **Playermodels/clothing**: timeless-era dress (D-002); disguise items must map to the witness descriptor system (Tech §12) — placeholder models acceptable until then.
 - **UI assets (Track E)**: a font hierarchy needs actual licence-cleared fonts; the UI sound set (open, close, confirm, cancel, deny, hover) is a small commission; and the main-menu and intro-cinematic camera positions are **per-map authoring work that lands with the map** (Q-9), not with the code — M27/M28 ship the system and one placeholder set, and the shots are written once the final map exists.
 - **Music and audio licensing (pre-release gate)**: placeholder audio is acceptable during development under D-005, exactly as placeholder models are — but unlike a placeholder crate, a placeholder *recording* carries someone else's rights and cannot simply ship. The intro track now in the repository ("Cry Me a River", Arthur Hamilton 1953 — copyrighted composition, and whatever recording this is has its own rights on top) is a development placeholder. **Before public release**: licence it, commission a cover the project owns, or replace it. The same applies to every sound added between now and then, so the convention is to record provenance in `gamemodes/omertarp/content/README.md` as each asset lands rather than reconstructing it under deadline.

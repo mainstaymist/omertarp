@@ -14,20 +14,11 @@ local Register = Omerta.Procurement.Register
 --------------------------------------------------------------------------------
 -- Weapons
 --------------------------------------------------------------------------------
--- Priced so that arming a crew is a decision the books will show. A Thompson
--- costs a family roughly what a small business takes in a good week.
-
-Register("supply.revolver", {
-    name = "Revolver", category = "weapons", price = 8500,
-    item = "weapon.revolver", order = 10,
-})
-
-Register("supply.thompson", {
-    name = "Thompson", category = "weapons", price = 34000,
-    item = "weapon.thompson", order = 20,
-    -- Deliberately above an Underboss's own ceiling, so buying one is an
-    -- argument between two people rather than a click.
-})
+-- Moved to the arsenal (modules/weapons/sh_weapons_arsenal.lua) when D-039
+-- made the guns real: a weapon and its supply line live in one file, and the
+-- treasury loads before the arsenal, so entries here could no longer validate
+-- items the arsenal had not yet created. The prices and the reasoning behind
+-- them moved with the entries, unchanged.
 
 --------------------------------------------------------------------------------
 -- Burglary
