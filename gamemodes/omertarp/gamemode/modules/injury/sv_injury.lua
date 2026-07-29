@@ -542,6 +542,7 @@ function MODULE:OnEnable()
     -- exactly as content/README.md asks.
     resource.AddFile("sound/omertarp/trombone-crescendo.wav")
     resource.AddFile("sound/omertarp/death-piano.wav")
+    resource.AddFile("sound/omertarp/confirm.wav")
 
     Internal.RegisterModifiers()
     Internal.RegisterSpeechLimits()

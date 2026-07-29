@@ -14,8 +14,7 @@ local C = Omerta.Injury.Client
 Omerta.Injury.SOUND = {
     TROMBONE = "sound/omertarp/trombone-crescendo.wav",
     PIANO    = "sound/omertarp/death-piano.wav",
-    -- Acknowledgement of the keypress. `load` warns and carries on if the file
-    -- is not there, so the transition works silently until it is dropped in.
+    -- Acknowledgement of the keypress.
     CONFIRM  = "sound/omertarp/confirm.wav",
 }
 

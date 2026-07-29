@@ -34,13 +34,14 @@ base for something that does nothing.
 | `sound/omertarp/cry-me-a-river.wav` | 16-bit stereo PCM, 44.1 kHz, 2:55 | 30.9 MB | M28 (intro cinematic) — **not yet wired up** |
 | `sound/omertarp/trombone-crescendo.wav` | 16-bit stereo PCM, 44.1 kHz, 0:22 | 3.8 MB | M19 — the moment of death |
 | `sound/omertarp/death-piano.wav` | 16-bit stereo PCM, 44.1 kHz, 0:46 | 7.7 MB | M19 — the death screen, looped |
+| `sound/omertarp/confirm.wav` | 16-bit stereo PCM, 44.1 kHz, 0:01 | 0.2 MB | M19 — acknowledging the death screen |
 
-The two M19 sounds **are** registered (`modules/injury/sv_injury.lua`), because
+The three M19 sounds **are** registered (`modules/injury/sv_injury.lua`), because
 that milestone plays them. The intro track is not, because M28 does not exist.
 
 Open items for all three:
 
-- **Format.** These are uncompressed. Together they are a 42 MB first-join
+- **Format.** These are uncompressed. Together they are a 43 MB first-join
   download, most of it in front of a player who has not seen the game yet. MP3
   is the Source engine's native music format and would take the set to roughly
   6 MB. The WAVs are fine as masters; what ships to clients probably should not
