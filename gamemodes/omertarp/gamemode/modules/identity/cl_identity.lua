@@ -43,7 +43,15 @@ local function lookedAtPlayer()
         filter = ply,
     })
     local ent = tr.Entity
-    if IsValid(ent) and ent:IsPlayer() then return ent end
+    if not IsValid(ent) then return nil end
+    if ent:IsPlayer() then return ent end
+    -- Not a player, but possibly still a person. M19's bodies claim themselves
+    -- through this predicate; the server does the actual resolving, per
+    -- observer, so a body you would not recognise standing up stays Unknown.
+    for _, fn in pairs(Omerta.Identity.Internal.LabelPredicates or {}) do
+        local ok, matched = pcall(fn, ent)
+        if ok and matched then return ent end
+    end
     return nil
 end
 

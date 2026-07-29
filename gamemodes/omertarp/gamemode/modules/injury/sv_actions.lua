@@ -11,31 +11,32 @@ local S = Omerta.Injury.STATE
 --------------------------------------------------------------------------------
 
 function Internal.RegisterInteractions()
-    Omerta.Interaction.Register("injury.carry", {
-        label = "Pick Up", range = 96, order = 40,
+    Omerta.Interaction.Register("injury.grab", {
+        label = "Drag", range = 96, order = 40,
         predicate = function(ply, target)
             local characterId = Omerta.Injury.CharacterOfBody(target)
             if not characterId then return false end
-            if Omerta.Injury.CarriedBy(ply) then return false, "your hands are full" end
+            if Omerta.Injury.DraggedBy(ply) then return false, "your hands are full" end
+            if Internal.DraggerOf(characterId) then
+                return false, "somebody already has them"
+            end
             return true
         end,
         run = function(ply, target)
-            Omerta.Injury.Carry(ply, Omerta.Injury.CharacterOfBody(target),
+            Omerta.Injury.Grab(ply, Omerta.Injury.CharacterOfBody(target),
                 function(ok, err)
                     if not ok and err then Omerta.Chat.Notice(ply, err) end
                 end)
         end,
     })
 
-    Omerta.Interaction.Register("injury.drop", {
-        label = "Put Down", range = 96, order = 41,
+    Omerta.Interaction.Register("injury.letgo", {
+        label = "Let Go", range = 256, order = 41,
         predicate = function(ply, target)
             local characterId = Omerta.Injury.CharacterOfBody(target)
-            return characterId ~= nil and Omerta.Injury.CarriedBy(ply) == characterId
+            return characterId ~= nil and Omerta.Injury.DraggedBy(ply) == characterId
         end,
-        run = function(ply)
-            Omerta.Injury.Drop(ply)
-        end,
+        run = function(ply) Omerta.Injury.LetGo(ply) end,
     })
 
     Omerta.Interaction.Register("injury.stabilize", {
@@ -71,7 +72,8 @@ function Internal.RegisterInteractions()
     })
 
     -- Searching a body. M9 owns what is in somebody's pockets; M19 only says
-    -- that an unconscious man cannot stop you looking.
+    -- that an unconscious man cannot stop you looking, and that it takes a
+    -- moment to go through them.
     Omerta.Interaction.Register("injury.search", {
         label = "Search", range = 72, order = 44,
         predicate = function(ply, target)
@@ -81,20 +83,21 @@ function Internal.RegisterInteractions()
             return actor ~= nil and actor.id ~= characterId
         end,
         run = function(ply, target)
-            Internal.SearchBody(ply, Omerta.Injury.CharacterOfBody(target))
+            Internal.BeginSearch(ply, Omerta.Injury.CharacterOfBody(target))
         end,
     })
 end
 
--- USE on a body opens the same menu the interaction system would.
+-- USE on a body takes hold of it, or lets go. Same server-side path as the
+-- menu; there is no shortcut around the checks.
 function Internal.HandleUse(ply, body)
     local characterId = Omerta.Injury.CharacterOfBody(body)
     if not characterId then return end
-    if Omerta.Injury.CarriedBy(ply) == characterId then
-        Omerta.Injury.Drop(ply)
+    if Omerta.Injury.DraggedBy(ply) == characterId then
+        Omerta.Injury.LetGo(ply)
         return
     end
-    Omerta.Injury.Carry(ply, characterId, function(ok, err)
+    Omerta.Injury.Grab(ply, characterId, function(ok, err)
         if not ok and err then Omerta.Chat.Notice(ply, err) end
     end)
 end
@@ -135,6 +138,64 @@ function Internal.RegisterSearch()
         end
         return true
     end)
+end
+
+-- Who has already been through whose pockets, this session.
+--
+-- Going through a stranger's coat takes a moment the first time. It does not
+-- take a moment the second time, because you already know what is in there —
+-- and making somebody wait again for information they have would be a tax on
+-- the interface rather than a cost in the fiction.
+local searched = {} -- actorCharacterId -> { [targetCharacterId] = true }
+
+function Internal.HasSearched(actorId, targetId)
+    return (searched[actorId] or {})[targetId] == true
+end
+
+function Internal.RememberSearch(actorId, targetId)
+    searched[actorId] = searched[actorId] or {}
+    searched[actorId][targetId] = true
+end
+
+-- Anything taken off a body changes what is in the pockets, so the next person
+-- through them starts from scratch. Only the person who did the taking keeps
+-- their knowledge.
+function Internal.ForgetSearches(targetId, exceptActorId)
+    for actorId, targets in pairs(searched) do
+        if actorId ~= exceptActorId then targets[targetId] = nil end
+    end
+end
+
+function Internal.BeginSearch(ply, characterId)
+    local actor = Omerta.Characters.Get(ply)
+    if not (actor and characterId) then return end
+
+    if Internal.HasSearched(actor.id, characterId) then
+        Internal.SearchBody(ply, characterId)
+        return
+    end
+
+    Omerta.Injury.Perform(ply, characterId, "injury.search_body", function(ok, err)
+        if not ok and err then Omerta.Chat.Notice(ply, err) end
+    end)
+end
+
+function Internal.RegisterSearchAction()
+    Omerta.Injury.RegisterDownedAction("injury.search_body", {
+        label = "Searching", range = 96,
+        duration = Omerta.Config.Get("injury.search_seconds"), order = 44,
+        predicate = function(ply, characterId)
+            local actor = Omerta.Characters.Get(ply)
+            if not (actor and actor.id ~= characterId) then return false end
+            return Omerta.Injury.IsDown(Omerta.Injury.GetByCharacter(characterId))
+        end,
+        onComplete = function(ply, characterId, cb)
+            local actor = Omerta.Characters.Get(ply)
+            if actor then Internal.RememberSearch(actor.id, characterId) end
+            Internal.SearchBody(ply, characterId)
+            cb(true)
+        end,
+    })
 end
 
 function Internal.SearchBody(ply, characterId)

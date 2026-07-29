@@ -10,10 +10,10 @@ local C = Omerta.Injury.Client
 C.state = Omerta.Injury.STATE.HEALTHY
 C.deadline = nil   -- CurTime() the clock runs out; counted down locally
 C.total = 0        -- the whole window, so a fraction can be drawn
-C.body = nil
+C.bodyIndex = 0    -- resolved lazily; see C.Body()
 
 local prompt, promptUntil = nil, 0
-local carrying = false
+C.drag = nil -- { bodyIndex, anchor }
 
 -- The server sends the clock ONCE, when the state changes. It is not a stream
 -- and must not become one — so the client is given a deadline and counts down
@@ -32,9 +32,22 @@ hook.Add("Omerta.InjuryUpdated", "omerta.injury.state", function(newState, left,
     end
 end)
 
+-- The INDEX is stored, not the entity.
+--
+-- This message arrives the moment the ragdoll is created server-side, which is
+-- before it has replicated here — so Entity(index) was NULL, C.body was
+-- invalid forever after, and the first-person camera silently fell back to the
+-- frozen player entity. Resolving on demand costs nothing and cannot lose the
+-- race.
 hook.Add("Omerta.InjuryBody", "omerta.injury.body", function(index)
-    C.body = index > 0 and Entity(index) or nil
+    C.bodyIndex = index or 0
 end)
+
+function C.Body()
+    if C.bodyIndex <= 0 then return nil end
+    local ent = Entity(C.bodyIndex)
+    return IsValid(ent) and ent or nil
+end
 
 hook.Add("Omerta.InjuryPrompt", "omerta.injury.prompt", function(text, duration)
     if not text or text == "" then prompt = nil return end
@@ -42,14 +55,32 @@ hook.Add("Omerta.InjuryPrompt", "omerta.injury.prompt", function(text, duration)
     promptUntil = CurTime() + (duration or 4)
 end)
 
-hook.Add("Omerta.InjuryCarrying", "omerta.injury.carrying", function(value)
-    carrying = value == true
+hook.Add("Omerta.InjuryDragging", "omerta.injury.dragging", function(index, anchor)
+    C.drag = index > 0 and { bodyIndex = index, anchor = anchor } or nil
 end)
+
+-- The body currently being hauled, or nil. Resolved on demand for the same
+-- reason C.Body() is: the entity may not have replicated when the message
+-- naming it arrived.
+function C.DragBody()
+    if not C.drag then return nil end
+    local ent = Entity(C.drag.bodyIndex)
+    return IsValid(ent) and ent or nil
+end
+
+-- The client computes tension itself from two positions it already has, using
+-- the same pure rule the server enforces with. Nothing about the rope needs to
+-- travel over the wire every frame.
+function C.DragTension()
+    local body = C.DragBody()
+    if not body then return 0 end
+    return Omerta.Injury.DragTension(LocalPlayer():GetPos():Distance(body:GetPos()))
+end
 
 hook.Add("Omerta.CharactersState", "omerta.injury.reset", function()
     C.state = Omerta.Injury.STATE.HEALTHY
-    C.deadline, C.total, C.body = nil, 0, nil
-    prompt, carrying = nil, false
+    C.deadline, C.total, C.bodyIndex = nil, 0, 0
+    prompt, C.drag = nil, nil
 end)
 
 -- Seconds left on the clock right now, counted locally.
@@ -88,6 +119,32 @@ end)
 -- Four edge gradients rather than one radial texture: it needs no asset, so it
 -- cannot fail to load, and growing each edge inward reads exactly as the world
 -- closing in. It pulses on a slow heartbeat that quickens as the end nears.
+
+-- The blur sits UNDER the vignette (order 4 against its 5) so the red is drawn
+-- over an already-soft world rather than being smeared itself.
+local BLUR = Material("pp/blurscreen")
+
+Omerta.HUD.Register("injury.blur", {
+    order = 4,
+    fade = 1.4,
+    visible = function() return C.IsDying() end,
+    draw = function(alpha)
+        local amount = Omerta.Injury.BlurAmount(C.Progress()) * alpha
+        if amount <= 0.05 then return end
+
+        -- Several light passes rather than one heavy one: the material's own
+        -- blur is stepped, and stacking is what makes it read as focus going
+        -- rather than as a smear.
+        surface.SetMaterial(BLUR)
+        surface.SetDrawColor(255, 255, 255, 255)
+        for pass = 1, 3 do
+            BLUR:SetFloat("$blur", (pass / 3) * amount)
+            BLUR:Recompute()
+            render.UpdateScreenEffectTexture()
+            surface.DrawTexturedRect(0, 0, ScrW(), ScrH())
+        end
+    end,
+})
 
 local GRADIENT_LEFT  = Material("gui/gradient")
 local GRADIENT_UP    = Material("gui/gradient_up")
@@ -207,14 +264,62 @@ Omerta.HUD.Register("injury.prompt", {
     end,
 })
 
-Omerta.HUD.Register("injury.carrying", {
-    order = 46,
-    fade = 0.3,
-    visible = function() return carrying end,
+--------------------------------------------------------------------------------
+-- The rope
+--------------------------------------------------------------------------------
+-- A line from your hands to whoever you have hold of, drawn taut. It is the
+-- only feedback that says how hard you are pulling, and it tightens, reddens
+-- and finally shudders as you approach the point where your grip goes.
+
+Omerta.HUD.Register("injury.drag", {
+    order = 47,
+    fade = 0.25,
+    visible = function() return C.DragBody() ~= nil end,
     draw = function(alpha)
-        draw.SimpleText("You are carrying somebody", Omerta.HUD.Font("small"),
-            ScrW() * 0.5, ScrH() * 0.84,
-            Color(200, 194, 178, 220 * alpha), TEXT_ALIGN_CENTER, TEXT_ALIGN_TOP)
+        local body = C.DragBody()
+        if not body then return end
+
+        local tension = C.DragTension()
+        local scale = Omerta.HUD.Scale()
+
+        -- Where the rope meets the body, on screen. Behind the camera means
+        -- there is nothing to draw a line to.
+        local at = body:GetPos():ToScreen()
+        if not at.visible then return end
+
+        -- Hands, roughly: low and slightly right of centre, so the line reads
+        -- as coming from the player rather than from the middle of the screen.
+        local fromX, fromY = ScrW() * 0.5, ScrH() * 0.86
+
+        -- A taut rope shivers. Amplitude rides on tension, so a slack line is
+        -- perfectly still and a straining one is visibly working.
+        local shudder = tension * tension * 3 * scale
+        local jitter = shudder > 0
+            and math.sin(CurTime() * 34) * shudder or 0
+
+        surface.SetDrawColor(
+            150 + 90 * tension,
+            120 - 70 * tension,
+            110 - 70 * tension,
+            (110 + 120 * tension) * alpha)
+        surface.DrawLine(fromX, fromY, at.x + jitter, at.y)
+
+        -- The anchor: where you took hold. Watching it fall behind you is what
+        -- makes hauling somebody across a street feel like distance covered.
+        if C.drag and C.drag.anchor then
+            local anchor = C.drag.anchor:ToScreen()
+            if anchor.visible then
+                surface.SetDrawColor(120, 100, 92, 70 * alpha)
+                surface.DrawLine(anchor.x, anchor.y, at.x, at.y)
+            end
+        end
+
+        local label = tension >= 0.98 and "Your grip is going"
+            or tension > 0.05 and "Hauling" or "You have hold of them"
+        draw.SimpleText(label, Omerta.HUD.Font("small"),
+            ScrW() * 0.5, ScrH() * 0.89,
+            Color(206, 182 - 60 * tension, 172 - 60 * tension, 220 * alpha),
+            TEXT_ALIGN_CENTER, TEXT_ALIGN_TOP)
     end,
 })
 
@@ -224,6 +329,34 @@ Omerta.HUD.Register("injury.carrying", {
 -- Predicate rather than class: bodies are prop_ragdolls now, and lighting the
 -- dot up for every ragdoll on the map would point at the furniture.
 
-Omerta.HUD.RegisterInteractablePredicate("injury.body", function(ent)
+local function isBody(ent)
     return ent:GetNWBool("OmertaBody", false)
-end)
+end
+
+Omerta.HUD.RegisterInteractablePredicate("injury.body", isBody)
+
+-- And the identity label resolves them, so looking at somebody on the floor
+-- tells you who they are exactly when looking at them upright would have —
+-- their name if you know them, "Unknown" if you do not, and Unknown either way
+-- if their face is covered. D-033 keeps objects naming themselves and people
+-- not; a body is on the people side of that line, so the answer comes from M5
+-- per observer rather than from anything written on the entity.
+Omerta.Identity.RegisterLabelPredicate("injury.body", isBody)
+
+-- What you can do with them, under the name. The dot says you can interact;
+-- this says with what, without naming anybody.
+Omerta.HUD.Register("injury.body_hint", {
+    order = 31,
+    fade = 0.2,
+    visible = function()
+        local target = Omerta.HUD.InteractableTarget and Omerta.HUD.InteractableTarget()
+        return target ~= nil and isBody(target)
+    end,
+    draw = function(alpha)
+        local scale = Omerta.HUD.Scale()
+        local held = C.DragBody() ~= nil
+        draw.SimpleText(held and "Let go, or search them" or "Take hold, or search them",
+            Omerta.HUD.Font("small"), ScrW() * 0.5, ScrH() * 0.5 + 30 * scale,
+            Color(178, 172, 160, 200 * alpha), TEXT_ALIGN_CENTER, TEXT_ALIGN_TOP)
+    end,
+})

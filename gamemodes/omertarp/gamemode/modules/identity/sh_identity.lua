@@ -64,6 +64,16 @@ local subjectProviders = {}
 
 -- fn(ent, cb) -> true if this provider claims the entity (and will call cb
 -- with the character row, or nil), false/nil to decline.
+-- Client half of the same seam: which entities are worth asking about at all.
+-- Registered rather than a class check, because M19's bodies are prop_ragdolls
+-- and asking about every ragdoll on the map would be a request storm.
+Omerta.Identity.Internal = Omerta.Identity.Internal or {}
+Omerta.Identity.Internal.LabelPredicates = Omerta.Identity.Internal.LabelPredicates or {}
+
+function Omerta.Identity.RegisterLabelPredicate(id, fn)
+    Omerta.Identity.Internal.LabelPredicates[id] = fn
+end
+
 function Omerta.Identity.RegisterSubjectProvider(id, fn)
     subjectProviders[id] = fn
 end

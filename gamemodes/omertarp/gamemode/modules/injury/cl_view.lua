@@ -105,25 +105,28 @@ hook.Add("CalcView", "omerta.injury.view", function(ply, pos, angles, fov)
             return { origin = eye, angles = eyeAng, fov = fov, drawviewer = true }
         end
 
-        -- Frozen at the instant the rise begins: lerping from a live position
-        -- that is still settling makes the climb stutter.
-        if not C.death.from then
-            C.death.from = eye
-            C.death.fromAng = eyeAng
-        end
+        -- Frozen at the instant the rise begins, so a ragdoll still settling
+        -- does not make the climb stutter.
+        if not C.death.from then C.death.from = eye end
 
         local at = IsValid(C.death.body) and C.death.body:GetPos() or C.death.at
         local eased = Omerta.Injury.RiseEase(t)
-        local origin = LerpVector(eased, C.death.from, overheadPosition(at, D.HEIGHT))
-        -- Pitch rolls over to straight down as it climbs; yaw is held so the
-        -- world does not spin under the shot.
-        local ang = Angle(Lerp(eased, C.death.fromAng.p, 90), C.death.fromAng.y, 0)
+
+        -- The rise starts ALREADY looking down, from just above the body, and
+        -- only translates. Tweening the pitch from wherever the head happened
+        -- to be lying round to straight down spends the whole shot in an
+        -- orientation that is neither, and reads as a mistake. A cut is the
+        -- normal grammar here; the rotation was the awkward part.
+        local origin = LerpVector(eased,
+            overheadPosition(at, D.START_HEIGHT), overheadPosition(at, D.HEIGHT))
+        -- Yaw is held from where they fell, so the world does not spin.
+        local ang = Angle(90, C.death.eyeAng.y, 0)
         return { origin = origin, angles = ang, fov = fov, drawviewer = true }
     end
 
     -- Down: first person, riding the ragdoll's head.
     if not Omerta.Injury.IsDown(C.state) then return end
-    local eye, eyeAng = Omerta.Injury.EyesOf(C.body)
+    local eye, eyeAng = Omerta.Injury.EyesOf(C.Body())
     if not eye then return end
 
     -- Not drawing the viewer: the camera is inside the head, and rendering the
@@ -142,10 +145,25 @@ hook.Add("InputMouseApply", "omerta.injury.no_look", function()
     if C.death or Omerta.Injury.IsDown(C.state) then return true end
 end)
 
+local HIDDEN_WHILE_DOWN = {
+    CHudWeaponSelection = true,
+    CHudCrosshair = true,
+}
+
+-- Chat goes at the moment of death and not before: somebody bleeding out can
+-- still be spoken to, and being cut off from the room would remove the only
+-- thing left to do. Once dead there is nothing to read and the screen belongs
+-- to the moment.
 hook.Add("HUDShouldDraw", "omerta.injury.hide_world_hud", function(name)
-    if not (C.death or Omerta.Injury.IsDown(C.state)) then return end
-    -- No weapon selector or hands over a body.
-    if name == "CHudWeaponSelection" or name == "CHudCrosshair" then return false end
+    if C.death and (name == "CHudChat" or HIDDEN_WHILE_DOWN[name]) then return false end
+    if Omerta.Injury.IsDown(C.state) and HIDDEN_WHILE_DOWN[name] then return false end
+end)
+
+-- Everything the world was making noise about stops. The trombone and the
+-- piano are BASS channels (sound.PlayFile), which this hook does not touch —
+-- which is exactly why both moved off surface.PlaySound.
+hook.Add("EntityEmitSound", "omerta.injury.silence", function()
+    if C.death then return false end
 end)
 
 hook.Add("CalcViewModelView", "omerta.injury.no_viewmodel", function()

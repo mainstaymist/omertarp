@@ -8,8 +8,11 @@
 Omerta.Injury.Client = Omerta.Injury.Client or {}
 local C = Omerta.Injury.Client
 
+-- Both play through sound.PlayFile rather than surface.PlaySound, so both sit
+-- on BASS channels that EntityEmitSound cannot silence. The death screen mutes
+-- the world; it must not mute itself.
 Omerta.Injury.SOUND = {
-    TROMBONE = "omertarp/trombone-crescendo.wav",
+    TROMBONE = "sound/omertarp/trombone-crescendo.wav",
     PIANO    = "sound/omertarp/death-piano.wav",
 }
 
@@ -19,36 +22,41 @@ local TIMING = Omerta.Injury.DEATH_TIMING
 -- The music
 --------------------------------------------------------------------------------
 
-local channel = nil
+local channel = nil     -- the looping piano
+local sting = nil       -- the one-shot trombone
+local requested = false
 
-local function stopMusic()
+local function stopAll()
     if channel and channel:IsValid() then channel:Stop() end
-    channel = nil
+    if sting and sting:IsValid() then sting:Stop() end
+    channel, sting, requested = nil, nil, false
 end
 
-local requested = false
+-- cb(channel) on success. Warns and does nothing on failure: a file that did
+-- not download costs the sound, never the screen.
+local function load(path, cb)
+    -- No flags. "noblock" is a streaming flag for PlayURL and is wrong for a
+    -- file on disk — it silently returns nothing rather than erroring, which
+    -- is how the piano came to never play at all.
+    sound.PlayFile(path, "", function(built, errorId, errorName)
+        if not built then
+            Omerta.Log.Warn("injury", "death audio '%s' did not load (%s: %s)",
+                path, tostring(errorId), tostring(errorName))
+            return
+        end
+        cb(built)
+    end)
+end
 
 local function startMusic()
     -- `requested` rather than `channel`, because PlayFile is asynchronous: the
     -- Think hook would otherwise fire a fresh request every frame until the
-    -- first one came back, and end up with a stack of overlapping pianos.
+    -- first came back, and end up with a stack of overlapping pianos.
     if requested or channel then return end
     requested = true
-
-    -- No flags. "noblock" is a streaming flag for PlayURL and is wrong for a
-    -- file on disk — this is the sort of thing that silently returns nothing
-    -- rather than erroring, which is why the music simply never arrived.
-    sound.PlayFile(Omerta.Injury.SOUND.PIANO, "", function(built, errorId, errorName)
+    load(Omerta.Injury.SOUND.PIANO, function(built)
         requested = false
-        if not built then
-            -- A missing or undownloaded file costs the music, not the screen.
-            Omerta.Log.Warn("injury", "death music did not load (%s: %s)",
-                tostring(errorId), tostring(errorName))
-            return
-        end
-        -- Died and moved on while it was loading.
         if not C.death then built:Stop() return end
-
         channel = built
         channel:EnableLooping(true)
         channel:SetVolume(0)
@@ -57,7 +65,7 @@ local function startMusic()
 end
 
 hook.Add("Think", "omerta.injury.death_music", function()
-    if not C.death then stopMusic() return end
+    if not C.death then stopAll() return end
     local elapsed = CurTime() - C.death.startedAt
 
     -- The piano waits for the words. It arrives once they are fully there, so
@@ -112,7 +120,12 @@ end)
 -- opens on one, and layering a second would flatten it.
 
 hook.Add("Omerta.CharacterDiedLocally", "omerta.injury.death_sound", function()
-    surface.PlaySound(Omerta.Injury.SOUND.TROMBONE)
+    load(Omerta.Injury.SOUND.TROMBONE, function(built)
+        if not C.death then built:Stop() return end
+        sting = built
+        sting:SetVolume(1)
+        sting:Play()
+    end)
 end)
 
 --------------------------------------------------------------------------------
@@ -129,7 +142,7 @@ end
 local function acknowledge()
     if not acceptingInput() then return end
     C.death = nil
-    stopMusic()
+    stopAll()
     Omerta.Net.Request("injury.acknowledge_death", {})
     -- M4 has been holding the creation window since the moment of death.
     if Omerta.Characters.ReleaseCreation then Omerta.Characters.ReleaseCreation() end

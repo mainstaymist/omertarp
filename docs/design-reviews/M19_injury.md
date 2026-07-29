@@ -307,3 +307,25 @@ Four smaller ones:
 Also added a bone fallback for the head camera. The `eyes` attachment exists on every Half-Life 2 playermodel, but a custom model without one would have dropped the camera back to the player entity — a view floating in mid-air, which is the failure that was already visible.
 
 Suite: 305 → 307 checks.
+
+### 14c. Second presentation pass (2026-07-28)
+
+**The downed camera was never attaching to the head, and the reason was a race.** The client resolved `Entity(index)` the instant `injury.body` arrived — which is the instant the ragdoll is created server-side, before it has replicated. `Entity()` returned NULL, `C.body` stayed invalid forever, and the view silently fell back to the frozen player entity. It only *looked* fixed on death because the death message carries its own entity reference and arrives later. The index is now stored and resolved on demand, which costs nothing and cannot lose the race. You watch yourself go down.
+
+**The pan starts already looking down.** Tweening the pitch from wherever the head was lying round to straight down spends the whole shot in an orientation that is neither, which is the "awkward middleground". The rise now cuts to a top-down shot 80 units above the body and only *translates* upward. A cut is the normal grammar for this; the rotation was the awkward part.
+
+**The screen goes quiet.** Chat hides on death but **not while bleeding out** — somebody dying can still be spoken to, and cutting them off from the room would remove the last thing they can do. All world audio is suppressed through `EntityEmitSound`, and both the trombone and the piano moved onto `sound.PlayFile` channels so the silence cannot reach them. The death screen mutes the world; it must not mute itself.
+
+**Vision blurs as it goes.** Three light passes of `pp/blurscreen` under the vignette (order 4 against its 5), on the same squared curve, so the two read as one effect rather than two.
+
+**Bodies are dragged, not carried, and anyone can do it.** Nobody picks a grown man up and walks off with him. It is modelled as a rope: slack for the first 52 units, taut by 130, grip fails at 210. Past the slack the body is pulled after you, eased so it creeps at light tension and only really moves once you lean on it. Hauling halves your speed and costs stamina in proportion to how hard you are pulling. On screen: a line from your hands to the body that reddens and shudders with tension, a fainter line back to where you took hold, and a word for what is happening.
+
+The tension is **not networked**. The client has both positions and the rule is pure and shared, so it computes the same number the server enforces with, every frame, for free.
+
+**A test caught a real balance inversion here.** `injury.drag_speed` was an absolute 90 units/sec while a hauler under D-034 walks at 55 — so the body would have *outrun the person pulling it* and the rope could never go taut. That is the second time an absolute movement number silently coupled to D-034. It is now `injury.drag_catchup`, a fraction of the hauler's own speed, and the test asserts the relationship holds at four different walk speeds rather than at the current one.
+
+**Searching a body takes a moment, once.** Four seconds of "Searching…" the first time, through the existing timed-action machinery — interruptible by walking away, same as treatment. After that, that person can go through that body instantly: you already know what is in the coat, and making somebody wait again for information they have is a tax on the interface, not a cost in the fiction. Taking something out clears everyone *else's* memory of the pockets.
+
+**A body has a tooltip, and it is the identity system's answer.** `cl_identity.lua` only ever considered players, so the subject provider added in §12 had no client half and never fired. It now accepts registered predicates, so looking at a body resolves through `ResolveDisplayName` per observer — their name if you know them, Unknown if you do not, Unknown either way if their face is covered. D-033 keeps objects naming themselves and people not; a body is on the people side of that line, so the name comes from M5 and only the action hint ("Take hold, or search them") is drawn by M19.
+
+Suite: 307 → 313 checks.

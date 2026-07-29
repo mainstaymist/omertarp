@@ -266,6 +266,13 @@ local function interactableTarget()
     return cachedTarget
 end
 
+-- What the player is looking at right now, or nil. Exposed so a module can
+-- add a hint about its own entity without running a second trace — and so the
+-- answer is the same one the dot is using.
+function Omerta.HUD.InteractableTarget()
+    return interactableTarget()
+end
+
 Omerta.HUD.Register("interactable", {
     order = 40,
     fade = 0.15,

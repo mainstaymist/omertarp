@@ -35,14 +35,26 @@ Omerta.Config.Define("injury.recovery_regen_scale", {
     type = "number", default = 0.55, min = 0.1, max = 1, scope = "server",
     description = "Stamina-recovery multiplier while recovering.",
 })
-Omerta.Config.Define("injury.carry_speed_scale", {
-    type = "number", default = 0.45, min = 0.05, max = 1, scope = "server",
-    description = "Movement multiplier while carrying a body. Moving one across " ..
+Omerta.Config.Define("injury.drag_speed_scale", {
+    type = "number", default = 0.55, min = 0.05, max = 1, scope = "server",
+    description = "Movement multiplier while hauling a body. Moving one across " ..
         "a city should be a decision, not a detour.",
 })
-Omerta.Config.Define("injury.carry_drain_per_second", {
-    type = "number", default = 4, min = 0, max = 50, scope = "server",
-    description = "Stamina spent per second while carrying a body.",
+Omerta.Config.Define("injury.drag_drain_per_second", {
+    type = "number", default = 6, min = 0, max = 50, scope = "server",
+    description = "Stamina spent per second at full tension. Scaled by how hard " ..
+        "you are actually pulling.",
+})
+Omerta.Config.Define("injury.drag_catchup", {
+    type = "number", default = 1, min = 0.1, max = 1.5, scope = "server",
+    description = "At full tension a body moves at this fraction of the hauler's " ..
+        "own hauling speed. 1 means it keeps pace and the rope sits taut; below " ..
+        "1 it steadily falls behind until the grip goes.",
+})
+Omerta.Config.Define("injury.search_seconds", {
+    type = "number", default = 4, min = 0, max = 60, scope = "server",
+    description = "How long going through a stranger's pockets takes the first " ..
+        "time. Never again for the same body, by the same person.",
 })
 Omerta.Config.Define("injury.enabled", {
     type = "boolean", default = true, scope = "server",
@@ -372,14 +384,6 @@ function Internal.Tick()
         end
     end
 
-    -- Carrying costs breath, charged continuously rather than on pickup: it is
-    -- the walk that is hard, not the lift.
-    local drain = Omerta.Config.Get("injury.carry_drain_per_second")
-    if drain > 0 then
-        for _, ply in ipairs(player.GetAll()) do
-            if Omerta.Injury.CarriedBy(ply) then Omerta.Stamina.Drain(ply, drain) end
-        end
-    end
 end
 
 --------------------------------------------------------------------------------
@@ -408,9 +412,9 @@ function Internal.RegisterModifiers()
 
         local factor = Internal.RecoveryFactor(character.id,
             Omerta.Config.Get("injury.recovery_speed_scale"))
-        return factor * Omerta.Injury.CarrySpeedMultiplier(
-            Omerta.Injury.CarriedBy(ply) ~= nil,
-            Omerta.Config.Get("injury.carry_speed_scale"))
+        return factor * Omerta.Injury.DragSpeedMultiplier(
+            Omerta.Injury.DraggedBy(ply) ~= nil,
+            Omerta.Config.Get("injury.drag_speed_scale"))
     end)
 
     Omerta.Stamina.RegisterRegenModifier("injury", function(ply)
@@ -542,6 +546,7 @@ function MODULE:OnEnable()
     Internal.RegisterInteractions()
     Internal.RegisterTreatments()
     Internal.RegisterSearch()
+    Internal.RegisterSearchAction()
     Internal.RegisterBodyCleanup()
     Internal.RegisterIdentity()
     Internal.RegisterDisconnect()
@@ -549,10 +554,13 @@ function MODULE:OnEnable()
 
     Omerta.Organizations.WhenReady(function() Internal.LoadStates() end)
 
-    timer.Create("omerta.injury.tick", 1, 0, function()
-        Internal.Tick()
+    timer.Create("omerta.injury.tick", 1, 0, Internal.Tick)
+
+    -- The rope is physics, so it runs every frame rather than every second: a
+    -- body hauled at one update per second lurches.
+    hook.Add("Think", "omerta.injury.drag", function()
+        Internal.TickDrags()
         Internal.TickActions()
-        Internal.ValidateCarries()
     end)
 
     -- Damage interception. EntityTakeDamage is the only hook that can stop the

@@ -215,12 +215,75 @@ check("how much of the window is left is clamped at both ends", function()
     assert(R(1000, 0, 500) == 0, "no window")
 end)
 
-check("carrying a body is heavy, and only while you are carrying one", function()
+check("hauling a body is heavy, and only while you have hold of one", function()
     loadModules()
-    local C = Omerta.Injury.CarrySpeedMultiplier
-    assert(C(false, 0.45) == 1, "empty handed")
-    assert(C(true, 0.45) == 0.45, "loaded")
-    assert(C(true, 0) > 0, "never a full stop — that reads as being stuck, not laden")
+    local D = Omerta.Injury.DragSpeedMultiplier
+    assert(D(false, 0.55) == 1, "empty handed")
+    assert(D(true, 0.55) == 0.55, "loaded")
+    assert(D(true, 0) > 0, "never a full stop — that reads as stuck, not laden")
+end)
+
+--------------------------------------------------------------------------------
+suite("injury.drag")
+--------------------------------------------------------------------------------
+
+-- The rope. Slack first, then it goes taut and starts pulling, then it breaks.
+check("the line is slack before it pulls at all", function()
+    loadModules()
+    local T = Omerta.Injury.DragTension
+    local R = Omerta.Injury.DRAG
+    assert(T(0) == 0, "standing on top of them")
+    assert(T(R.SLACK) == 0, "still inside the slack")
+    assert(T(R.SLACK + 1) > 0, "past the slack it starts to tighten")
+    assert(T(R.TAUT) == 1, "fully taut")
+    assert(T(R.TAUT * 4) == 1, "and no tighter than that")
+end)
+
+check("a grip that is stretched far enough fails", function()
+    loadModules()
+    local B = Omerta.Injury.DragBreaks
+    local R = Omerta.Injury.DRAG
+    assert(not B(R.SLACK), "not while there is slack")
+    assert(not B(R.TAUT), "not merely because it is taut")
+    assert(B(R.BREAK + 1), "but it does not hold forever")
+    -- Breaking must be further than fully taut, or the rope snaps the instant
+    -- it does any work and dragging is impossible.
+    assert(R.BREAK > R.TAUT, "the rope has to be able to pull before it breaks")
+end)
+
+check("a body creeps at first and only really moves once you lean on it", function()
+    loadModules()
+    local S = Omerta.Injury.DragSpeed
+    assert(S(0, 90) == 0, "a slack line moves nothing")
+    assert(S(1, 90) == 90, "full tension, full speed")
+    -- Eased, so light tension barely shifts them: linear here would make a
+    -- body slide the moment you took a step.
+    assert(S(0.5, 90) < 45, "half tension is less than half speed")
+    local previous = -1
+    for i = 0, 10 do
+        local speed = S(i / 10, 90)
+        assert(speed >= previous, "pulling harder must never move them slower")
+        previous = speed
+    end
+end)
+
+-- A body must never outrun the person pulling it, or the rope can never go
+-- taut and the whole mechanic inverts. Derived from the hauler's own speed
+-- rather than set as an absolute, because an absolute silently couples to
+-- D-034 — halving the walk speed once made the body the faster of the two.
+check("a body never outruns its hauler, at any movement speed", function()
+    loadModules()
+    local H = Omerta.Injury.HaulSpeed
+    local scale = Omerta.Config.Get("injury.drag_speed_scale")
+    local catchup = Omerta.Config.Get("injury.drag_catchup")
+
+    for _, walk in ipairs({ 60, 100, 200, 400 }) do
+        local hauler = walk * scale
+        local dragged = Omerta.Injury.DragSpeed(1, H(walk, scale, catchup))
+        assert(dragged <= hauler + 0.001,
+            "the body outruns its hauler at a walk speed of " .. walk)
+    end
+    assert(catchup <= 1, "a catchup above 1 is a body that drags its dragger")
 end)
 
 --------------------------------------------------------------------------------
@@ -486,4 +549,24 @@ check("the prompt after death does not promise a soul coming back", function()
     local prompt = Omerta.Injury.DEATH_PROMPT
     assert(type(prompt) == "string" and prompt ~= "")
     assert(not prompt:lower():find("respawn"), "respawn is the wrong idea entirely")
+end)
+
+--------------------------------------------------------------------------------
+suite("injury.focus")
+--------------------------------------------------------------------------------
+
+check("vision blurs further out as the end nears, and starts nearly sharp", function()
+    loadModules()
+    local B = Omerta.Injury.BlurAmount
+    assert(B(0) < B(0.5) and B(0.5) < B(1), "focus has to keep going")
+    assert(B(0) < 1.5, "barely soft at the start — this is vision, not a menu")
+    -- Same squared shape as the vignette, so the two read as one effect.
+    assert(B(0.5) - B(0) < B(1) - B(0.5), "the loss should accelerate")
+end)
+
+check("the pan starts above the body and climbs from there", function()
+    loadModules()
+    local D = Omerta.Injury.DEATH
+    assert(D.START_HEIGHT > 0, "the shot has to begin off the floor")
+    assert(D.HEIGHT > D.START_HEIGHT, "and it has to climb, not descend")
 end)

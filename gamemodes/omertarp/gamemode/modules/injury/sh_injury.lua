@@ -221,6 +221,12 @@ function Omerta.Injury.VignetteReach(progress, pulsePhase)
     return math.Clamp(base + beat * amplitude, 0, 0.94)
 end
 
+-- How hard the world is out of focus, 0..1. Stays subtle: this is vision
+-- going, not a pause menu. Squared like the vignette so the two move together.
+function Omerta.Injury.BlurAmount(progress)
+    return 0.9 + 4.6 * (math.Clamp(progress or 0, 0, 1) ^ 2)
+end
+
 -- Beats per second. Slow: this is a heartbeat felt from the inside, not a
 -- strobe. Roughly 21 bpm at the start rising to 54 at the end — well under a
 -- real pulse, because on screen anything faster reads as a flicker.
@@ -232,7 +238,8 @@ Omerta.Injury.DEATH = {
     HOLD    = 1.4,  -- still on the body, letting the trombone land
     RISE    = 5.5,  -- pulling up and away
     CEILING = 12,   -- keep this far off whatever is overhead
-    HEIGHT  = 420,  -- how far up it would go with nothing in the way
+    START_HEIGHT = 80,  -- where the top-down shot cuts in, above the body
+    HEIGHT  = 420,  -- how far up it climbs with nothing in the way
 }
 
 function Omerta.Injury.DeathPhase(elapsed)
@@ -292,14 +299,52 @@ function Omerta.Injury.LoopVolume(position, length, fade)
 end
 
 --------------------------------------------------------------------------------
--- Carrying
+-- Dragging
 --------------------------------------------------------------------------------
+-- Nobody picks a grown man up and walks off with him. You take hold and you
+-- HAUL, and the whole street watches you do it — which is the point: moving a
+-- body has to be a commitment, not a pocket operation.
+--
+-- Modelled as a rope. There is slack, and while you are inside it nothing
+-- happens; past it the line goes taut and starts pulling. The further you
+-- lean, the harder it pulls and the more obvious it is you are doing it. Past
+-- breaking length your grip fails.
 
--- A carried body is dead weight held in both arms. The penalty is heavy on
--- purpose: moving a body across a city should be a decision, not a detour.
-function Omerta.Injury.CarrySpeedMultiplier(isCarrying, scale)
-    if not isCarrying then return 1 end
-    return math.max(0.05, tonumber(scale) or 0.5)
+Omerta.Injury.DRAG = {
+    SLACK  = 52,   -- you can move this far before the line even goes tight
+    TAUT   = 130,  -- fully taut here; past this you are hauling with everything
+    BREAK  = 210,  -- and here your grip goes
+}
+
+-- 0 while there is slack, 1 when the line is as tight as it gets. Pure.
+function Omerta.Injury.DragTension(distance, slack, taut)
+    slack = slack or Omerta.Injury.DRAG.SLACK
+    taut = taut or Omerta.Injury.DRAG.TAUT
+    if taut <= slack then return 0 end
+    return math.Clamp(((distance or 0) - slack) / (taut - slack), 0, 1)
+end
+
+function Omerta.Injury.DragBreaks(distance, breakAt)
+    return (distance or 0) > (breakAt or Omerta.Injury.DRAG.BREAK)
+end
+
+-- How fast the body is pulled along, in units per second. Eases in so a body
+-- creeps at first and only really moves once you are leaning on it.
+function Omerta.Injury.DragSpeed(tension, maxSpeed)
+    return (maxSpeed or 90) * (math.Clamp(tension or 0, 0, 1) ^ 1.5)
+end
+
+-- How fast a body may be pulled, derived from how fast its hauler can walk.
+-- At a catchup of 1 the body keeps pace and the rope settles taut; below 1 it
+-- falls steadily behind until the grip goes.
+function Omerta.Injury.HaulSpeed(walkSpeed, dragScale, catchup)
+    return (walkSpeed or 100) * (dragScale or 0.55) * (catchup or 1)
+end
+
+-- Hauling is heavy on purpose: it should be a decision, not a detour.
+function Omerta.Injury.DragSpeedMultiplier(isDragging, scale)
+    if not isDragging then return 1 end
+    return math.max(0.05, tonumber(scale) or 0.55)
 end
 
 --------------------------------------------------------------------------------
@@ -374,11 +419,22 @@ Omerta.Net.Register("injury.acknowledge_death", {
     end,
 })
 
-Omerta.Net.Register("injury.carrying", {
+-- Which body this player has hold of, and where they took hold of it.
+--
+-- The tension itself is NOT networked: the client has both positions and the
+-- rule is pure and shared, so it computes the same number the server does,
+-- every frame, for free. The server still enforces — the client only draws.
+Omerta.Net.Register("injury.dragging", {
     realm = "server_to_client",
-    schema = { { name = "carrying", type = "bool" } },
+    schema = {
+        { name = "body", type = "uint", bits = 16 }, -- 0 = let go
+        { name = "x", type = "int", bits = 20 },
+        { name = "y", type = "int", bits = 20 },
+        { name = "z", type = "int", bits = 20 },
+    },
     handler = function(payload)
-        hook.Run("Omerta.InjuryCarrying", payload.carrying)
+        hook.Run("Omerta.InjuryDragging", payload.body,
+            Vector(payload.x, payload.y, payload.z))
     end,
 })
 
