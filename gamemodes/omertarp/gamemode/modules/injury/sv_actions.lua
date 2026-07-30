@@ -12,7 +12,9 @@ local S = Omerta.Injury.STATE
 
 function Internal.RegisterInteractions()
     Omerta.Interaction.Register("injury.grab", {
-        label = "Drag", range = 96, order = 40,
+        -- The tap default for a body: E takes hold, E lets go (below). The
+        -- rest of what can be done to somebody stays behind the held menu.
+        label = "Drag", range = 96, order = 40, default = true,
         predicate = function(ply, target)
             local characterId = Omerta.Injury.CharacterOfBody(target)
             if not characterId then return false end
@@ -31,7 +33,7 @@ function Internal.RegisterInteractions()
     })
 
     Omerta.Interaction.Register("injury.letgo", {
-        label = "Let Go", range = 256, order = 41,
+        label = "Let Go", range = 256, order = 41, default = true,
         predicate = function(ply, target)
             local characterId = Omerta.Injury.CharacterOfBody(target)
             return characterId ~= nil and Omerta.Injury.DraggedBy(ply) == characterId
@@ -76,6 +78,18 @@ function Internal.RegisterInteractions()
     -- moment to go through them.
     Omerta.Interaction.Register("injury.search", {
         label = "Search", range = 72, order = 44,
+        -- Best effort: a corpse whose pockets happen to be loaded and empty
+        -- says so up front, sparing the four-second rummage for nothing. An
+        -- unloaded inventory keeps the plain label — the search finds out.
+        describe = function(ply, target)
+            local characterId = Omerta.Injury.CharacterOfBody(target)
+            local owner = characterId
+                and { type = Omerta.Inventory.OWNER.CHARACTER, id = characterId }
+            if owner and Omerta.Inventory.IsLoaded(owner)
+                    and #Omerta.Inventory.Get(owner) == 0 then
+                return "Search (empty)"
+            end
+        end,
         predicate = function(ply, target)
             local characterId = Omerta.Injury.CharacterOfBody(target)
             if not characterId then return false end
@@ -115,7 +129,9 @@ function Internal.RegisterSearch()
     Omerta.Inventory.RegisterOpenable("prop_ragdoll", function(_, ent)
         local characterId = Omerta.Injury.CharacterOfBody(ent)
         if not characterId then return nil end
-        return { type = Omerta.Inventory.OWNER.CHARACTER, id = characterId }, 0
+        -- The window title. "Body", nothing more: WHOSE body is identity's
+        -- question and stays answered per observer.
+        return { type = Omerta.Inventory.OWNER.CHARACTER, id = characterId }, 0, "Body"
     end)
 
     Omerta.Inventory.RegisterContainerAccess("injury", function(ply, _, owner)
@@ -184,6 +200,9 @@ end
 function Internal.RegisterSearchAction()
     Omerta.Injury.RegisterDownedAction("injury.search_body", {
         label = "Searching", range = 96,
+        -- The rummage is audible to the one doing it: the prompt carries a
+        -- sound code and the client plays a stretch of the rustle bed.
+        sound = Omerta.Injury.PROMPT_SOUND.RUSTLE,
         duration = Omerta.Config.Get("injury.search_seconds"), order = 44,
         predicate = function(ply, characterId)
             local actor = Omerta.Characters.Get(ply)

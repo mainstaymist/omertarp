@@ -544,6 +544,7 @@ function MODULE:OnEnable()
     resource.AddFile("sound/omertarp/trombone-crescendo.wav")
     resource.AddFile("sound/omertarp/death-piano.wav")
     resource.AddFile("sound/omertarp/confirm.wav")
+    resource.AddFile("sound/omertarp/ui/searching-rustle.wav")
 
     Internal.RegisterModifiers()
     Internal.RegisterSpeechLimits()

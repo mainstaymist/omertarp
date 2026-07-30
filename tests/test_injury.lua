@@ -336,6 +336,14 @@ check("state codes round-trip and are frozen", function()
     assert(Omerta.Injury.STATE_INDEX[S.DEAD] == 7)
 end)
 
+check("prompt sound codes are frozen", function()
+    loadModules()
+    -- The prompt carries a sound CODE; the client owns which file it means.
+    -- Renumbering would make a stale client rustle at the wrong moments.
+    assert(Omerta.Injury.PROMPT_SOUND.NONE == 0)
+    assert(Omerta.Injury.PROMPT_SOUND.RUSTLE == 1)
+end)
+
 check("a condition is prose, never a number", function()
     loadModules()
     for _, state in ipairs(Omerta.Injury.ORDER) do
@@ -617,11 +625,14 @@ end)
 suite("injury.focus")
 --------------------------------------------------------------------------------
 
-check("vision blurs further out as the end nears, and starts nearly sharp", function()
+check("vision blurs further out as the end nears, and starts already soft", function()
     loadModules()
     local B = Omerta.Injury.BlurAmount
     assert(B(0) < B(0.5) and B(0.5) < B(1), "focus has to keep going")
-    assert(B(0) < 1.5, "barely soft at the start — this is vision, not a menu")
+    -- Field-tested the other way first: a nearly-sharp start read as nothing
+    -- having happened. Going down is a blow, and the world goes soft with it.
+    assert(B(0) >= 2, "the world is already soft the moment you are down")
+    assert(B(0) <= 3, "but not paused-menu soft — help arriving still has to be visible")
     -- Same squared shape as the vignette, so the two read as one effect.
     assert(B(0.5) - B(0) < B(1) - B(0.5), "the loss should accelerate")
 end)

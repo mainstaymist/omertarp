@@ -43,10 +43,38 @@ function Internal.SendOptions(ply, entIndex)
         payload.count = #available
         for i, def in ipairs(available) do
             payload["i" .. i] = def.index
-            payload["l" .. i] = def.label
+            -- The plain label unless the action knows something richer about
+            -- THIS target right now — "Search (empty)". Best effort: a
+            -- describe that errors or answers nothing falls back silently.
+            local label = def.label
+            if def.describe then
+                local ok, described = pcall(def.describe, ply, target)
+                if ok and type(described) == "string" and described ~= "" then
+                    label = described
+                end
+            end
+            payload["l" .. i] = string.sub(label, 1, 48)
         end
     end
     Omerta.Net.Send("interaction.options", payload, ply)
+end
+
+-- The tap path: E without the menu. Runs the first action that is available
+-- AND flagged default — flagged, because running merely the first available
+-- would make walking past a stranger with E introduce you to them.
+function Internal.ExecuteDefault(ply, entIndex)
+    local target, distance = Internal.ResolveTarget(ply, entIndex)
+    if not target then return end
+
+    for _, def in ipairs(Internal.Available(ply, target, distance)) do
+        if def.default then
+            local success, err = pcall(def.run, ply, target)
+            if not success then
+                Omerta.Log.Error("interaction", "default '%s' failed: %s", def.id, tostring(err))
+            end
+            return
+        end
+    end
 end
 
 function Internal.Execute(ply, entIndex, actionIndex)

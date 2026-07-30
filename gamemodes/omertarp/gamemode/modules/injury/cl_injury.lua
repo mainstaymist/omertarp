@@ -13,7 +13,42 @@ C.total = 0        -- the whole window, so a fraction can be drawn
 C.bodyIndex = 0    -- resolved lazily; see C.Body()
 
 local prompt, promptUntil = nil, 0
+local promptStart, promptTotal = 0, 0
 C.drag = nil -- { bodyIndex, anchor }
+
+-- The sound of a timed action, from inside it. One BASS channel, seeked to a
+-- random stretch of the rustle bed so no two searches sound identical, and
+-- stopped the moment the prompt goes — a cancelled search goes quiet with it.
+local rustle = { channel = nil, stopAt = 0 }
+
+local function stopRustle()
+    if rustle.channel and rustle.channel:IsValid() then
+        rustle.channel:Stop()
+    end
+    rustle.channel = nil
+end
+
+local function startRustle(duration)
+    stopRustle()
+    -- "noplay": opened paused so it can be seeked before it makes a sound.
+    -- (NOT "noblock" — that flag silently fails for disk files.)
+    sound.PlayFile("sound/omertarp/ui/searching-rustle.wav", "noplay", function(channel)
+        if not (channel and channel:IsValid()) then return end
+        -- The prompt may have ended while the file opened.
+        if CurTime() > rustle.stopAt then channel:Stop() return end
+        local length = channel:GetLength() or 0
+        if length > duration + 1 then
+            channel:SetTime(math.Rand(0, length - duration - 0.5))
+        end
+        channel:SetVolume(0.6)
+        channel:Play()
+        rustle.channel = channel
+    end)
+end
+
+hook.Add("Think", "omerta.injury.rustle", function()
+    if rustle.channel and CurTime() > rustle.stopAt then stopRustle() end
+end)
 
 -- The server sends the clock ONCE, when the state changes. It is not a stream
 -- and must not become one — so the client is given a deadline and counts down
@@ -49,10 +84,23 @@ function C.Body()
     return IsValid(ent) and ent or nil
 end
 
-hook.Add("Omerta.InjuryPrompt", "omerta.injury.prompt", function(text, duration)
-    if not text or text == "" then prompt = nil return end
+hook.Add("Omerta.InjuryPrompt", "omerta.injury.prompt", function(text, duration, soundKind)
+    if not text or text == "" then
+        prompt = nil
+        stopRustle()
+        return
+    end
     prompt = text
+    promptStart = CurTime()
+    promptTotal = duration or 0
     promptUntil = CurTime() + (duration or 4)
+
+    if soundKind == Omerta.Injury.PROMPT_SOUND.RUSTLE then
+        rustle.stopAt = promptUntil
+        startRustle(duration or 4)
+    else
+        stopRustle()
+    end
 end)
 
 hook.Add("Omerta.InjuryDragging", "omerta.injury.dragging", function(index, bone, anchor)
@@ -96,6 +144,7 @@ hook.Add("Omerta.CharactersState", "omerta.injury.reset", function()
     C.state = Omerta.Injury.STATE.HEALTHY
     C.deadline, C.total, C.bodyIndex = nil, 0, 0
     prompt, C.drag = nil, nil
+    stopRustle()
 end)
 
 -- Seconds left on the clock right now, counted locally.
@@ -251,13 +300,13 @@ Omerta.HUD.Register("injury.down", {
         local title = C.state == Omerta.Injury.STATE.INCAPACITATED
             and "You are bleeding out" or "You cannot move"
 
-        draw.SimpleText(title, Omerta.HUD.Font("headline"),
+        Omerta.HUD.Text(title, "headline",
             ScrW() * 0.5, ScrH() * 0.5,
             Color(226, 214, 198, 255 * alpha), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
 
         local subtitle = DOWN_SUBTITLES[C.state]
         if subtitle then
-            draw.SimpleText(subtitle, Omerta.HUD.Font("small"),
+            Omerta.HUD.Text(subtitle, "small",
                 ScrW() * 0.5, ScrH() * 0.5 + 34 * scale,
                 Color(188, 168, 160, 220 * alpha), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
         end
@@ -273,9 +322,23 @@ Omerta.HUD.Register("injury.prompt", {
     fade = 0.2,
     visible = function() return prompt ~= nil and CurTime() < promptUntil end,
     draw = function(alpha)
-        draw.SimpleText(prompt, Omerta.HUD.Font("label"),
-            ScrW() * 0.5, ScrH() * 0.64,
+        local scale = Omerta.HUD.Scale()
+        local x, y = ScrW() * 0.5, ScrH() * 0.64
+        Omerta.HUD.Text(prompt, "label", x, y,
             Color(225, 218, 200, 255 * alpha), TEXT_ALIGN_CENTER, TEXT_ALIGN_TOP)
+
+        -- The clock made visible: how much longer this is going to take.
+        -- Neutral, in the stamina bar's shape — nothing is wrong here,
+        -- something is merely taking its time.
+        if promptTotal > 0 then
+            local progress = math.Clamp((CurTime() - promptStart) / promptTotal, 0, 1)
+            local w, h = 160 * scale, 3 * scale
+            local bx, by = x - w * 0.5, y + 30 * scale
+            surface.SetDrawColor(20, 20, 20, 140 * alpha)
+            surface.DrawRect(bx, by, w, h)
+            surface.SetDrawColor(210, 200, 180, 230 * alpha)
+            surface.DrawRect(bx, by, w * progress, h)
+        end
     end,
 })
 
@@ -325,7 +388,7 @@ Omerta.HUD.Register("injury.drag", {
 
         local label = tension >= 0.98 and "Your grip is going"
             or tension > 0.05 and "Hauling" or "You have hold of them"
-        draw.SimpleText(label, Omerta.HUD.Font("small"),
+        Omerta.HUD.Text(label, "small",
             ScrW() * 0.5, ScrH() * 0.62,
             Color(206, 182 - 60 * tension, 172 - 60 * tension, 220 * alpha),
             TEXT_ALIGN_CENTER, TEXT_ALIGN_TOP)
@@ -352,20 +415,12 @@ Omerta.HUD.RegisterInteractablePredicate("injury.body", isBody)
 -- per observer rather than from anything written on the entity.
 Omerta.Identity.RegisterLabelPredicate("injury.body", isBody)
 
--- What you can do with them, under the name. The dot says you can interact;
--- this says with what, without naming anybody.
-Omerta.HUD.Register("injury.body_hint", {
-    order = 31,
-    fade = 0.2,
-    visible = function()
-        local target = Omerta.HUD.InteractableTarget and Omerta.HUD.InteractableTarget()
-        return target ~= nil and isBody(target)
-    end,
-    draw = function(alpha)
-        local scale = Omerta.HUD.Scale()
-        local held = C.DragBody() ~= nil
-        draw.SimpleText(held and "Let go, or search them" or "Take hold, or search them",
-            Omerta.HUD.Font("small"), ScrW() * 0.5, ScrH() * 0.5 + 40 * scale,
-            Color(178, 172, 160, 200 * alpha), TEXT_ALIGN_CENTER, TEXT_ALIGN_TOP)
-    end,
-})
+-- What you can do with them, under the name. A TARGET HINT rather than its
+-- own HUD element: the hud module stacks it below the identity label with
+-- measured spacing, which is what ended the two of them being drawn through
+-- each other at guessed offsets.
+Omerta.HUD.RegisterTargetHint("injury.body", function(target)
+    if not isBody(target) then return nil end
+    if C.DragBody() ~= nil then return "E to let go" end
+    return "E to drag — hold E for more"
+end)

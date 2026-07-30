@@ -6,6 +6,12 @@
 -- about what is on screen when you have not asked for anything. Nothing here
 -- draws unless the player opened it.
 --
+-- The table is OURS, not the engine's: DListView is sandbox furniture — grey
+-- headers, six-point text, selection semantics nothing here wants — so rows
+-- are plain panels painted in the UI's own idiom, with the category icons.
+-- Looting shows two windows: your pockets on the left, whatever you are into
+-- on the right, each its own framed thing.
+--
 -- Hunger is read HERE and nowhere else (D-016) — deliberately, like money in a
 -- wallet. The single exception is the starvation warning below (D-019).
 
@@ -13,6 +19,7 @@ local Internal = Omerta.Inventory.Internal
 
 local state = {
     container = 0,
+    label = "",
     mine = {},
     theirs = {},
     bulkUsed = 0,
@@ -32,6 +39,7 @@ local incoming = nil
 function Internal.BeginStream(payload)
     incoming = {
         container = payload.container,
+        label = payload.label or "",
         mine = {},
         theirs = {},
         bulkUsed = payload.bulk_used,
@@ -60,7 +68,7 @@ function Internal.EndStream(payload)
     incoming = nil
 
     if IsValid(frame) then
-        Internal.Rebuild()
+        frame:Rebuild()
     else
         Omerta.Inventory.Show()
     end
@@ -93,33 +101,56 @@ local function act(action, entry, quantity)
 end
 
 --------------------------------------------------------------------------------
--- The window
+-- The look
 --------------------------------------------------------------------------------
 
 local COLOURS = {
     paper   = Color(232, 226, 210),
     ink     = Color(28, 26, 24),
-    muted   = Color(96, 90, 82),
-    panel   = Color(20, 19, 18, 242),
+    muted   = Color(120, 113, 103),
+    faint   = Color(96, 90, 82),
+    panel   = Color(20, 19, 18, 246),
+    strip   = Color(30, 28, 25),
+    row     = Color(33, 31, 28, 215),
+    rowHot  = Color(48, 44, 39, 245),
     line    = Color(70, 64, 56),
+    accent  = Color(198, 178, 130),
     warning = Color(178, 96, 84),
 }
 
-local function describe(entry)
-    local bulk = Omerta.Inventory.FormatBulk(
-        Omerta.Inventory.StackBulk(entry.def, entry.quantity))
-    local name = entry.def.name
-    if entry.quantity > 1 then name = name .. " x" .. entry.quantity end
-    -- The one visible difference between a coat in a bag and a coat on your
-    -- back. Spelled out, because a player who cannot tell lost a fight over it.
-    if entry.slot then name = name .. "  — equipped (" .. entry.slot.label .. ")" end
-    return name, bulk
+-- The category icons (player-provided line art, white on transparency, so
+-- they tint cleanly). An item may name its own with `icon = "icon_x"`;
+-- otherwise the category decides, and anything unmapped reads as junk —
+-- which, in this city, is the honest default.
+local CATEGORY_ICON = {
+    weapon         = "icon_gun",
+    ammo           = "icon_ammo",
+    clothing       = "icon_clothes",
+    food           = "icon_food",
+    drink          = "icon_food",
+    money          = "icon_money",
+    tool           = "icon_tools",
+    misc           = "icon_junk",
+    medical        = "icon_components",
+    communications = "icon_components",
+}
+
+local iconCache = {}
+
+local function iconFor(def)
+    local name = def.icon or CATEGORY_ICON[def.category] or "icon_junk"
+    if not iconCache[name] then
+        iconCache[name] = Material("omertarp/icons/" .. name .. ".png", "smooth")
+    end
+    return iconCache[name]
 end
 
--- Everything you can do to an item hangs off the right mouse button. The row
--- of buttons this replaces needed a selection, went stale when the list
--- rebuilt underneath it, and grew a button per verb; a context menu asks the
--- entry itself what applies, every time it opens.
+--------------------------------------------------------------------------------
+-- What you can do with a thing
+--------------------------------------------------------------------------------
+-- Everything hangs off the right mouse button. A context menu asks the entry
+-- itself what applies, every time it opens, so it can never go stale.
+
 local function openRowMenu(entry, mine)
     if not entry then return end
     local A = Omerta.Inventory.ACTION
@@ -168,136 +199,244 @@ local function openRowMenu(entry, mine)
     m:Open()
 end
 
-local function buildList(parent, entries, mine)
-    local scale = Omerta.HUD.Scale()
-    local list = vgui.Create("DListView", parent)
-    list:SetMultiSelect(false)
-    local itemColumn = list:AddColumn("Item")
-    local bulkColumn = list:AddColumn("Bulk")
-    bulkColumn:SetFixedWidth(60 * scale)
-    list:SetHeaderHeight(24 * scale)
-    list:SetDataHeight(26 * scale)
-    -- The engine's default list font is tiny; these follow the HUD's.
-    itemColumn.Header:SetFont(Omerta.HUD.Font("small"))
-    bulkColumn.Header:SetFont(Omerta.HUD.Font("small"))
+--------------------------------------------------------------------------------
+-- Rows and windows
+--------------------------------------------------------------------------------
 
-    for _, entry in ipairs(entries) do
-        local name, bulk = describe(entry)
-        local line = list:AddLine(name, bulk)
-        line.OmertaEntry = entry
-        for _, column in ipairs(line.Columns or {}) do
-            column:SetFont(Omerta.HUD.Font("label"))
+local function buildRow(parent, entry, mine)
+    local scale = Omerta.HUD.Scale()
+    local row = vgui.Create("DPanel", parent)
+    row:SetTall(36 * scale)
+    row:Dock(TOP)
+    row:DockMargin(0, 0, 0, 2)
+    row:SetCursor("hand")
+
+    row.Paint = function(self, w, h)
+        local colour = self:IsHovered() and COLOURS.rowHot or COLOURS.row
+        surface.SetDrawColor(colour.r, colour.g, colour.b, colour.a)
+        surface.DrawRect(0, 0, w, h)
+
+        -- The icon, tinted paper, fitted to a square cell without squashing.
+        local mat = iconFor(entry.def)
+        local cell = h - 10 * scale
+        local iw, ih = cell, cell
+        local mw, mh = mat:Width(), mat:Height()
+        if mw > 0 and mh > 0 then
+            local fit = math.min(cell / mw, cell / mh)
+            iw, ih = mw * fit, mh * fit
+        end
+        surface.SetDrawColor(225, 219, 203, 235)
+        surface.SetMaterial(mat)
+        surface.DrawTexturedRect(8 * scale + (cell - iw) * 0.5, (h - ih) * 0.5, iw, ih)
+
+        local name = entry.def.name
+        if entry.quantity > 1 then name = name .. "  x" .. entry.quantity end
+        draw.SimpleText(name, Omerta.HUD.Font("label"),
+            8 * scale + cell + 10 * scale, h * 0.5,
+            COLOURS.paper, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+
+        draw.SimpleText(Omerta.Inventory.FormatBulk(
+                Omerta.Inventory.StackBulk(entry.def, entry.quantity)),
+            Omerta.HUD.Font("small"), w - 10 * scale, h * 0.5,
+            COLOURS.muted, TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
+
+        -- The one visible difference between a coat in a bag and a coat on
+        -- your back.
+        if entry.slot then
+            draw.SimpleText("equipped — " .. entry.slot.label,
+                Omerta.HUD.Font("small"), w - 52 * scale, h * 0.5,
+                COLOURS.accent, TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
         end
     end
 
-    list.OnRowRightClicked = function(_, _, line)
-        openRowMenu(line.OmertaEntry, mine)
+    row.OnMousePressed = function(_, code)
+        if code == MOUSE_RIGHT then openRowMenu(entry, mine) end
     end
-    return list
+    return row
 end
 
-function Internal.Rebuild()
-    if not IsValid(frame) then return end
-    frame:Rebuild()
+local function styleScrollbar(scroll, scale)
+    local bar = scroll:GetVBar()
+    bar:SetWide(6 * scale)
+    bar:SetHideButtons(true)
+    bar.Paint = function(_, w, h)
+        surface.SetDrawColor(28, 26, 24, 160)
+        surface.DrawRect(0, 0, w, h)
+    end
+    bar.btnGrip.Paint = function(_, w, h)
+        surface.SetDrawColor(COLOURS.line.r, COLOURS.line.g, COLOURS.line.b, 220)
+        surface.DrawRect(0, 0, w, h)
+    end
 end
+
+-- One framed window: title strip, optional right-hand line in the strip,
+-- optional footer, scrolling list. Two of these side by side is looting.
+local function buildWindow(parent, title, rightLine, withFooter)
+    local scale = Omerta.HUD.Scale()
+    local titleH = 34 * scale
+
+    local win = vgui.Create("DPanel", parent)
+    win.Paint = function(_, w, h)
+        surface.SetDrawColor(COLOURS.panel.r, COLOURS.panel.g, COLOURS.panel.b, COLOURS.panel.a)
+        surface.DrawRect(0, 0, w, h)
+        surface.SetDrawColor(COLOURS.strip.r, COLOURS.strip.g, COLOURS.strip.b, 255)
+        surface.DrawRect(0, 0, w, titleH)
+        surface.SetDrawColor(COLOURS.line.r, COLOURS.line.g, COLOURS.line.b, 255)
+        surface.DrawOutlinedRect(0, 0, w, h, 1)
+        surface.DrawRect(0, titleH - 1, w, 1)
+
+        draw.SimpleText(title, Omerta.HUD.Font("body"), 12 * scale, titleH * 0.5,
+            COLOURS.paper, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+        if rightLine then
+            local text, colour = rightLine()
+            if text then
+                draw.SimpleText(text, Omerta.HUD.Font("label"),
+                    w - 12 * scale, titleH * 0.5,
+                    colour or COLOURS.muted, TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
+            end
+        end
+    end
+
+    if withFooter then
+        local footer = vgui.Create("DPanel", win)
+        footer:Dock(BOTTOM)
+        footer:SetTall(44 * scale)
+        footer:DockMargin(10 * scale, 0, 10 * scale, 8 * scale)
+        footer.Paint = function(_, w, h)
+            local used = Omerta.Inventory.FormatBulk(state.bulkUsed)
+            local limit = Omerta.Inventory.FormatBulk(state.bulkLimit)
+            draw.SimpleText(string.format("Carrying %s of %s", used, limit),
+                Omerta.HUD.Font("small"), 0, h - 28 * scale, COLOURS.muted,
+                TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
+
+            -- The cash line is a courtesy total of the coins and notes listed
+            -- above; the money itself is the stacks, not this number.
+            local cash = 0
+            for _, entry in ipairs(state.mine) do
+                local denom = Omerta.Money.DenominationOfItem(entry.def.id)
+                if denom then cash = cash + denom.cents * entry.quantity end
+            end
+            draw.SimpleText(Omerta.Money.Format(cash), Omerta.HUD.Font("small"),
+                w, h - 28 * scale, COLOURS.paper, TEXT_ALIGN_RIGHT, TEXT_ALIGN_TOP)
+
+            -- A bar that shortens as well as reddens, so it does not depend on
+            -- colour alone (Tech §8 accessibility).
+            local ratio = state.bulkLimit > 0
+                and math.min(1, state.bulkUsed / state.bulkLimit) or 0
+            surface.SetDrawColor(40, 38, 35, 255)
+            surface.DrawRect(0, h - 4, w, 3)
+            local fill = ratio > 0.9 and COLOURS.warning or COLOURS.line
+            surface.SetDrawColor(fill.r, fill.g, fill.b, 255)
+            surface.DrawRect(0, h - 4, w * ratio, 3)
+        end
+    end
+
+    local scroll = vgui.Create("DScrollPanel", win)
+    scroll:Dock(FILL)
+    scroll:DockMargin(8 * scale, titleH + 8 * scale, 8 * scale, 8 * scale)
+    styleScrollbar(scroll, scale)
+    win.Scroll = scroll
+
+    return win, titleH
+end
+
+local function fillWindow(win, entries, mine)
+    for _, entry in ipairs(entries) do
+        buildRow(win.Scroll, entry, mine)
+    end
+    if #entries == 0 then
+        local empty = vgui.Create("DPanel", win.Scroll)
+        empty:SetTall(64 * Omerta.HUD.Scale())
+        empty:Dock(TOP)
+        empty.Paint = function(_, w, h)
+            draw.SimpleText("Empty", Omerta.HUD.Font("label"), w * 0.5, h * 0.5,
+                COLOURS.faint, TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+        end
+    end
+end
+
+local function hungerLine()
+    local state_ = Omerta.Hunger.State(hunger)
+    local colour = state_ == Omerta.Hunger.STATE.STARVING and COLOURS.warning or COLOURS.muted
+    return Omerta.Hunger.Describe(hunger), colour
+end
+
+local function closeButton(win, titleH)
+    local scale = Omerta.HUD.Scale()
+    local btn = vgui.Create("DButton", win)
+    btn:SetText("")
+    btn:SetSize(titleH, titleH)
+    btn.PerformLayout = function(self)
+        self:SetPos(self:GetParent():GetWide() - self:GetWide(), 0)
+    end
+    btn.Paint = function(self, w, h)
+        draw.SimpleText("X", Omerta.HUD.Font("label"), w * 0.5, h * 0.5,
+            self:IsHovered() and COLOURS.paper or COLOURS.muted,
+            TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+    end
+    btn.DoClick = function()
+        if IsValid(frame) then frame:Close() end
+    end
+end
+
+--------------------------------------------------------------------------------
+-- The frame
+--------------------------------------------------------------------------------
 
 function Omerta.Inventory.Show()
     if IsValid(frame) then frame:Remove() end
 
     local scale = Omerta.HUD.Scale()
-    local width = math.min(ScrW() * 0.7, 720 * scale)
-    local height = math.min(ScrH() * 0.75, 520 * scale)
+    local winW = math.min(ScrW() * 0.42, 470 * scale)
+    local height = math.min(ScrH() * 0.78, 560 * scale)
+    local gap = 10 * scale
 
     frame = vgui.Create("DFrame")
-    frame:SetSize(width, height)
-    frame:Center()
     frame:SetTitle("")
-    frame:ShowCloseButton(true)
+    frame:ShowCloseButton(false)
+    frame:SetDraggable(false)
     frame:MakePopup()
+    -- The windows are the chrome; the frame is an invisible holder.
+    frame.Paint = nil
 
-    -- While the window has keyboard focus the game's button hooks may not see
-    -- the key, so the same key closes it from in here.
+    -- The same key closes it from in here: a focused panel eats binds, so the
+    -- key is read directly. KEY_C is the engine's default for +menu_context,
+    -- which is what opens this window.
     frame.OnKeyCodePressed = function(self, key)
-        if key == GetConVar("omerta_inventory_key"):GetInt() then self:Close() end
+        if key == KEY_C then self:Close() end
     end
-
-    frame.Paint = function(_, w, h)
-        draw.RoundedBox(4, 0, 0, w, h, COLOURS.panel)
-        surface.SetDrawColor(COLOURS.line)
-        surface.DrawOutlinedRect(0, 0, w, h, 1)
-    end
-
-    local body, footer
 
     function frame:Rebuild()
-        if IsValid(body) then body:Remove() end
-
-        body = vgui.Create("DPanel", frame)
-        body:Dock(FILL)
-        body:DockMargin(12 * scale, 8 * scale, 12 * scale, 4 * scale)
-        body.Paint = nil
-
-        -- The container is docked first: a FILL panel has to be the last one
-        -- added or it claims the space its neighbour wanted.
-        if state.container and state.container > 0 then
-            local theirs = buildList(body, state.theirs, false)
-            theirs:Dock(RIGHT)
-            theirs:SetWide(frame:GetWide() * 0.42)
-            theirs:DockMargin(8 * scale, 0, 0, 0)
+        for _, child in ipairs(self:GetChildren()) do
+            if child.OmertaWindow then child:Remove() end
         end
 
-        local mine = buildList(body, state.mine, true)
-        mine:Dock(FILL)
-
-        if IsValid(footer) then footer:InvalidateLayout() end
-    end
-
-    -- Header: what you are carrying, what it costs you, and how hungry you are.
-    local header = vgui.Create("DPanel", frame)
-    header:Dock(TOP)
-    header:SetTall(34 * scale)
-    header:DockMargin(12 * scale, 4 * scale, 12 * scale, 0)
-    header.Paint = function(_, w, h)
-        draw.SimpleText("Pockets", Omerta.HUD.Font("body"), 0, h * 0.5,
-            COLOURS.paper, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
-
-        local state_ = Omerta.Hunger.State(hunger)
-        local colour = state_ == Omerta.Hunger.STATE.STARVING and COLOURS.warning or COLOURS.muted
-        draw.SimpleText(Omerta.Hunger.Describe(hunger), Omerta.HUD.Font("label"),
-            w, h * 0.5, colour, TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
-        surface.SetDrawColor(COLOURS.line)
-        surface.DrawRect(0, h - 1, w, 1)
-    end
-
-    footer = vgui.Create("DPanel", frame)
-    footer:Dock(BOTTOM)
-    footer:SetTall(58 * scale)
-    footer:DockMargin(12 * scale, 0, 12 * scale, 8 * scale)
-    footer.Paint = function(_, w, h)
-        local used = Omerta.Inventory.FormatBulk(state.bulkUsed)
-        local limit = Omerta.Inventory.FormatBulk(state.bulkLimit)
-        draw.SimpleText(string.format("Carrying %s of %s", used, limit),
-            Omerta.HUD.Font("small"), 0, h - 28 * scale, COLOURS.muted,
-            TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
-
-        -- The cash line is a courtesy total of the coins and notes listed
-        -- above; the money itself is the stacks, not this number.
-        local cash = 0
-        for _, entry in ipairs(state.mine) do
-            local denom = Omerta.Money.DenominationOfItem(entry.def.id)
-            if denom then cash = cash + denom.cents * entry.quantity end
+        local looting = state.container and state.container > 0
+        local wantW = looting and (winW * 2 + gap) or winW
+        if math.abs(self:GetWide() - wantW) > 1 or self:GetTall() ~= height then
+            self:SetSize(wantW, height)
+            self:Center()
         end
-        draw.SimpleText(Omerta.Money.Format(cash), Omerta.HUD.Font("small"),
-            w, h - 28 * scale, COLOURS.paper, TEXT_ALIGN_RIGHT, TEXT_ALIGN_TOP)
 
-        -- A bar that shortens as well as reddens, so it does not depend on
-        -- colour alone (Tech §8 accessibility).
-        local ratio = state.bulkLimit > 0
-            and math.min(1, state.bulkUsed / state.bulkLimit) or 0
-        surface.SetDrawColor(40, 38, 35)
-        surface.DrawRect(0, h - 4, w, 3)
-        surface.SetDrawColor(ratio > 0.9 and COLOURS.warning or COLOURS.line)
-        surface.DrawRect(0, h - 4, w * ratio, 3)
+        local mine = buildWindow(self, "Pockets", hungerLine, true)
+        mine.OmertaWindow = true
+        mine:SetPos(0, 0)
+        mine:SetSize(winW, height)
+        fillWindow(mine, state.mine, true)
+
+        -- The X lives on the rightmost window's title strip, wherever the
+        -- right edge currently is.
+        if looting then
+            local title = state.label ~= "" and state.label or "Container"
+            local theirs, titleH = buildWindow(self, title, nil, false)
+            theirs.OmertaWindow = true
+            theirs:SetPos(winW + gap, 0)
+            theirs:SetSize(winW, height)
+            fillWindow(theirs, state.theirs, false)
+            closeButton(theirs, titleH)
+        else
+            closeButton(mine, 34 * scale)
+        end
     end
 
     frame:Rebuild()
@@ -314,22 +453,17 @@ end
 
 concommand.Add("omerta_inventory", function() Omerta.Inventory.Toggle() end)
 
--- The key is read directly rather than through a GM:Show* hook, which only
--- fires if the player happens to have the matching bind — on a fresh install
--- they frequently do not, and the inventory silently does nothing.
---
--- Q by default. The convar is ARCHIVED, so a client that ran the old F3
--- default keeps their saved value until they set it themselves:
--- omerta_inventory_key 27 (Q) in the console, or any KEY_ number they like.
-CreateClientConVar("omerta_inventory_key", tostring(KEY_Q), true, false)
-
-hook.Add("PlayerButtonDown", "omerta.inventory.key", function(ply, button)
-    if ply ~= LocalPlayer() then return end
-    if button ~= GetConVar("omerta_inventory_key"):GetInt() then return end
-    -- Not while they are typing, in the menu, or in the console: a key that
-    -- opens a window mid-sentence is worse than no key at all.
+-- The inventory rides the CONTEXT MENU bind — C by default — rather than a
+-- convar naming a key. A bind follows whatever the player has actually put on
+-- that key, and it retired the archived-convar trap where changing our
+-- default could never reach a client that had saved the old one.
+hook.Add("PlayerBindPress", "omerta.inventory.key", function(ply, bind, pressed)
+    if bind ~= "+menu_context" or not pressed then return end
+    -- Not while typing or in a menu: a key that opens a window mid-sentence
+    -- is worse than no key at all.
     if ply:IsTyping() or gui.IsGameUIVisible() or gui.IsConsoleVisible() then return end
     Omerta.Inventory.Toggle()
+    return true
 end)
 
 -- D-017's dot now lights up for things worth walking over to.
@@ -354,7 +488,7 @@ Omerta.HUD.Register("hunger", {
         return Omerta.Hunger.State(hunger) == Omerta.Hunger.STATE.STARVING
     end,
     draw = function(alpha)
-        draw.SimpleText("Starving", Omerta.HUD.Font("body"),
+        Omerta.HUD.Text("Starving", "body",
             ScrW() * 0.5, ScrH() * 0.75,
             Color(178, 96, 84, 255 * alpha), TEXT_ALIGN_CENTER, TEXT_ALIGN_TOP)
     end,

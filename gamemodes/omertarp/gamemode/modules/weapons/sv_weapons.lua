@@ -192,6 +192,10 @@ end
 function MODULE:OnEnable()
     if not Omerta.InEngine then return end
 
+    -- The hotbar's switch click. Registered here because the hotbar is this
+    -- module's (cl_hotbar), same ownership rule as the injury sounds.
+    resource.AddFile("sound/omertarp/ui/inventory-click.wav")
+
     -- Hands from the first breath, not only once the inventory loads: the
     -- holster has to exist before there is anything to holster into it.
     hook.Add("PlayerSpawn", "omerta.weapons.hands", function(ply)

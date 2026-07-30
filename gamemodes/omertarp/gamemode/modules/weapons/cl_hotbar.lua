@@ -55,14 +55,22 @@ local function activeIndex(slots)
     return 0
 end
 
+-- The switch is audible. Only a switch: pressing the slot you already hold,
+-- or scrolling with nothing else to scroll to, stays silent.
+local function switchTo(wep)
+    local ply = LocalPlayer()
+    if not IsValid(wep) then return end
+    if IsValid(ply) and ply:GetActiveWeapon() == wep then return end
+    input.SelectWeapon(wep)
+    surface.PlaySound("omertarp/ui/inventory-click.wav")
+end
+
 local function selectSlot(index)
     local slots = buildSlots()
     if not slots then return end
     shownUntil = CurTime() + SHOW_FOR
     local slot = slots[index]
-    if slot and IsValid(slot.wep) then
-        input.SelectWeapon(slot.wep)
-    end
+    if slot then switchTo(slot.wep) end
 end
 
 -- The wheel walks to the next slot that actually holds something, wrapping.
@@ -75,7 +83,7 @@ local function step(delta)
     for offset = 1, 3 do
         local i = ((from - 1 + delta * offset) % 4) + 1
         if IsValid(slots[i].wep) then
-            input.SelectWeapon(slots[i].wep)
+            switchTo(slots[i].wep)
             return
         end
     end
@@ -117,14 +125,10 @@ hook.Add("Think", "omerta.weapons.hotbar_watch", function()
     end
 end)
 
-local COLOURS = {
-    panel  = Color(20, 19, 18),
-    paper  = Color(232, 226, 210),
-    muted  = Color(120, 113, 103),
-    line   = Color(70, 64, 56),
-    active = Color(198, 178, 130),
-}
-
+-- No panels, no borders: four lines of type down the left edge, and the one
+-- you are holding is simply the most PRESENT of them — full paper, shadowed,
+-- while the rest sit faded behind it. Chrome around a list this small was
+-- furniture, and the empty-screen rule hates furniture.
 Omerta.HUD.Register("weapons.hotbar", {
     order = 22,
     fade = 0.25,
@@ -137,39 +141,28 @@ Omerta.HUD.Register("weapons.hotbar", {
         local scale = Omerta.HUD.Scale()
         local active = activeIndex(slots)
 
-        local width, rowH, gap = 172 * scale, 36 * scale, 6 * scale
-        local x = 24 * scale
-        local y = (ScrH() - (4 * rowH + 3 * gap)) * 0.5
+        local rowH = 42 * scale
+        local x = 28 * scale
+        local y = (ScrH() - 4 * rowH) * 0.5
 
         for i = 1, 4 do
             local slot = slots[i]
             local held = IsValid(slot.wep)
             local isActive = i == active
 
-            surface.SetDrawColor(COLOURS.panel.r, COLOURS.panel.g, COLOURS.panel.b,
-                (isActive and 235 or held and 185 or 110) * alpha)
-            surface.DrawRect(x, y, width, rowH)
-            local border = isActive and COLOURS.active or COLOURS.line
-            surface.SetDrawColor(border.r, border.g, border.b,
-                (isActive and 235 or 130) * alpha)
-            surface.DrawOutlinedRect(x, y, width, rowH, 1)
-
-            draw.SimpleText(i, Omerta.HUD.Font("small"),
-                x + 10 * scale, y + rowH * 0.5,
-                Color(COLOURS.muted.r, COLOURS.muted.g, COLOURS.muted.b, 220 * alpha),
+            Omerta.HUD.Text(i, "small", x, y + rowH * 0.5,
+                Color(120, 113, 103, (isActive and 220 or 120) * alpha),
                 TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
 
             -- A held slot names its item; an empty one dimly names itself, so
             -- the bar reads as places things could be rather than a mystery.
             local text = held and slot.name or slot.label
-            local colour = isActive and COLOURS.paper
-                or held and Color(200, 193, 180) or COLOURS.muted
-            draw.SimpleText(text, Omerta.HUD.Font("label"),
-                x + 26 * scale, y + rowH * 0.5,
-                Color(colour.r, colour.g, colour.b, (held and 235 or 140) * alpha),
+            local textAlpha = isActive and 245 or held and 120 or 65
+            Omerta.HUD.Text(text, "body", x + 22 * scale, y + rowH * 0.5,
+                Color(232, 226, 210, textAlpha * alpha),
                 TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
 
-            y = y + rowH + gap
+            y = y + rowH
         end
     end,
 })

@@ -248,6 +248,9 @@ Omerta.Net.Register("inventory.begin", {
     realm = "server_to_client",
     schema = {
         { name = "container",  type = "uint", bits = 16 },
+        -- What the second window is called — "Crate", "Body". Display only;
+        -- it carries nothing the client could not already see by looking.
+        { name = "label",      type = "string", maxlen = 24 },
         { name = "count",      type = "uint", bits = 8 },
         { name = "bulk_used",  type = "uint", bits = 24 },
         { name = "bulk_limit", type = "uint", bits = 24 },

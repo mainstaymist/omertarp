@@ -34,6 +34,20 @@ function Omerta.Interaction.Register(id, def)
     if type(def.range) ~= "number" or def.range <= 0 or def.range > MAX_RANGE then
         error("interaction '" .. id .. "' needs a range in 1.." .. MAX_RANGE, 2)
     end
+    -- `default = true` opts an action into the TAP path: pressing E runs the
+    -- first default-flagged action available, no menu. Opt-in, because "first
+    -- available" would make walking past a stranger with E introduce you to
+    -- them by accident — anything social or irreversible stays behind the
+    -- held menu.
+    if def.default ~= nil and type(def.default) ~= "boolean" then
+        error("interaction '" .. id .. "' default must be a boolean", 2)
+    end
+    -- `describe(ply, target)` may return a richer label at offer time —
+    -- "Search (empty)" on a container known to hold nothing. Falls back to
+    -- the plain label on nil or error.
+    if def.describe ~= nil and type(def.describe) ~= "function" then
+        error("interaction '" .. id .. "' describe must be a function", 2)
+    end
     def.id = id
     def.order = def.order or 100
     def.targets = def.targets or "any"
@@ -121,5 +135,17 @@ Omerta.Net.Register("interaction.execute", {
     rate = { burst = 5, per = 5 },
     handler = function(ply, payload)
         Omerta.Interaction.Internal.Execute(ply, payload.target, payload.action)
+    end,
+})
+
+-- The tap: run whatever this target's default action is, server-decided. The
+-- client never names an action, so there is nothing for a stale menu or a
+-- dishonest client to smuggle through.
+Omerta.Net.Register("interaction.default", {
+    realm = "client_to_server",
+    schema = { { name = "target", type = "uint", bits = 16 } },
+    rate = { burst = 8, per = 5 },
+    handler = function(ply, payload)
+        Omerta.Interaction.Internal.ExecuteDefault(ply, payload.target)
     end,
 })

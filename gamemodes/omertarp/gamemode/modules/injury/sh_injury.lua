@@ -221,10 +221,11 @@ function Omerta.Injury.VignetteReach(progress, pulsePhase)
     return math.Clamp(base + beat * amplitude, 0, 0.94)
 end
 
--- How hard the world is out of focus, 0..1. Stays subtle: this is vision
--- going, not a pause menu. Squared like the vignette so the two move together.
+-- How hard the world is out of focus. Starts already soft — going down is a
+-- blow to the head, not a menu transition — and accelerates from there,
+-- squared like the vignette so the two move together.
 function Omerta.Injury.BlurAmount(progress)
-    return 0.9 + 4.6 * (math.Clamp(progress or 0, 0, 1) ^ 2)
+    return 2.2 + 3.3 * (math.Clamp(progress or 0, 0, 1) ^ 2)
 end
 
 -- Beats per second. Slow: this is a heartbeat felt from the inside, not a
@@ -475,14 +476,23 @@ Omerta.Net.Register("injury.state", {
     end,
 })
 
+-- What a timed action sounds like from inside it. Codes rather than paths on
+-- the wire; the client owns which file a code means. Frozen, like every other
+-- wire code here.
+Omerta.Injury.PROMPT_SOUND = {
+    NONE   = 0,
+    RUSTLE = 1, -- going through pockets
+}
+
 Omerta.Net.Register("injury.prompt", {
     realm = "server_to_client",
     schema = {
         { name = "text",    type = "string", maxlen = 72 },
         { name = "seconds", type = "uint", bits = 8 },
+        { name = "sound",   type = "uint", bits = 2 },
     },
     handler = function(payload)
-        hook.Run("Omerta.InjuryPrompt", payload.text, payload.seconds)
+        hook.Run("Omerta.InjuryPrompt", payload.text, payload.seconds, payload.sound)
     end,
 })
 

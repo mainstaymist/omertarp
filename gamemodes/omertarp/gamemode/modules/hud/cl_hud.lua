@@ -93,6 +93,18 @@ function Omerta.HUD.Font(role)
     return "Omerta.HUD." .. (FONT_SIZES[role] and role or "body")
 end
 
+-- Every piece of text drawn over the WORLD goes through this: the same text
+-- with a soft dark shadow one step down-right, so it stays legible against a
+-- bright sky or a busy wall without boxing everything in panels. Menus and
+-- panels that paint their own dark background can keep using draw.SimpleText.
+function Omerta.HUD.Text(text, role, x, y, colour, alignX, alignY)
+    local font = Omerta.HUD.Font(role)
+    local offset = math.max(1, math.Round(Omerta.HUD.Scale()))
+    draw.SimpleText(text, font, x + offset, y + offset,
+        Color(10, 8, 6, (colour.a or 255) * 0.65), alignX, alignY)
+    draw.SimpleText(text, font, x, y, colour, alignX, alignY)
+end
+
 --------------------------------------------------------------------------------
 -- Suppression of the engine's own HUD
 --------------------------------------------------------------------------------
@@ -161,7 +173,7 @@ Omerta.HUD.Register("cues", {
     draw = function(alpha)
         local y = ScrH() * 0.30
         for _, cue in ipairs(cues) do
-            draw.SimpleText(cue.text, Omerta.HUD.Font("body"), ScrW() * 0.5, y,
+            Omerta.HUD.Text(cue.text, "body", ScrW() * 0.5, y,
                 Color(235, 225, 205, 255 * alpha), TEXT_ALIGN_CENTER, TEXT_ALIGN_TOP)
             y = y + 30 * Omerta.HUD.Scale()
         end
@@ -174,9 +186,19 @@ Omerta.HUD.Register("cues", {
 
 local stamina, staminaChangedAt = 1, 0
 
+-- What the bar draws. The server sends the value four times a second, which
+-- is honest and looks like a bar climbing a staircase — so the display eases
+-- toward the truth every frame and only the truth decides visibility.
+local staminaShown = 1
+
 hook.Add("Omerta.StaminaUpdated", "omerta.hud.stamina", function(value)
     if value < stamina then staminaChangedAt = CurTime() end
     stamina = value
+end)
+
+hook.Add("Think", "omerta.hud.stamina_smooth", function()
+    staminaShown = staminaShown + (stamina - staminaShown)
+        * math.min(1, FrameTime() * 9)
 end)
 
 Omerta.HUD.Register("stamina", {
@@ -197,7 +219,7 @@ Omerta.HUD.Register("stamina", {
         local warn = stamina < 0.35
         surface.SetDrawColor(warn and 190 or 210, warn and 120 or 205, warn and 110 or 185,
             230 * alpha)
-        surface.DrawRect(x, y, w * math.max(0, math.min(1, stamina)), h)
+        surface.DrawRect(x, y, w * math.max(0, math.min(1, staminaShown)), h)
     end,
 })
 
@@ -222,7 +244,7 @@ Omerta.HUD.Register("injury", {
     draw = function(alpha)
         local state = injuryProvider and injuryProvider()
         if not state then return end
-        draw.SimpleText(state, Omerta.HUD.Font("body"), ScrW() * 0.5, ScrH() * 0.72,
+        Omerta.HUD.Text(state, "body", ScrW() * 0.5, ScrH() * 0.72,
             Color(200, 110, 100, 255 * alpha), TEXT_ALIGN_CENTER, TEXT_ALIGN_TOP)
     end,
 })
@@ -287,6 +309,20 @@ function Omerta.HUD.InteractableTarget()
     return interactableTarget()
 end
 
+-- Extra lines under the dot, from whoever knows something about the target.
+--
+-- These used to be separate HUD elements each guessing a pixel offset, and
+-- two modules guessing blind about the same spot is exactly how the identity
+-- label ended up drawn through the body hint. Now ONE element owns the region
+-- and stacks whatever applies: the label, then every registered hint, each
+-- advanced by the measured height of the line above it.
+-- fn(target) returns a line of text, or nil to stay quiet.
+local targetHints = {}
+
+function Omerta.HUD.RegisterTargetHint(id, fn)
+    targetHints[id] = fn
+end
+
 Omerta.HUD.Register("interactable", {
     order = 40,
     fade = 0.15,
@@ -299,16 +335,34 @@ Omerta.HUD.Register("interactable", {
 
         -- Under the dot rather than over it: the thing you are looking at stays
         -- unobstructed, and the eye is already there.
-        local title, subtitle = Omerta.HUD.LabelFor(interactableTarget())
-        if not title then return end
+        local target = interactableTarget()
+        local x, y = ScrW() * 0.5, ScrH() * 0.5 + 14 * scale
+        local gap = 4 * scale
 
-        local y = ScrH() * 0.5 + 14 * scale
-        draw.SimpleText(title, Omerta.HUD.Font("label"), ScrW() * 0.5, y,
-            Color(235, 230, 215, 235 * alpha), TEXT_ALIGN_CENTER, TEXT_ALIGN_TOP)
+        local function line(text, role, colour)
+            Omerta.HUD.Text(text, role, x, y, colour, TEXT_ALIGN_CENTER, TEXT_ALIGN_TOP)
+            surface.SetFont(Omerta.HUD.Font(role))
+            local _, tall = surface.GetTextSize(text)
+            y = y + tall + gap
+        end
+
+        local title, subtitle = Omerta.HUD.LabelFor(target)
+        if title then
+            line(title, "label", Color(235, 230, 215, 235 * alpha))
+        end
         if subtitle then
-            draw.SimpleText(subtitle, Omerta.HUD.Font("small"), ScrW() * 0.5,
-                y + 26 * scale,
-                Color(190, 184, 170, 205 * alpha), TEXT_ALIGN_CENTER, TEXT_ALIGN_TOP)
+            line(subtitle, "small", Color(190, 184, 170, 205 * alpha))
+        end
+
+        -- Deterministic order, so two hints never trade places frame to frame.
+        local ids = {}
+        for id in pairs(targetHints) do ids[#ids + 1] = id end
+        table.sort(ids)
+        for _, id in ipairs(ids) do
+            local ok, text = pcall(targetHints[id], target)
+            if ok and type(text) == "string" and text ~= "" then
+                line(text, "small", Color(178, 172, 160, 200 * alpha))
+            end
         end
     end,
 })

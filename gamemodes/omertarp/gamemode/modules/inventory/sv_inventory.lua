@@ -742,7 +742,8 @@ local openContainer = {} -- steamid64 -> { id = , ent = , owner = { type, id } }
 -- crate was the only thing worth looking in. M19 needs to search a person, and
 -- a person is not a crate — so the class check became a registration, exactly
 -- as the access predicate did in M11. fn(ply, ent) returns an owner table
--- ({ type, id }) and a display id, or nil to decline.
+-- ({ type, id }), a display id, and optionally what the loot window should be
+-- titled — or nil to decline.
 local openables = {}
 
 function Omerta.Inventory.RegisterOpenable(class, fn)
@@ -752,7 +753,9 @@ end
 Omerta.Inventory.RegisterOpenable("omerta_container", function(_, ent)
     local containerId = ent.OmertaContainer
     if not containerId then return nil end
-    return { type = OWNER.CONTAINER, id = containerId }, containerId
+    local def = containers[containerId]
+    return { type = OWNER.CONTAINER, id = containerId }, containerId,
+        def and def.label or nil
 end)
 
 -- What this player may currently reach into, or nil. Range is re-tested on
@@ -779,6 +782,7 @@ local function sendInventory(ply, open)
 
     Omerta.Net.Send("inventory.begin", {
         container = containerId or 0,
+        label = open and string.sub(open.label or "Container", 1, 24) or "",
         count = math.min(#mine + #theirs, limit),
         bulk_used = Omerta.Inventory.SumBulk(mine),
         bulk_limit = math.min(Omerta.Inventory.BulkLimit(ply), 16777215),
@@ -834,7 +838,7 @@ function Internal.HandleOpen(ply, target)
     -- become a way to read it across the map.
     if ply:GetPos():Distance(ent:GetPos()) > Omerta.Interaction.MAX_RANGE then return end
 
-    local owner, containerId = resolve(ply, ent)
+    local owner, containerId, label = resolve(ply, ent)
     if not owner then return end
 
     local allowed, why = Omerta.Inventory.MayOpen(ply, containerId or owner.id, owner)
@@ -843,7 +847,7 @@ function Internal.HandleOpen(ply, target)
         return
     end
 
-    local open = { id = containerId or 0, ent = ent, owner = owner }
+    local open = { id = containerId or 0, ent = ent, owner = owner, label = label }
     openContainer[sid] = open
     if Omerta.Inventory.IsLoaded(owner) then
         sendInventory(ply, open)
@@ -1054,6 +1058,7 @@ function MODULE:OnLoad()
         label = "Pick Up",
         order = 20,
         range = 96,
+        default = true, -- E on a dropped item pockets it
         predicate = function(ply, target)
             if not (IsValid(target) and target:GetClass() == "omerta_item") then return false end
             if not Omerta.Characters.IsLoaded(ply) then return false end
@@ -1071,6 +1076,17 @@ function MODULE:OnLoad()
         label = "Search",
         order = 30,
         range = 96,
+        default = true, -- E on a container opens it
+        -- A container known to hold nothing says so before you open it.
+        describe = function(ply, target)
+            local containerId = target.OmertaContainer
+            local owner = containerId
+                and { type = OWNER.CONTAINER, id = containerId }
+            if owner and Omerta.Inventory.IsLoaded(owner)
+                    and #Omerta.Inventory.Get(owner) == 0 then
+                return "Search (empty)"
+            end
+        end,
         predicate = function(ply, target)
             if not (IsValid(target) and target:GetClass() == "omerta_container") then return false end
             return Omerta.Characters.IsLoaded(ply)
@@ -1083,6 +1099,13 @@ end
 
 function MODULE:OnEnable()
     if not Omerta.InEngine then return end
+
+    -- The category icons the inventory window draws. Pushed as files so a
+    -- client has them before the first window opens.
+    for _, icon in ipairs({ "ammo", "cigarettes", "clothes", "components",
+            "food", "gun", "junk", "money", "tools" }) do
+        resource.AddFile("materials/omertarp/icons/icon_" .. icon .. ".png")
+    end
 
     hook.Add("Omerta.CharacterLoaded", "omerta.inventory.load", function(ply, character)
         Omerta.Inventory.Load({ type = OWNER.CHARACTER, id = character.id }, function()

@@ -60,7 +60,7 @@ Omerta.HUD.Register("weapons.rounds", {
         -- Reddens as it runs dry, same convention as the stamina bar: readable
         -- without relying on colour alone, since the number is right there.
         local low = def and clip <= math.max(1, math.floor(def.clip * 0.25))
-        draw.SimpleText(text, Omerta.HUD.Font("small"),
+        Omerta.HUD.Text(text, "small",
             ScrW() * 0.5, ScrH() * 0.815,
             Color(low and 205 or 210, low and 120 or 205, low and 110 or 185, 220 * alpha),
             TEXT_ALIGN_CENTER, TEXT_ALIGN_TOP)

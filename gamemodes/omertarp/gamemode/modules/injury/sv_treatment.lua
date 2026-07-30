@@ -80,6 +80,7 @@ function Internal.Begin(ply, def, characterId, cb)
     Omerta.Net.Send("injury.prompt", {
         text = def.label .. "…",
         seconds = math.min(255, math.floor(def.duration)),
+        sound = def.sound or Omerta.Injury.PROMPT_SOUND.NONE,
     }, ply)
 
     -- The person it is being done to is told too. Being operated on without
@@ -89,6 +90,7 @@ function Internal.Begin(ply, def, characterId, cb)
         Omerta.Net.Send("injury.prompt", {
             text = "Somebody is working on you.",
             seconds = math.min(255, math.floor(def.duration)),
+            sound = Omerta.Injury.PROMPT_SOUND.NONE,
         }, target)
     end
 end
@@ -100,7 +102,8 @@ function Internal.Cancel(ply, reason)
     inProgress[sid] = nil
     if entry.cb then entry.cb(false, reason or "interrupted") end
     if IsValid(ply) then
-        Omerta.Net.Send("injury.prompt", { text = "", seconds = 0 }, ply)
+        Omerta.Net.Send("injury.prompt",
+            { text = "", seconds = 0, sound = Omerta.Injury.PROMPT_SOUND.NONE }, ply)
     end
 end
 
