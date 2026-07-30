@@ -92,7 +92,13 @@ hook.Add("CalcView", "omerta.injury.view", function(ply, pos, angles, fov)
     -- Leaving: the shot is frozen where the climb left it. Snapping back to
     -- the player entity behind the black would be invisible, but the first
     -- frame of the reveal would show it.
-    if C.leaving and C.leaving.view then return C.leaving.view end
+    --
+    -- Unless the front end has already taken the screen: the menu is REVEALED
+    -- by this fade, so its camera has to be running before the black lifts,
+    -- not cut to afterwards. Soft reference — the menu module is not a
+    -- dependency of injuries, and a server without it keeps the frozen shot.
+    local menuUp = Omerta.Menu and Omerta.Menu.IsShowing and Omerta.Menu.IsShowing()
+    if C.leaving and C.leaving.view and not menuUp then return C.leaving.view end
 
     -- Dead: hold on the body, then pull up and away.
     if C.death then

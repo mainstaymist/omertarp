@@ -228,10 +228,21 @@ end
 function MODULE:OnEnable()
     if not Omerta.InEngine then return end
 
-    -- The UI's typeface travels with the gamemode: clients load any TTF under
+    -- The UI's typefaces travel with the gamemode: clients load any TTF under
     -- resource/fonts automatically once it is on disk, and AddFile is what
     -- puts it there. Owned by this module because the fonts are (cl_hud).
+    --
+    -- IBM Plex Sans is the Carbon standard's own face and carries the whole
+    -- interface; Germania One is the expressive layer, and appears only on the
+    -- wordmark and the death title.
+    resource.AddFile("resource/fonts/IBMPlexSans-Regular.ttf")
+    resource.AddFile("resource/fonts/IBMPlexSans-SemiBold.ttf")
     resource.AddFile("resource/fonts/GermaniaOne-Regular.ttf")
+
+    -- The interface's own click. Owned here rather than by whichever module
+    -- happened to need it first: it is a UI sound, and the hotbar, the menu
+    -- and everything after them share it.
+    resource.AddFile("sound/omertarp/ui/inventory-click.wav")
 
     local interval = 0.25
     timer.Create("omerta.hud.stamina", interval, 0, function() tick(interval) end)

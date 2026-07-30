@@ -2,8 +2,8 @@
 
 **What this is:** everything built but not yet confirmed working in-engine, in the order worth doing it. Kept current as work lands — when you report results, the statuses here get updated and anything that fails becomes a fix before new work starts.
 
-**Last updated:** 2026-07-30, after the second field report (UI, icons, E-key rework).
-**Headless suite:** 356 checks passing. `luac -p` clean across the tree. 17 modules resolving.
+**Last updated:** 2026-07-31, after the front end (intro + main menu) and the Carbon design standard.
+**Headless suite:** 365 checks passing. `luac -p` clean across the tree. 18 modules resolving.
 
 Status key: **☐ untested** · **☑ passed** · **☒ failed** (details inline) · **◐ partly**
 
@@ -13,7 +13,7 @@ Status key: **☐ untested** · **☑ passed** · **☒ failed** (details inline
 
 | | Check | How |
 |---|---|---|
-| ☐ | **Server boots clean with 17 modules** | Look for `loaded 17 module(s): … injury, events, death, phone, weapons` and no Lua errors |
+| ☐ | **Server boots clean with 18 modules** | Look for `loaded 18 module(s): … injury, events, death, phone, weapons, menu` and no Lua errors |
 | ☐ | **Client boots clean** | Join and check the client console — this has never been confirmed since the module count grew |
 | ☐ | **Migrations 12 and 13 apply on MySQL** | **This is the one that matters most.** D-008 makes MySQL the backend of record, and the injury/body/event tables have only ever run against SQLite |
 
@@ -21,11 +21,47 @@ If migrations fail, stop and send me the error — everything below depends on t
 
 ---
 
-## 1. The UI and interaction pass (2026-07-30) — re-test first
+## 1. The front end and the design standard (2026-07-31) — newest, test first
 
-**Controls changed:** **C** now opens the inventory (it rides the context-menu
-bind, so it follows your real key — no console command needed, the old convar
-is gone). The old hold-C menu is now on **E**: tap E for the obvious thing,
+**The interface now has a standard: IBM's Carbon**, dark theme, adapted in two
+declared ways — type scaled up 1.7× because Carbon is drawn for a browser at
+arm's length and this is read across a room, and Germania One kept as the
+*expressive* face for the wordmark and death title only. Everything else is IBM
+Plex Sans. Every colour, size and gap now comes from one file
+(`modules/hud/sh_theme.lua`); the standardization milestone becomes a re-read of
+that table rather than a search for hex codes.
+
+The intro and menu are **placeholder sets for M27/M28**, built as systems so
+those milestones fill in data. Three of their open rulings I had to assume an
+answer to — all reversible, all flagged in `sh_menu.lua`:
+**(a)** the 30.9 MB intro WAV is *not* sent to clients (`menu.send_music` off) so
+nobody downloads it before it is compressed — you will hear it, since you have
+the file; **(b)** the sequence is scene-driven, not music-driven, so it can be
+skipped; **(c)** one camera mode (a slow orbit) plus the registration seam, since
+the real shots are per-map authoring work that lands with the map (Q-9).
+
+| | Check | How | Expect |
+|---|---|---|---|
+| ☐ | **C toggles the inventory** | Press C, release; press again | Opens on press and STAYS open; closes on the next press. (It was riding a bind that re-fires every frame while held — hence hold-to-view) |
+| ☐ | **The intro plays** | Join with no character | Black → "OMERTÀ" and the line under it → words fade → the city fades up under a slow orbiting camera → menu. ~9.6 s |
+| ☐ | **The intro is skippable — but not by accident** | Hammer a key from the loading screen; then press one once the words are up | Early presses do nothing; a press after the title is legible jumps straight to the menu |
+| ☐ | **The menu works on the keyboard** | Arrows/W/S, Enter | Highlight moves and wraps, click sound per move, Enter chooses. A blue bar marks the selection — Carbon marks with a bar, not a glow |
+| ☐ | **The menu works on the mouse** | Hover and click | Hover moves the highlight; click chooses |
+| ☐ | **Enter the city** | Choose it | Menu goes, character creation appears, music fades out |
+| ☐ | **Death lands on the menu, not the creator** | Die | Death screen → the black lifts to reveal the **menu**, with its camera already orbiting behind it (not a cut after the fade) |
+| ☐ | **Settings** | Menu → Settings | Four scale buttons (0.75/1/1.25/1.5); picking one rebuilds the menu at that scale; Back or Escape returns |
+| ☐ | **Leave** | Menu → Leave | Disconnects |
+| ☐ | **Intro can be turned off** | `omerta_intro 0`, then rejoin | Straight to the menu, no intro. (Client convar — the player's call) |
+| ☐ | **Music** | Join | "Cry Me a River" fades in under the intro and continues under the menu; fades out entering the city. Silent for a client without the file — that is expected until it is compressed |
+| ☐ | **The typeface changed everywhere** | Look at any HUD text, the inventory, the menu | IBM Plex Sans throughout; Germania One only on the intro/menu wordmark and the death title. Nothing should still be in the old face |
+| ☐ | **Nothing is rounded any more** | Inventory, menu, loot windows | Square corners everywhere — a Carbon signature and the quickest way to spot a panel that has not been converted |
+| ☐ | **Scale still holds** | `omerta_ui_scale 0.75` then `1.5`, walk around | Menu, inventory, hotbar and HUD all stay laid out; nothing overlaps or leaves the screen |
+
+## 2. The UI and interaction pass (2026-07-30)
+
+**Controls changed:** **C** now opens the inventory — as a toggle; the
+hold-to-view behaviour you found is fixed in §1. The old hold-C menu is now on
+**E**: tap E for the obvious thing,
 hold E for the full menu. Your report said tap-E on a body should default to
 drag in one line and search in another — **I went with drag** (it was the
 dedicated bullet, and search is one wheel-notch away in the held menu); say
@@ -63,7 +99,7 @@ the word and it flips.
 | ☐ | Stamina lasts (~8 s sprint) | Sprint from full | Was ~5.5 s |
 | ☐ | Creation form keyboard flow | New character | First box focused, Tab cycles the name fields |
 
-## 2. W0 — the weapon foundation
+## 3. W0 — the weapon foundation
 
 | | Check | How | Expect |
 |---|---|---|---|
@@ -81,7 +117,7 @@ the word and it flips.
 | ☐ | Disconnect refund | Load a clip, disconnect, rejoin | Rounds in inventory, clip empty |
 | ☐ | Procurement | `omerta_procure` as a family with funds | Revolver $85, Thompson $340 (second approver), ammo boxes |
 
-## 3. M20 — confirmed death and succession (nothing verified yet)
+## 4. M20 — confirmed death and succession (nothing verified yet)
 
 | | Check | How | Expect |
 |---|---|---|---|
@@ -96,7 +132,7 @@ the word and it flips.
 
 ---
 
-## 4. M19 — earlier fixes, still unverified
+## 5. M19 — earlier fixes, still unverified
 
 | | Check | How | Expect |
 |---|---|---|---|
@@ -115,7 +151,7 @@ the word and it flips.
 
 ---
 
-## 5. Older, still unconfirmed
+## 6. Older, still unconfirmed
 
 | | Check | How |
 |---|---|---|
@@ -124,7 +160,7 @@ the word and it flips.
 
 ---
 
-## 6. Known gaps — not bugs, just not built
+## 7. Known gaps — not bugs, just not built
 
 - **Audio is ~46 MB uncompressed** (four originals + the new rustle). MP3 conversion is a local ffmpeg step; no encoder in my environment.
 - **Sound licensing** — the Freesound files and "Cry Me a River" are a pre-release gate. The two new UI sounds and icons came from you; tell me if they carry terms. Germania One is OFL, licence ships next to the TTF.

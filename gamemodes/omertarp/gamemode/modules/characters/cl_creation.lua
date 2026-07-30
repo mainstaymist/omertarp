@@ -249,12 +249,24 @@ function Omerta.Characters.RegisterCreationGate(id, fn)
     creationGates[id] = fn
 end
 
-local function creationHeld()
-    for _, fn in pairs(creationGates) do
-        local ok, held = pcall(fn)
-        if ok and held then return true end
+-- Is anything holding the handover back — optionally ignoring one gate?
+--
+-- The exception is what lets two gates cooperate rather than deadlock: the
+-- front-end menu holds creation itself, and needs to know whether anything
+-- ELSE (the death sequence, mid-fade) is still holding before it puts itself
+-- on screen.
+function Omerta.Characters.CreationHeld(exceptId)
+    for id, fn in pairs(creationGates) do
+        if id ~= exceptId then
+            local ok, held = pcall(fn)
+            if ok and held then return true end
+        end
     end
     return false
+end
+
+local function creationHeld()
+    return Omerta.Characters.CreationHeld(nil)
 end
 
 -- Called by whoever was holding it once they are finished.

@@ -63,25 +63,22 @@ function Omerta.HUD.Scale()
     return Omerta.HUD.ClampScale(GetConVar("omerta_ui_scale"):GetFloat())
 end
 
--- `headline` is deliberately the only size above body text. It exists for the
--- two moments the game raises its voice — bleeding out, and dying — and adding
--- a third would start the drift the empty-screen rule exists to prevent.
---
--- Sized up ~20% from the first pass, which looked right in screenshots and
--- was unreadable at a playing distance.
-local FONT_SIZES = { headline = 46, body = 26, label = 23, small = 20 }
+-- Sizes, faces and weights all come from the Carbon token table (sh_theme).
+-- Nothing here decides what a heading looks like; it only builds what the
+-- standard declares, at the player's accessibility scale.
+local THEME = Omerta.HUD.Theme
 
 local function buildFonts()
     local scale = Omerta.HUD.Scale()
-    for role, size in pairs(FONT_SIZES) do
-        -- Germania One (OFL; the file and its licence ship in
-        -- content/resource/fonts, pushed to clients by the hud module).
-        -- The engine loads any TTF under resource/fonts on its own — the
-        -- family name here just has to match the one inside the file. A
-        -- client that somehow lacks it falls back to the engine default,
-        -- which is legible if charmless.
+    for role, def in pairs(THEME.TYPE) do
+        -- The engine loads any TTF under resource/fonts by itself; the family
+        -- name here only has to match the one inside the file. A client that
+        -- somehow lacks it falls back to the engine default — legible, if
+        -- charmless.
         surface.CreateFont("Omerta.HUD." .. role, {
-            font = "Germania One", size = math.Round(size * scale), weight = 400,
+            font = THEME.FACE[def.face] or THEME.FACE.sans,
+            size = math.Round(THEME.TypeSize(role) * scale),
+            weight = def.weight,
             antialias = true,
         })
     end
@@ -90,7 +87,23 @@ buildFonts()
 cvars.AddChangeCallback("omerta_ui_scale", buildFonts, "omerta.hud.fonts")
 
 function Omerta.HUD.Font(role)
-    return "Omerta.HUD." .. (FONT_SIZES[role] and role or "body")
+    return "Omerta.HUD." .. (THEME.TYPE[role] and role or "body")
+end
+
+-- A themed colour as a drawable Color, with optional alpha (0..1 or 0..255).
+-- Every call site names a ROLE — "borderSubtle" — so a re-theme is this file
+-- and sh_theme, never a search for hex values.
+function Omerta.HUD.Colour(token, alpha)
+    local rgb = THEME.COLOUR[token] or THEME.COLOUR.textPrimary
+    alpha = alpha or 255
+    if alpha <= 1 then alpha = alpha * 255 end
+    return Color(rgb[1], rgb[2], rgb[3], alpha)
+end
+
+-- A Carbon spacing step in pixels, at the player's scale. Layout code asks for
+-- Space(5), not for 16.
+function Omerta.HUD.Space(step)
+    return THEME.Step(step) * Omerta.HUD.Scale()
 end
 
 -- Every piece of text drawn over the WORLD goes through this: the same text
@@ -135,7 +148,25 @@ hook.Add("HUDDrawTargetID", "omerta.hud.no_targetid", function() return false en
 -- The draw loop
 --------------------------------------------------------------------------------
 
+-- Something may own the whole screen for a moment — the front end does, while
+-- the menu is up. A suppressor stops the controller drawing at all, rather
+-- than every element learning about every full-screen state there will ever be.
+local suppressors = {}
+
+function Omerta.HUD.RegisterSuppressor(id, fn)
+    suppressors[id] = fn
+end
+
+function Omerta.HUD.Suppressed()
+    for _, fn in pairs(suppressors) do
+        local ok, yes = pcall(fn)
+        if ok and yes then return true end
+    end
+    return false
+end
+
 hook.Add("HUDPaint", "omerta.hud.draw", function()
+    if Omerta.HUD.Suppressed() then return end
     local dt = FrameTime()
     for _, def in ipairs(Omerta.HUD.GetElements()) do
         local want = def.visible == nil or def.visible() == true

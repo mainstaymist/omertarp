@@ -104,18 +104,20 @@ end
 -- The look
 --------------------------------------------------------------------------------
 
+-- Every colour here is a Carbon token (sh_theme). Nothing in this file picks
+-- a value; it picks a ROLE, and the standard decides what that looks like.
+local C = Omerta.HUD.Colour
 local COLOURS = {
-    paper   = Color(232, 226, 210),
-    ink     = Color(28, 26, 24),
-    muted   = Color(120, 113, 103),
-    faint   = Color(96, 90, 82),
-    panel   = Color(20, 19, 18, 246),
-    strip   = Color(30, 28, 25),
-    row     = Color(33, 31, 28, 215),
-    rowHot  = Color(48, 44, 39, 245),
-    line    = Color(70, 64, 56),
-    accent  = Color(198, 178, 130),
-    warning = Color(178, 96, 84),
+    paper   = C("textPrimary"),
+    muted   = C("textSecondary"),
+    faint   = C("textPlaceholder"),
+    panel   = C("background", 246),
+    strip   = C("layer01"),
+    row     = C("layer01", 235),
+    rowHot  = C("layerHover"),
+    line    = C("borderSubtle"),
+    accent  = C("linkPrimary"),
+    warning = C("supportError"),
 }
 
 -- The category icons (player-provided line art, white on transparency, so
@@ -453,17 +455,27 @@ end
 
 concommand.Add("omerta_inventory", function() Omerta.Inventory.Toggle() end)
 
--- The inventory rides the CONTEXT MENU bind — C by default — rather than a
--- convar naming a key. A bind follows whatever the player has actually put on
--- that key, and it retired the archived-convar trap where changing our
--- default could never reach a client that had saved the old one.
-hook.Add("PlayerBindPress", "omerta.inventory.key", function(ply, bind, pressed)
-    if bind ~= "+menu_context" or not pressed then return end
-    -- Not while typing or in a menu: a key that opens a window mid-sentence
-    -- is worse than no key at all.
+-- C opens the pockets, and it TOGGLES — one press to open, one to close.
+--
+-- This used to hang off the +menu_context bind, which was wrong in a way that
+-- only shows up in the hand: PlayerBindPress fires repeatedly while a bind is
+-- HELD, so the window toggled every frame and stayed open only while the key
+-- was down, like a sandbox context menu. A physical key-down event fires
+-- exactly once per press, which is what a toggle needs.
+--
+-- The bind is still swallowed below so the engine does nothing of its own
+-- with C.
+hook.Add("PlayerButtonDown", "omerta.inventory.key", function(ply, button)
+    if ply ~= LocalPlayer() then return end
+    if button ~= KEY_C then return end
+    -- Not while typing, in the menu, or in the console: a key that opens a
+    -- window mid-sentence is worse than no key at all.
     if ply:IsTyping() or gui.IsGameUIVisible() or gui.IsConsoleVisible() then return end
     Omerta.Inventory.Toggle()
-    return true
+end)
+
+hook.Add("PlayerBindPress", "omerta.inventory.suppress_context", function(_, bind)
+    if bind == "+menu_context" then return true end
 end)
 
 -- D-017's dot now lights up for things worth walking over to.
