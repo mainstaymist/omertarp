@@ -110,25 +110,89 @@ local function describe(entry)
         Omerta.Inventory.StackBulk(entry.def, entry.quantity))
     local name = entry.def.name
     if entry.quantity > 1 then name = name .. " x" .. entry.quantity end
-    if entry.slot then name = name .. "  (" .. entry.slot.label .. ")" end
+    -- The one visible difference between a coat in a bag and a coat on your
+    -- back. Spelled out, because a player who cannot tell lost a fight over it.
+    if entry.slot then name = name .. "  — equipped (" .. entry.slot.label .. ")" end
     return name, bulk
 end
 
-local function buildList(parent, entries, onSelect)
+-- Everything you can do to an item hangs off the right mouse button. The row
+-- of buttons this replaces needed a selection, went stale when the list
+-- rebuilt underneath it, and grew a button per verb; a context menu asks the
+-- entry itself what applies, every time it opens.
+local function openRowMenu(entry, mine)
+    if not entry then return end
+    local A = Omerta.Inventory.ACTION
+    local m = DermaMenu()
+
+    local function option(label, fn)
+        local opt = m:AddOption(label, fn)
+        opt:SetFont(Omerta.HUD.Font("label"))
+        return opt
+    end
+
+    if not mine then
+        option("Take", function() act(A.TAKE, entry) end)
+        m:Open()
+        return
+    end
+
+    if entry.def.slot then
+        if entry.slot then
+            option("Unequip", function() act(A.UNEQUIP, entry) end)
+        else
+            option("Equip", function() act(A.EQUIP, entry) end)
+        end
+    end
+    if entry.def.feeds or entry.def.onUse then
+        option("Use", function() act(A.USE, entry) end)
+    end
+    if entry.def.stackable and entry.quantity > 1 then
+        option("Split…", function()
+            Derma_StringRequest("Split " .. entry.def.name,
+                "How many go to the new stack?",
+                tostring(math.floor(entry.quantity / 2)),
+                function(text)
+                    local count = math.floor(tonumber(text) or 0)
+                    if count >= 1 and count < entry.quantity then
+                        act(A.SPLIT, entry, count)
+                    end
+                end)
+        end)
+    end
+    if state.container and state.container > 0 then
+        option("Store", function() act(A.STORE, entry) end)
+    end
+    option("Drop", function() act(A.DROP, entry) end)
+
+    m:Open()
+end
+
+local function buildList(parent, entries, mine)
+    local scale = Omerta.HUD.Scale()
     local list = vgui.Create("DListView", parent)
     list:SetMultiSelect(false)
-    list:AddColumn("Item")
-    list:AddColumn("Bulk"):SetFixedWidth(56 * Omerta.HUD.Scale())
-    list:SetHeaderHeight(22 * Omerta.HUD.Scale())
-    list:SetDataHeight(22 * Omerta.HUD.Scale())
+    local itemColumn = list:AddColumn("Item")
+    local bulkColumn = list:AddColumn("Bulk")
+    bulkColumn:SetFixedWidth(60 * scale)
+    list:SetHeaderHeight(24 * scale)
+    list:SetDataHeight(26 * scale)
+    -- The engine's default list font is tiny; these follow the HUD's.
+    itemColumn.Header:SetFont(Omerta.HUD.Font("small"))
+    bulkColumn.Header:SetFont(Omerta.HUD.Font("small"))
 
     for _, entry in ipairs(entries) do
         local name, bulk = describe(entry)
         local line = list:AddLine(name, bulk)
         line.OmertaEntry = entry
+        for _, column in ipairs(line.Columns or {}) do
+            column:SetFont(Omerta.HUD.Font("label"))
+        end
     end
 
-    list.OnRowSelected = function(_, _, line) onSelect(line.OmertaEntry) end
+    list.OnRowRightClicked = function(_, _, line)
+        openRowMenu(line.OmertaEntry, mine)
+    end
     return list
 end
 
@@ -163,55 +227,10 @@ function Omerta.Inventory.Show()
         surface.DrawOutlinedRect(0, 0, w, h, 1)
     end
 
-    local selected = nil
-    local body, actions, footer
-
-    local function refreshActions()
-        if not IsValid(actions) then return end
-        actions:Clear()
-        if not selected then return end
-
-        local function button(label, fn)
-            local btn = vgui.Create("DButton", actions)
-            btn:SetText(label)
-            btn:SetFont(Omerta.HUD.Font("label"))
-            btn:SetTextColor(COLOURS.paper)
-            btn:Dock(LEFT)
-            btn:DockMargin(0, 0, 6 * scale, 0)
-            btn:SetWide(96 * scale)
-            btn.Paint = function(self, w, h)
-                surface.SetDrawColor(self:IsHovered() and COLOURS.line or Color(38, 35, 32))
-                surface.DrawRect(0, 0, w, h)
-                surface.SetDrawColor(COLOURS.line)
-                surface.DrawOutlinedRect(0, 0, w, h, 1)
-            end
-            btn.DoClick = fn
-        end
-
-        local A = Omerta.Inventory.ACTION
-        if selected.mine then
-            if selected.entry.def.feeds or selected.entry.def.onUse then
-                button("Use", function() act(A.USE, selected.entry) end)
-            end
-            if selected.entry.def.slot then
-                if selected.entry.slot then
-                    button("Take Off", function() act(A.UNEQUIP, selected.entry) end)
-                else
-                    button("Equip", function() act(A.EQUIP, selected.entry) end)
-                end
-            end
-            button("Drop", function() act(A.DROP, selected.entry) end)
-            if state.container and state.container > 0 then
-                button("Store", function() act(A.STORE, selected.entry) end)
-            end
-        else
-            button("Take", function() act(A.TAKE, selected.entry) end)
-        end
-    end
+    local body, footer
 
     function frame:Rebuild()
         if IsValid(body) then body:Remove() end
-        selected = nil
 
         body = vgui.Create("DPanel", frame)
         body:Dock(FILL)
@@ -221,23 +240,16 @@ function Omerta.Inventory.Show()
         -- The container is docked first: a FILL panel has to be the last one
         -- added or it claims the space its neighbour wanted.
         if state.container and state.container > 0 then
-            local theirs = buildList(body, state.theirs, function(entry)
-                selected = { entry = entry, mine = false }
-                refreshActions()
-            end)
+            local theirs = buildList(body, state.theirs, false)
             theirs:Dock(RIGHT)
             theirs:SetWide(frame:GetWide() * 0.42)
             theirs:DockMargin(8 * scale, 0, 0, 0)
         end
 
-        local mine = buildList(body, state.mine, function(entry)
-            selected = { entry = entry, mine = true }
-            refreshActions()
-        end)
+        local mine = buildList(body, state.mine, true)
         mine:Dock(FILL)
 
         if IsValid(footer) then footer:InvalidateLayout() end
-        refreshActions()
     end
 
     -- Header: what you are carrying, what it costs you, and how hungry you are.
@@ -246,13 +258,13 @@ function Omerta.Inventory.Show()
     header:SetTall(34 * scale)
     header:DockMargin(12 * scale, 4 * scale, 12 * scale, 0)
     header.Paint = function(_, w, h)
-        draw.SimpleText("Pockets", Omerta.HUD.Font("body"), 0, h * 0.5 - 8 * scale,
-            COLOURS.paper, TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
+        draw.SimpleText("Pockets", Omerta.HUD.Font("body"), 0, h * 0.5,
+            COLOURS.paper, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
 
         local state_ = Omerta.Hunger.State(hunger)
         local colour = state_ == Omerta.Hunger.STATE.STARVING and COLOURS.warning or COLOURS.muted
         draw.SimpleText(Omerta.Hunger.Describe(hunger), Omerta.HUD.Font("label"),
-            w, h * 0.5 - 7 * scale, colour, TEXT_ALIGN_RIGHT, TEXT_ALIGN_TOP)
+            w, h * 0.5, colour, TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
         surface.SetDrawColor(COLOURS.line)
         surface.DrawRect(0, h - 1, w, 1)
     end
@@ -265,7 +277,7 @@ function Omerta.Inventory.Show()
         local used = Omerta.Inventory.FormatBulk(state.bulkUsed)
         local limit = Omerta.Inventory.FormatBulk(state.bulkLimit)
         draw.SimpleText(string.format("Carrying %s of %s", used, limit),
-            Omerta.HUD.Font("small"), 0, h - 18 * scale, COLOURS.muted,
+            Omerta.HUD.Font("small"), 0, h - 28 * scale, COLOURS.muted,
             TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
 
         -- The cash line is a courtesy total of the coins and notes listed
@@ -276,7 +288,7 @@ function Omerta.Inventory.Show()
             if denom then cash = cash + denom.cents * entry.quantity end
         end
         draw.SimpleText(Omerta.Money.Format(cash), Omerta.HUD.Font("small"),
-            w, h - 18 * scale, COLOURS.paper, TEXT_ALIGN_RIGHT, TEXT_ALIGN_TOP)
+            w, h - 28 * scale, COLOURS.paper, TEXT_ALIGN_RIGHT, TEXT_ALIGN_TOP)
 
         -- A bar that shortens as well as reddens, so it does not depend on
         -- colour alone (Tech §8 accessibility).
@@ -287,11 +299,6 @@ function Omerta.Inventory.Show()
         surface.SetDrawColor(ratio > 0.9 and COLOURS.warning or COLOURS.line)
         surface.DrawRect(0, h - 4, w * ratio, 3)
     end
-
-    actions = vgui.Create("DPanel", footer)
-    actions:Dock(TOP)
-    actions:SetTall(28 * scale)
-    actions.Paint = nil
 
     frame:Rebuild()
 
@@ -307,10 +314,14 @@ end
 
 concommand.Add("omerta_inventory", function() Omerta.Inventory.Toggle() end)
 
--- The key is read directly rather than through GM:ShowSpare1, which only fires
--- if the player happens to have F3 bound to gm_showspare1 — on a fresh install
+-- The key is read directly rather than through a GM:Show* hook, which only
+-- fires if the player happens to have the matching bind — on a fresh install
 -- they frequently do not, and the inventory silently does nothing.
-CreateClientConVar("omerta_inventory_key", tostring(KEY_F3), true, false)
+--
+-- Q by default. The convar is ARCHIVED, so a client that ran the old F3
+-- default keeps their saved value until they set it themselves:
+-- omerta_inventory_key 27 (Q) in the console, or any KEY_ number they like.
+CreateClientConVar("omerta_inventory_key", tostring(KEY_Q), true, false)
 
 hook.Add("PlayerButtonDown", "omerta.inventory.key", function(ply, button)
     if ply ~= LocalPlayer() then return end

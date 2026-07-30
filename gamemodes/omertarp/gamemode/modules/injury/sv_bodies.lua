@@ -219,10 +219,21 @@ function Omerta.Injury.Grab(ply, characterId, cb)
     local grabbed = body:GetPhysicsObjectNum(bone)
     local anchor = IsValid(grabbed) and grabbed:GetPos() or body:GetPos()
 
+    -- How much body hangs off the part taken hold of, decided once here:
+    -- the bone cannot change mid-drag and neither can the masses.
+    local totalMass = 0
+    for i = 0, body:GetPhysicsObjectCount() - 1 do
+        local phys = body:GetPhysicsObjectNum(i)
+        if IsValid(phys) then totalMass = totalMass + phys:GetMass() end
+    end
+    local tow = Omerta.Injury.TowFactor(
+        IsValid(grabbed) and grabbed:GetMass() or totalMass, totalMass)
+
     dragging[ply:SteamID64() or ""] = {
         characterId = characterId,
         bone = bone,
         anchor = anchor,
+        tow = tow,
         startedAt = CurTime(),
     }
     Internal.WakeBody(body)
@@ -357,11 +368,15 @@ function Internal.TickDrags()
                 if tension > 0 and IsValid(grabbed) then
                     -- Applied to the ONE object that was grabbed. The joints
                     -- drag the rest, which is why a body pulled by an arm
-                    -- trails rather than sliding rigidly.
+                    -- trails rather than sliding rigidly — and also why the
+                    -- speed is tow-compensated: the solver spends most of the
+                    -- applied motion moving the mass behind the grabbed part,
+                    -- so uncompensated the hand moved and the man did not.
                     local direction = (target - from)
                     direction.z = 0
                     direction:Normalize()
                     local speed = Omerta.Injury.DragSpeed(tension, scale)
+                        * (entry.tow or 1)
                     local velocity = grabbed:GetVelocity()
                     grabbed:Wake()
                     grabbed:SetVelocity(Vector(direction.x * speed,

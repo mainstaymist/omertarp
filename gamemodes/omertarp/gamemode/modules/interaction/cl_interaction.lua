@@ -29,6 +29,7 @@ local function openMenu()
 end
 
 local function closeMenu(execute)
+    if not menu.open then return end
     if execute and menu.hovered > 0 and menu.options[menu.hovered] and IsValid(menu.target) then
         Omerta.Net.Request("interaction.execute", {
             target = menu.target:EntIndex(),
@@ -39,6 +40,13 @@ local function closeMenu(execute)
     menu.target = nil
     menu.options = {}
     menu.hovered = 0
+end
+
+-- The hotbar asks this before it touches the mouse wheel: while the menu is
+-- open the wheel belongs here, and the moment it closes the wheel goes back
+-- to switching what is in your hands.
+function Omerta.Interaction.IsMenuOpen()
+    return menu.open
 end
 
 hook.Add("Omerta.InteractionOptions", "omerta.interaction.options", function(payload)
@@ -52,20 +60,32 @@ hook.Add("Omerta.InteractionOptions", "omerta.interaction.options", function(pay
 end)
 
 hook.Add("PlayerBindPress", "omerta.interaction.bind", function(ply, bind, pressed)
-    if bind ~= BIND then return end
-    if pressed then openMenu() else closeMenu(true) end
-    return true -- suppress the default context menu entirely
+    if bind == BIND then
+        -- Releasing the key executes whatever is hovered; if the menu already
+        -- closed itself (look-away), closeMenu is a no-op and nothing fires.
+        if pressed then openMenu() else closeMenu(true) end
+        return true -- suppress the default context menu entirely
+    end
+
+    -- The mouse wheel arrives as the engine's weapon-switch binds, which is
+    -- exactly the collision the hotbar and this menu have to share it around:
+    -- while the menu is open the wheel moves the hover — and is swallowed, so
+    -- scrolling through options never also changes what is in your hands.
+    if menu.open and pressed and (bind == "invprev" or bind == "invnext") then
+        if #menu.options > 0 then
+            local delta = bind == "invprev" and -1 or 1
+            menu.hovered = ((menu.hovered - 1 + delta) % #menu.options) + 1
+        end
+        return true
+    end
 end)
 
--- Mouse wheel selects while the menu is held.
-hook.Add("Think", "omerta.interaction.scroll", function()
-    if not menu.open or #menu.options == 0 then return end
-    local delta = 0
-    if input.WasMousePressed(MOUSE_WHEEL_UP) then delta = -1 end
-    if input.WasMousePressed(MOUSE_WHEEL_DOWN) then delta = 1 end
-    if delta ~= 0 then
-        menu.hovered = ((menu.hovered - 1 + delta) % #menu.options) + 1
-    end
+-- The menu is ABOUT the thing under your eyes, so it lives and dies with the
+-- look: turn away from the target and it closes without executing — which is
+-- also how you cancel one you no longer want.
+hook.Add("Think", "omerta.interaction.watch", function()
+    if not menu.open then return end
+    if currentTarget() ~= menu.target then closeMenu(false) end
 end)
 
 -- Registered with the HUD controller (M8): the menu is contextual by nature,

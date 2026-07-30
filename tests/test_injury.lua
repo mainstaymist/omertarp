@@ -281,23 +281,41 @@ check("a body creeps at first and only really moves once you lean on it", functi
     end
 end)
 
--- A body must never outrun the person pulling it, or the rope can never go
--- taut and the whole mechanic inverts. Derived from the hauler's own speed
--- rather than set as an absolute, because an absolute silently couples to
--- D-034 — halving the walk speed once made the body the faster of the two.
-check("a body never outruns its hauler, at any movement speed", function()
+-- The rope has to be able to CLOSE a gap. The first tuning pinned the body to
+-- exactly its hauler's pace ("a body must never outrun its hauler"), which
+-- sounded like physics and was actually a ratchet: once anything — a kerb, a
+-- doorframe, one missed tick — put the body behind, no speed existed to bring
+-- it back, so the distance only grew and every drag ended in a lost grip.
+-- Catchup above 1 is the headroom that lets the rope settle instead.
+check("the rope settles taut, well short of breaking", function()
     loadModules()
-    local H = Omerta.Injury.HaulSpeed
-    local scale = Omerta.Config.Get("injury.drag_speed_scale")
+    local R = Omerta.Injury.DRAG
     local catchup = Omerta.Config.Get("injury.drag_catchup")
 
-    for _, walk in ipairs({ 60, 100, 200, 400 }) do
-        local hauler = walk * scale
-        local dragged = Omerta.Injury.DragSpeed(1, H(walk, scale, catchup))
-        assert(dragged <= hauler + 0.001,
-            "the body outruns its hauler at a walk speed of " .. walk)
-    end
-    assert(catchup <= 1, "a catchup above 1 is a body that drags its dragger")
+    assert(catchup > 1,
+        "no headroom: a body that falls behind can never close the gap again")
+
+    -- Where the rope settles: the tension at which the body keeps exact pace
+    -- with its hauler. DragSpeed eases as tension^1.5 and both sides scale
+    -- with the walk speed, so the equilibrium is analytic and speed-free:
+    -- catchup * t^1.5 = 1.
+    local equilibrium = (1 / catchup) ^ (1 / 1.5)
+    assert(equilibrium < 1,
+        "the rope should not need to be fully taut just to keep pace")
+
+    local settle = R.SLACK + equilibrium * (R.TAUT - R.SLACK)
+    assert(settle < R.BREAK * 0.75,
+        "steady hauling rides too close to the break for comfort")
+end)
+
+check("pulling a light part tows the weight attached to it", function()
+    loadModules()
+    local T = Omerta.Injury.TowFactor
+    assert(T(80, 80) == 1, "holding all of the mass needs no compensation")
+    assert(T(40, 80) == 2, "half the mass in hand, twice the shove")
+    assert(T(2, 85) == 6, "capped: a hand is a handle, not a slingshot")
+    assert(T(200, 80) == 1, "never below one, even when the masses read wrong")
+    assert(T(nil, nil) == 1, "nonsense in, direct pull out")
 end)
 
 --------------------------------------------------------------------------------

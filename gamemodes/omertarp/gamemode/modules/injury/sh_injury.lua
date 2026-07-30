@@ -382,7 +382,11 @@ end
 Omerta.Injury.DRAG = {
     SLACK  = 52,   -- you can move this far before the line even goes tight
     TAUT   = 130,  -- fully taut here; past this you are hauling with everything
-    BREAK  = 210,  -- and here your grip goes
+    -- Was 210: with the rope settling at very nearly full tension, that left
+    -- ~80 units between "working normally" and "grip gone", and every kerb the
+    -- body caught on spent some of it — which is why drags kept breaking the
+    -- moment they got moving. The settle point is what the headroom is FOR.
+    BREAK  = 300,  -- and here your grip goes
     HOLD   = 46,   -- how far in front of you the hauling hand sits
 }
 
@@ -420,10 +424,28 @@ function Omerta.Injury.DragSpeed(tension, maxSpeed)
 end
 
 -- How fast a body may be pulled, derived from how fast its hauler can walk.
--- At a catchup of 1 the body keeps pace and the rope settles taut; below 1 it
--- falls steadily behind until the grip goes.
+--
+-- Catchup must be ABOVE 1. It looked like a cap on politeness — "a body must
+-- never outrun its hauler" — but a body limited to exactly the hauler's pace
+-- can never close a gap once anything (a kerb, a doorframe, one missed tick)
+-- puts it behind, so the distance only ratchets toward the break and every
+-- drag ends with "you lose your grip". The headroom is what lets the rope
+-- SETTLE: fall behind, tighten, speed up, catch up, slacken.
 function Omerta.Injury.HaulSpeed(walkSpeed, dragScale, catchup)
     return (walkSpeed or 100) * (dragScale or 0.55) * (catchup or 1)
+end
+
+-- The drag velocity is applied to ONE physics object — the part taken hold of
+-- — and the joints tow everything else, with the constraint solver spending
+-- most of the applied motion doing that towing. So the applied speed is
+-- scaled by how much body hangs off the grabbed part: momentum shared across
+-- the whole mass has to be paid in on the one piece being pulled. Capped,
+-- because a very light part given the full ratio stops being a handle and
+-- starts being a slingshot.
+function Omerta.Injury.TowFactor(grabbedMass, totalMass)
+    grabbedMass = math.max(tonumber(grabbedMass) or 1, 1)
+    totalMass = math.max(tonumber(totalMass) or grabbedMass, grabbedMass)
+    return math.Clamp(totalMass / grabbedMass, 1, 6)
 end
 
 -- Hauling is heavy on purpose: it should be a decision, not a detour.

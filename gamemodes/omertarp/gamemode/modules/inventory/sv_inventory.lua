@@ -354,6 +354,58 @@ function Omerta.Inventory.Remove(instanceId, quantity, cb)
 end
 
 --------------------------------------------------------------------------------
+-- Splitting
+--------------------------------------------------------------------------------
+
+-- Part of a stack becomes a new stack in the same pocket. No bulk changes
+-- hands, so there is no capacity question — only the guarded update, so a
+-- stack that changed underneath the request splits nothing. cb(ok, err)
+function Omerta.Inventory.Split(ply, instanceId, quantity, cb)
+    cb = cb or function() end
+    local ownerType, ownerId = resolveOwner(ply)
+    if not ownerType then cb(false, "no character") return end
+
+    local row = (cache[ownerKey(ownerType, ownerId)] or {})[instanceId]
+    if not row then cb(false, "you are not carrying that") return end
+
+    local def = Omerta.Items.Get(row.def_id)
+    if not (def and def.stackable) then cb(false, "that does not divide") return end
+    -- A marked stack (serial, metadata) is particular; copying its marks onto
+    -- a second stack would forge them, and leaving them off would lose them.
+    if row.serial or row.metadata then cb(false, "that one is particular") return end
+
+    quantity = math.floor(tonumber(quantity) or 0)
+    if quantity < 1 or quantity >= row.quantity then
+        cb(false, "both stacks need something in them") return
+    end
+
+    local season = Omerta.Seasons.GetActive()
+    if not season then cb(false, "no active season") return end
+    if not lock(instanceId) then cb(false, "that item is busy") return end
+
+    Internal.Repo.ApplyChanges(
+        { { id = row.id, quantity = row.quantity - quantity, expected = row.quantity } },
+        { {
+            def_id = row.def_id,
+            season_id = season.id,
+            owner_type = ownerType,
+            owner_id = ownerId,
+            quantity = quantity,
+            serial = Omerta.DB.NULL,
+            organization_id = row.organization_id or Omerta.DB.NULL,
+            metadata = Omerta.DB.NULL,
+            created_at = os.time(),
+        } },
+        function(ok, err)
+            unlock(instanceId)
+            if not ok then cb(false, err) return end
+            Omerta.Inventory.Load({ type = ownerType, id = ownerId }, function()
+                cb(true)
+            end)
+        end)
+end
+
+--------------------------------------------------------------------------------
 -- Moving
 --------------------------------------------------------------------------------
 
@@ -480,6 +532,8 @@ function Omerta.Inventory.Drop(ply, instanceId, cb)
 
     local row = (cache[ownerKey(ownerType, ownerId)] or {})[instanceId]
     if not row then cb(false, "you are not carrying that") return end
+    local def = Omerta.Items.Get(row.def_id)
+    local wasEquipped = row.equipped_slot ~= nil
 
     local forward = ply:GetAimVector()
     forward.z = 0
@@ -489,6 +543,14 @@ function Omerta.Inventory.Drop(ply, instanceId, cb)
 
     Omerta.Inventory.Move(instanceId, { type = OWNER.WORLD, id = 0 }, function(ok, err, newRow)
         if not ok then cb(false, err) return end
+        -- Leaving your person is leaving your hands. The move itself already
+        -- cleared the slot in the row; this tells whatever projected the row
+        -- into the world (a weapon module's SWEP) to let go too. Without it,
+        -- dropping an equipped revolver left the gun in the hands with no
+        -- item underneath it.
+        if wasEquipped then
+            hook.Run("Omerta.ItemUnequipped", ply, row, def)
+        end
         Internal.Repo.SetPosition(instanceId, math.floor(drop.x), math.floor(drop.y),
             math.floor(drop.z))
         Internal.SpawnWorldItem(newRow or row, drop, Angle(0, ply:EyeAngles().y, 0))
@@ -533,9 +595,15 @@ function Omerta.Inventory.Transfer(fromPly, toPly, instanceId, cb)
 
     local row = (cache[ownerKey(fromType, fromId)] or {})[instanceId]
     if not row then cb(false, "you are not carrying that") return end
+    local wasEquipped = row.equipped_slot ~= nil
 
     Omerta.Inventory.Move(instanceId, { type = toType, id = toId }, function(ok, err)
         if not ok then cb(false, err) return end
+        -- Handing something over takes it out of your hands first, same as
+        -- dropping it (the move cleared the slot; this clears the projection).
+        if wasEquipped then
+            hook.Run("Omerta.ItemUnequipped", fromPly, row, Omerta.Items.Get(row.def_id))
+        end
         Omerta.Log.Audit("inventory.transfer", {
             from_character = fromId,
             to_character = toId,
@@ -816,6 +884,8 @@ function Internal.HandleAction(ply, payload)
         Omerta.Inventory.Equip(ply, instanceId, done)
     elseif action == A.UNEQUIP then
         Omerta.Inventory.Unequip(ply, instanceId, done)
+    elseif action == A.SPLIT then
+        Omerta.Inventory.Split(ply, instanceId, payload.quantity, done)
     elseif action == A.TAKE then
         if not open then refuse(ply, "you cannot reach that") return end
         local row = (cache[ownerKey(open.owner.type, open.owner.id)] or {})[instanceId]

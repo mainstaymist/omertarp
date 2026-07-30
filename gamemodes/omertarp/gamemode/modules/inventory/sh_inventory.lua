@@ -37,6 +37,7 @@ Omerta.Inventory.ACTION = {
     UNEQUIP = 4,
     TAKE    = 5,  -- container -> me
     STORE   = 6,  -- me -> container
+    SPLIT   = 7,  -- part of a stack becomes a new stack
 }
 
 local ID_PATTERN = "^[a-z0-9_%.]+$"
@@ -66,7 +67,14 @@ function Omerta.Inventory.RegisterSlot(id, def)
     return def
 end
 
-function Omerta.Inventory.GetSlot(id) return slots[id] end
+function Omerta.Inventory.GetSlot(id)
+    -- Indices are assigned by GetSlots' deterministic sort. Without forcing
+    -- that here, a slot fetched before anything had called GetSlots carried
+    -- index nil — which the inventory stream wrote as 0, "not equipped", so
+    -- every client saw bare pockets whatever was actually worn or held.
+    Omerta.Inventory.GetSlots()
+    return slots[id]
+end
 
 function Omerta.Inventory.GetSlots()
     if slotOrder then return slotOrder end

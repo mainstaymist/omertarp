@@ -46,10 +46,11 @@ Omerta.Config.Define("injury.drag_drain_per_second", {
         "you are actually pulling.",
 })
 Omerta.Config.Define("injury.drag_catchup", {
-    type = "number", default = 1, min = 0.1, max = 1.5, scope = "server",
-    description = "At full tension a body moves at this fraction of the hauler's " ..
-        "own hauling speed. 1 means it keeps pace and the rope sits taut; below " ..
-        "1 it steadily falls behind until the grip goes.",
+    type = "number", default = 1.35, min = 1.05, max = 2, scope = "server",
+    description = "At full tension a body moves at this multiple of the hauler's " ..
+        "own hauling speed. It must exceed 1: the excess is what lets a body " ..
+        "that has fallen behind close the gap again, so the rope settles taut " ..
+        "instead of ratcheting out to the break.",
 })
 Omerta.Config.Define("injury.search_seconds", {
     type = "number", default = 4, min = 0, max = 60, scope = "server",

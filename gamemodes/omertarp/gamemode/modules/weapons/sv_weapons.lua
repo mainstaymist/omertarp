@@ -77,10 +77,16 @@ function Internal.Reconcile(ply)
     local character = Omerta.Characters.Get(ply)
     if not character then return end
 
+    -- Hands before anything else: they are the holster. Stripping a weapon
+    -- with nothing to switch to leaves the engine holding NULL, and "put it
+    -- away" needs somewhere for away to be.
+    if not ply:HasWeapon(Omerta.Weapons.HANDS) then
+        ply:Give(Omerta.Weapons.HANDS)
+    end
+
     local desired = {} -- class -> { row, def }
     if not Omerta.Injury.IsPlayerDown(ply) then
-        local owner = Omerta.Inventory.OwnerOf(ply)
-        for _, row in ipairs(Omerta.Inventory.Get(owner) or {}) do
+        for _, row in ipairs(Omerta.Inventory.Get(ply) or {}) do
             if row.equipped_slot then
                 local def = Omerta.Weapons.ForItem(row.def_id)
                 if def then desired[def.class] = { row = row, def = def } end
@@ -115,9 +121,8 @@ function Internal.ConsumeItems(ply, defId, count, cb)
     local function step()
         if remaining <= 0 then cb(true) return end
         if not IsValid(ply) then cb(false, "gone") return end
-        local owner = Omerta.Inventory.OwnerOf(ply)
         local found = nil
-        for _, row in ipairs(Omerta.Inventory.Get(owner) or {}) do
+        for _, row in ipairs(Omerta.Inventory.Get(ply) or {}) do
             if row.def_id == defId then found = row break end
         end
         if not found then cb(remaining < count, "out") return end
@@ -139,9 +144,11 @@ function Internal.Reload(ply, wep)
     -- One reload at a time; the animation is the lockout.
     if (wep.OmertaReloadUntil or 0) > CurTime() then return end
 
-    local owner = Omerta.Inventory.OwnerOf(ply)
+    -- The player goes straight into Get, which normalises a Player itself.
+    -- OwnerOf returns a type/id PAIR, not a descriptor — feeding its first
+    -- return back into Get is how reloading once read every pocket as empty.
     local available = 0
-    for _, row in ipairs(Omerta.Inventory.Get(owner) or {}) do
+    for _, row in ipairs(Omerta.Inventory.Get(ply) or {}) do
         if row.def_id == def.ammo then available = available + row.quantity end
     end
 
@@ -184,6 +191,14 @@ end
 
 function MODULE:OnEnable()
     if not Omerta.InEngine then return end
+
+    -- Hands from the first breath, not only once the inventory loads: the
+    -- holster has to exist before there is anything to holster into it.
+    hook.Add("PlayerSpawn", "omerta.weapons.hands", function(ply)
+        if IsValid(ply) and not ply:HasWeapon(Omerta.Weapons.HANDS) then
+            ply:Give(Omerta.Weapons.HANDS)
+        end
+    end)
 
     -- The single-change paths: M9 announces an equip, the weapon appears.
     hook.Add("Omerta.ItemEquipped", "omerta.weapons.equip", function(ply, row, def)

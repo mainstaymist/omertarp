@@ -258,7 +258,7 @@ Omerta.HUD.Register("injury.down", {
         local subtitle = DOWN_SUBTITLES[C.state]
         if subtitle then
             draw.SimpleText(subtitle, Omerta.HUD.Font("small"),
-                ScrW() * 0.5, ScrH() * 0.5 + 26 * scale,
+                ScrW() * 0.5, ScrH() * 0.5 + 34 * scale,
                 Color(188, 168, 160, 220 * alpha), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
         end
     end,
@@ -318,15 +318,10 @@ Omerta.HUD.Register("injury.drag", {
             (110 + 120 * tension) * alpha)
         surface.DrawLine(fromX, fromY, at.x + jitter, at.y)
 
-        -- The anchor: where you took hold. Watching it fall behind is what
-        -- makes hauling somebody across a street feel like distance covered.
-        if C.drag and C.drag.anchor then
-            local anchor = C.drag.anchor:ToScreen()
-            if anchor.visible then
-                surface.SetDrawColor(120, 100, 92, 70 * alpha)
-                surface.DrawLine(anchor.x, anchor.y, at.x, at.y)
-            end
-        end
+        -- ONE line, deliberately. A second, fainter line back to the original
+        -- grab point shipped first and read as a bug — two ropes to one body —
+        -- rather than as distance covered. The rope you are holding is the
+        -- crosshair one; the anchor stays in the data for the server's use.
 
         local label = tension >= 0.98 and "Your grip is going"
             or tension > 0.05 and "Hauling" or "You have hold of them"
@@ -370,7 +365,7 @@ Omerta.HUD.Register("injury.body_hint", {
         local scale = Omerta.HUD.Scale()
         local held = C.DragBody() ~= nil
         draw.SimpleText(held and "Let go, or search them" or "Take hold, or search them",
-            Omerta.HUD.Font("small"), ScrW() * 0.5, ScrH() * 0.5 + 30 * scale,
+            Omerta.HUD.Font("small"), ScrW() * 0.5, ScrH() * 0.5 + 40 * scale,
             Color(178, 172, 160, 200 * alpha), TEXT_ALIGN_CENTER, TEXT_ALIGN_TOP)
     end,
 })

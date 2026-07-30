@@ -246,10 +246,12 @@ end
 -- expects and degrades gracefully until somebody registers one.
 Internal.SUPPLY_ITEM = "medical.bandage"
 
+-- The player goes straight into Get, which normalises a Player itself.
+-- OwnerOf returns a type/id PAIR, not a descriptor — feeding its first return
+-- back into Get read every pocket as empty (the same bug reloading had).
 function Internal.HasSupplies(ply)
     if not (Omerta.Items and Omerta.Items.Get(Internal.SUPPLY_ITEM)) then return false end
-    local owner = Omerta.Inventory.OwnerOf(ply)
-    for _, row in ipairs(Omerta.Inventory.Get(owner) or {}) do
+    for _, row in ipairs(Omerta.Inventory.Get(ply) or {}) do
         if row.def_id == Internal.SUPPLY_ITEM then return true end
     end
     return false
@@ -257,8 +259,7 @@ end
 
 function Internal.ConsumeSupplies(ply, cb)
     cb = cb or function() end
-    local owner = Omerta.Inventory.OwnerOf(ply)
-    for _, row in ipairs(Omerta.Inventory.Get(owner) or {}) do
+    for _, row in ipairs(Omerta.Inventory.Get(ply) or {}) do
         if row.def_id == Internal.SUPPLY_ITEM then
             Omerta.Inventory.Remove(row.id, 1, function() cb() end)
             return

@@ -112,6 +112,22 @@ local function buildFrame()
     label("Last name")
     local lastEntry = entry()
 
+    -- The form is typeable end to end: Tab hops between the name boxes (and
+    -- wraps), and the first is focused the moment the window opens, below.
+    -- Explicit rather than the panel system's tab ordering, which does not
+    -- survive MakePopup reliably.
+    local fields = { firstEntry, lastEntry }
+    for i, field in ipairs(fields) do
+        local base = field.OnKeyCodeTyped
+        field.OnKeyCodeTyped = function(self, key)
+            if key == KEY_TAB then
+                fields[(i % #fields) + 1]:RequestFocus()
+                return true
+            end
+            if base then return base(self, key) end
+        end
+    end
+
     label("Appearance")
     local modelChoice = vgui.Create("DComboBox", frame)
     modelChoice:SetPos(right, y)
@@ -195,6 +211,9 @@ local function buildFrame()
         status:SetText(reason)
         reenable()
     end)
+
+    -- Last, so nothing built after it steals the focus back.
+    firstEntry:RequestFocus()
 end
 
 local function showMessage(text)

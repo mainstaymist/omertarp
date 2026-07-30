@@ -66,13 +66,23 @@ end
 -- `headline` is deliberately the only size above body text. It exists for the
 -- two moments the game raises its voice — bleeding out, and dying — and adding
 -- a third would start the drift the empty-screen rule exists to prevent.
-local FONT_SIZES = { headline = 38, body = 21, label = 19, small = 16 }
+--
+-- Sized up ~20% from the first pass, which looked right in screenshots and
+-- was unreadable at a playing distance.
+local FONT_SIZES = { headline = 46, body = 26, label = 23, small = 20 }
 
 local function buildFonts()
     local scale = Omerta.HUD.Scale()
     for role, size in pairs(FONT_SIZES) do
+        -- Germania One (OFL; the file and its licence ship in
+        -- content/resource/fonts, pushed to clients by the hud module).
+        -- The engine loads any TTF under resource/fonts on its own — the
+        -- family name here just has to match the one inside the file. A
+        -- client that somehow lacks it falls back to the engine default,
+        -- which is legible if charmless.
         surface.CreateFont("Omerta.HUD." .. role, {
-            font = "Roboto", size = math.Round(size * scale), weight = 500, antialias = true,
+            font = "Germania One", size = math.Round(size * scale), weight = 400,
+            antialias = true,
         })
     end
 end
@@ -97,6 +107,10 @@ local HIDDEN = {
     CHudSecondaryAmmo = true,
     CHudCrosshair = true,
     CHudSuitPower = true,
+    -- The sandbox weapon selector. The weapons module draws its own four-slot
+    -- hotbar in the HUD's own idiom; two selectors answering one wheel would
+    -- fight over it.
+    CHudWeaponSelection = true,
 }
 
 hook.Add("HUDShouldDraw", "omerta.hud.suppress", function(name)
@@ -149,7 +163,7 @@ Omerta.HUD.Register("cues", {
         for _, cue in ipairs(cues) do
             draw.SimpleText(cue.text, Omerta.HUD.Font("body"), ScrW() * 0.5, y,
                 Color(235, 225, 205, 255 * alpha), TEXT_ALIGN_CENTER, TEXT_ALIGN_TOP)
-            y = y + 24 * Omerta.HUD.Scale()
+            y = y + 30 * Omerta.HUD.Scale()
         end
     end,
 })
@@ -293,7 +307,7 @@ Omerta.HUD.Register("interactable", {
             Color(235, 230, 215, 235 * alpha), TEXT_ALIGN_CENTER, TEXT_ALIGN_TOP)
         if subtitle then
             draw.SimpleText(subtitle, Omerta.HUD.Font("small"), ScrW() * 0.5,
-                y + 19 * scale,
+                y + 26 * scale,
                 Color(190, 184, 170, 205 * alpha), TEXT_ALIGN_CENTER, TEXT_ALIGN_TOP)
         end
     end,

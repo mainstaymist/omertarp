@@ -26,6 +26,11 @@ local ammo = {}         -- ammo item id -> ammo definition
 
 local ID_PATTERN = "^[a-z0-9_%.]+$"
 
+-- The holster. Every character carries this SWEP at all times; holding it IS
+-- having nothing drawn, and switching to it is how a weapon is put away. Not a
+-- registered weapon — it is not an item, cannot be dropped and has no rounds.
+Omerta.Weapons.HANDS = "weapon_omerta_hands"
+
 --------------------------------------------------------------------------------
 -- Ammunition
 --------------------------------------------------------------------------------

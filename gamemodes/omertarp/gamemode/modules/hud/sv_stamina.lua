@@ -28,8 +28,12 @@ Omerta.Config.Define("movement.jump_power", {
     description = "How hard a rested character jumps.",
 })
 
+-- 12 gives roughly eight seconds of flat sprint from full — 18 gave five and
+-- change, which field-tested as running out before the corner you were
+-- running for. The recovery rate is untouched: the wind still takes longer to
+-- get back than to spend.
 Omerta.Config.Define("stamina.drain_per_second", {
-    type = "number", default = 18, min = 1, max = 100, scope = "server",
+    type = "number", default = 12, min = 1, max = 100, scope = "server",
     description = "Stamina points lost per second while sprinting (of 100).",
 })
 Omerta.Config.Define("stamina.regen_per_second", {
@@ -45,7 +49,7 @@ Omerta.Config.Define("stamina.recovered_above", {
     description = "Exhaustion lifts once stamina climbs back above this.",
 })
 Omerta.Config.Define("stamina.jump_cost", {
-    type = "number", default = 12, min = 0, max = 100, scope = "server",
+    type = "number", default = 10, min = 0, max = 100, scope = "server",
     description = "Stamina spent on one jump (of 100).",
 })
 Omerta.Config.Define("stamina.exhausted_jump_scale", {
@@ -223,6 +227,11 @@ end
 
 function MODULE:OnEnable()
     if not Omerta.InEngine then return end
+
+    -- The UI's typeface travels with the gamemode: clients load any TTF under
+    -- resource/fonts automatically once it is on disk, and AddFile is what
+    -- puts it there. Owned by this module because the fonts are (cl_hud).
+    resource.AddFile("resource/fonts/GermaniaOne-Regular.ttf")
 
     local interval = 0.25
     timer.Create("omerta.hud.stamina", interval, 0, function() tick(interval) end)
