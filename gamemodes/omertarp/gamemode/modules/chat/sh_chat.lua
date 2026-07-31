@@ -189,6 +189,144 @@ function Omerta.Chat.Parse(raw)
 end
 
 --------------------------------------------------------------------------------
+-- Presentation maths (headless-tested)
+--------------------------------------------------------------------------------
+-- The chat box draws; the arithmetic behind it does not. It lives here for the
+-- same reason sh_hud.lua holds the HUD controller's fade curve — the drawing
+-- half is client-only and the headless suite cannot reach it, and this is the
+-- half that has the off-by-ones in it.
+--
+-- Nothing below knows what a font or a colour is: each takes the measurement
+-- or the palette it needs as an argument. A wrap computed from a fixed
+-- character count is wrong at every accessibility scale, and a hardcoded grey
+-- is exactly the drift the standardization pass exists to catch.
+
+-- One UTF-8 character per iteration. Lua 5.1 has no utf8 library and this text
+-- is player-authored: Sanitize deliberately keeps every non-ASCII byte so
+-- "Omertà" survives, and slicing between the two bytes of an "à" would put a
+-- replacement glyph on screen.
+local UTF8_CHAR = "[%z\1-\127\194-\244][\128-\191]*"
+
+-- Breaks text into lines no wider than maxWidth, measured with the caller's
+-- own measure(string) — in engine that is surface.GetTextSize against the real
+-- font. Returns an array of lines, never nil.
+function Omerta.Chat.WrapText(text, maxWidth, measure)
+    if type(text) ~= "string" or text == "" then return {} end
+    if type(maxWidth) ~= "number" or maxWidth <= 0 then return { text } end
+
+    local lines, current = {}, nil
+
+    -- A single word wider than the whole column — a pasted address, a wall of
+    -- one letter — has to be cut mid-word or it draws off the edge of the
+    -- screen. Returns the remainder, which the next word may still join.
+    local function breakWord(word)
+        local piece = ""
+        for char in word:gmatch(UTF8_CHAR) do
+            if piece ~= "" and measure(piece .. char) > maxWidth then
+                lines[#lines + 1] = piece
+                piece = char
+            else
+                piece = piece .. char
+            end
+        end
+        if piece == "" then return nil end
+        return piece
+    end
+
+    for word in text:gmatch("%S+") do
+        local candidate = current and (current .. " " .. word) or word
+        if measure(candidate) <= maxWidth then
+            current = candidate
+        else
+            if current then lines[#lines + 1] = current end
+            current = (measure(word) <= maxWidth) and word or breakWord(word)
+        end
+    end
+    if current then lines[#lines + 1] = current end
+
+    -- Whitespace-only input has no words to place; drawing it unchanged beats
+    -- returning nothing at all.
+    if #lines == 0 then lines[1] = text end
+    return lines
+end
+
+-- The tail of text that fits in maxWidth, for a field that scrolls instead of
+-- wrapping. The input line is ONE row that never changes height: a field that
+-- grew as you typed would push the conversation you are answering up the
+-- screen, which is the one moment it must not move.
+function Omerta.Chat.ClipTail(text, maxWidth, measure)
+    if type(text) ~= "string" or text == "" then return "" end
+    if type(maxWidth) ~= "number" or maxWidth <= 0 then return "" end
+    if measure(text) <= maxWidth then return text end
+
+    -- Character starts, ascending, so the first tail that fits is the longest.
+    for start in text:gmatch("()" .. UTF8_CHAR) do
+        local tail = text:sub(start)
+        if measure(tail) <= maxWidth then return tail end
+    end
+    return ""
+end
+
+-- A line's presence 0..1, `age` seconds after it arrived: `rise` seconds
+-- coming in, `hold` seconds at full, `fade` seconds going, nothing afterwards.
+--
+-- The nothing afterwards is the point. GDD §8 wants the persistent screen
+-- empty, and a chat box that never leaves is a permanent HUD element wearing a
+-- different hat.
+function Omerta.Chat.LineAlpha(age, hold, fade, rise)
+    if type(age) ~= "number" or age < 0 then return 0 end
+    rise = rise or 0
+    if rise > 0 and age < rise then return age / rise end
+
+    local settled = age - rise
+    if settled <= (hold or 0) then return 1 end
+    if not fade or fade <= 0 then return 0 end
+
+    local left = 1 - (settled - (hold or 0)) / fade
+    if left <= 0 then return 0 end
+    return left
+end
+
+-- Keeps the newest `max` entries, dropping from the front. Bounded because a
+-- transcript is not a feature of this game: what has scrolled away is gone,
+-- the same way it is gone for the character.
+function Omerta.Chat.TrimHistory(list, max)
+    if type(max) ~= "number" or max < 0 then return list end
+    while #list > max do table.remove(list, 1) end
+    return list
+end
+
+-- Maps a channel's declared {r,g,b} onto the nearest token in `candidates`, by
+-- perceived luminance.
+--
+-- A channel names its own colour and later milestones' channels will too —
+-- M11's radios, M12's phone. The design standard allows six hex and nothing
+-- else, so the declaration is honoured by translating it rather than by being
+-- drawn: a quiet channel stays quiet, a bright one stays bright, and no new
+-- grey enters the interface.
+--
+-- Candidates are an ORDERED array of { token, colour }. Ordered, not a map,
+-- because pairs() order is undefined and a tie would then resolve to a
+-- different token from one boot to the next.
+function Omerta.Chat.PaletteToken(rgb, candidates)
+    local function luminance(colour)
+        colour = colour or {}
+        return 0.299 * (colour[1] or 0) + 0.587 * (colour[2] or 0)
+            + 0.114 * (colour[3] or 0)
+    end
+
+    local want = luminance(rgb)
+    local best, bestDistance = nil, nil
+    for _, candidate in ipairs(candidates or {}) do
+        local distance = math.abs(luminance(candidate.colour) - want)
+        if not bestDistance or distance < bestDistance then
+            best, bestDistance = candidate.token, distance
+        end
+    end
+    return best
+end
+
+--------------------------------------------------------------------------------
 -- Networking
 --------------------------------------------------------------------------------
 -- One message per listener, each carrying the name THAT listener is entitled
