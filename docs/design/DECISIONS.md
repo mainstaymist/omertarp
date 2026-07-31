@@ -92,6 +92,28 @@ Resolves Q-4. Ending a season automatically retires every living character ("lea
 
 ---
 
+## D-043 — The world's map and weather come from the Workshop, behind a seam (DECIDED, 2026-07-31)
+
+The city runs on a Workshop map (`1656078410`) and its sky is driven by a Workshop weather system (`1132466603`), both chosen by the project lead. Clients receive them through `resource.AddWorkshop`; the server must carry both in its own collection.
+
+**No gamemode code may call either addon directly.** Weather and time of day are read through `Omerta.Environment`, which selects a provider at boot by **feature detection** — the presence of the functions it intends to call — and falls back to a provider that answers "clear day" forever when nothing is installed. A missing or replaced addon is therefore a quieter world, never an error, and swapping the weather system is one new provider file.
+
+The reason is not neatness. Every other third-party dependency this project has taken is a *content* dependency — a model, a sound, a map — which fails visibly and locally. A weather addon is a *behavioural* dependency: gameplay that reads it directly would break in ways that look like gameplay bugs, on a server whose operator may not even know the addon is missing.
+
+**No gameplay consequence of weather or darkness is approved by this entry.** The seam exists; what reads it (witness recall in M15, recognition distance under D-014, NPC behaviour in M16) is a design question and goes through the normal review gate.
+
+**Affects:** new `modules/environment/`; M27 (the front-end vantage registry gains a map entry once the map's filename is known).
+
+## D-042 — Windows travel, instruments do not (DECIDED, 2026-07-31; amends the style guide)
+
+The style guide's motion rule is **fade only**. That is amended for one case: a window that appears rises into place as it fades in, and sinks as it fades out — 42px at scale, 120ms in, 100ms out, smoothstepped. Every window in the game does it, from one implementation.
+
+The distinction the guide was reaching for survives, restated: **something that announces itself may travel; something you read may not.** A window arriving is an event and the movement is what makes it read as one rather than as a flash. The crosshair, the stamina ticks, the hotbar, the ammunition readout and the target-hint ladder are instruments — they are consulted mid-action, several are anchored to the point the player is aiming at, and a moving instrument is an instrument you have to wait for.
+
+Contextual HUD plates opt IN to the travel rather than inheriting it, so the choice is visible at every registration instead of being a property of the framework nobody remembers is there.
+
+**Affects:** the style guide's motion rule — overridden here rather than edited, because `docs/design/style-guide/` is the handoff as delivered and is kept as a record of it; M8 (`Omerta.HUD.Register` gains `rise`); M25's toolkit inherits this as the default reveal.
+
 ## D-041 — The crosshair is always drawn (DECIDED, 2026-07-31; amends D-017)
 
 **D-017 removed the engine crosshair and replaced it with a mark that appeared only when something interactable was under it. That is overturned in the playing hand.** A centre that blinks in and out gives the eye nothing to rest on, and a player cannot aim — a revolver, a conversation, a glance — at a point that is not drawn.

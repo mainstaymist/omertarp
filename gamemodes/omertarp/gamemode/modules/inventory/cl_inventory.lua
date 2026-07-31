@@ -711,11 +711,23 @@ local function buildCharacterPane(parent, w, h)
     local booth = vgui.Create("DModelPanel", pane)
     booth:SetPos(0, 24 * scale)
     booth:SetSize(w, h - 136 * scale)
-    -- Framed to hold a standing man head to foot, from the front: a player
-    -- model faces its own +X, so that is where the camera stands.
+    -- Framed from the HIP UP, not head to foot. A player model faces its own
+    -- +X, so that is where the camera stands.
+    --
+    -- The full-length shot spent most of the pane on trousers. What this pane
+    -- is actually for is what the character is WEARING and what is in their
+    -- hands — a coat going on, a gun coming out — and all of that happens
+    -- above the belt. Cropping to it makes the same panel show it several
+    -- times larger without taking a pixel from anything else.
+    --
+    -- The numbers are a framing, not magic: BOOTH_AT is the height the camera
+    -- looks at on a standard ValveBiped rig (roughly sternum), and the
+    -- distance sets how much of the body fits around it — halving the old
+    -- distance halves the vertical coverage, which is the crop.
+    local BOOTH_AT, BOOTH_DIST = 56, 58
     booth:SetFOV(36)
-    booth:SetCamPos(Vector(105, 0, 36))
-    booth:SetLookAt(Vector(0, 0, 36))
+    booth:SetCamPos(Vector(BOOTH_DIST, 0, BOOTH_AT))
+    booth:SetLookAt(Vector(0, 0, BOOTH_AT))
 
     -- IDLE ONLY, on the lead's instruction. LayoutEntity is where DModelPanel
     -- advances whatever animation it was given, so the override IS the fix:
