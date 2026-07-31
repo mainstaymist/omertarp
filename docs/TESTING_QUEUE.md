@@ -2,8 +2,8 @@
 
 **What this is:** everything built but not yet confirmed working in-engine, in the order worth doing it. Kept current as work lands — when you report results, the statuses here get updated and anything that fails becomes a fix before new work starts.
 
-**Last updated:** 2026-07-31, after the frozen-spawn fix.
-**Headless suite:** 367 checks passing. `luac -p` clean across the tree. 18 modules resolving.
+**Last updated:** 2026-07-31, after the nine-item pass.
+**Headless suite:** 380 checks passing. `luac -p` clean across the tree. 18 modules resolving.
 
 Status key: **☐ untested** · **☑ passed** · **☒ failed** (details inline) · **◐ partly**
 
@@ -21,7 +21,83 @@ If migrations fail, stop and send me the error — everything below depends on t
 
 ---
 
-## 1. The frozen spawn — two independent causes, both fixed (2026-07-31)
+## 1. The nine-item pass (2026-07-31)
+
+Your notes after the city let you in. Everything here is new or changed since
+that session, so it is all first-time verification.
+
+### Drawing a weapon now takes time
+
+The biggest change in this pass, and the one worth breaking first. A gun no
+longer appears in a hand because a row changed — it is a timed, interruptible
+draw, about **1.7s** for the revolver and **2.4s** for the Thompson. The length
+comes from the weapon's bulk, so a third gun inherits a sensible number the day
+its table exists.
+
+Nothing is written until the timer runs out, which is what makes every
+interruption free: there is no half-equipped state to unwind and no way for a
+cancelled draw to leave a gun anywhere.
+
+| | Check | How | Expect |
+|---|---|---|---|
+| ☐ | **The draw has a length** | Equip a revolver, then a Thompson | The row fills with the same bar "loot all" uses. Thompson visibly slower |
+| ☐ | **Closing the window keeps the clock** | Start a draw, release C immediately | The bottom-centre "DRAWING" plate picks up **mid-bar** — not from zero |
+| ☐ | **Reopening keeps it too** | Start a draw with the window closed (hotbar), then hold C | The row is already part-full. Both directions are one clock, so neither should ever restart |
+| ☐ | **Walking out of it cancels** | Start a draw, walk ~64u | It stops, you are told, nothing is equipped |
+| ☐ | **Going down cancels** | `omerta_injury_state incapacitated` mid-draw | Stops on the same frame, no gun |
+| ☐ | **Losing the item cancels** | Start a draw, have somebody take that row | "it is not yours to draw" |
+| ☐ | **Leaning on it does not stack** | Spam equip | One draw running, not a queue that all lands at once |
+| ☐ | **A coat is still instant** | Equip an overcoat | No bar, no delay — only weapons wait |
+
+### What other people see
+
+| | Check | How | Expect |
+|---|---|---|---|
+| ☐ | **"Reaching for something…"** | Second player starts a draw, look at them | The line sits under their identity label, stacked by the same ladder as "E to search". It never says what for |
+| ☐ | **It goes away** | Watch the draw finish, and watch one get cancelled | Line clears both ways |
+| ☐ | **Primary across the back** | Equip a Thompson, switch to something else | Slung across the upper back, muzzle down past the left hip |
+| ☐ | **Sidearm on the right hip** | Same with the revolver | Right hip, pointing at the ground |
+| ☐ | **In the hands is not on the body** | Select the slung weapon | The prop leaves the back as it arrives in the hands. Up to a quarter second of lag is expected and fine |
+| ☐ | **A corpse is not still armed** | Kill an armed player | Nothing left hanging on them |
+
+**Every holster offset is eyeballed.** They were set by hanging a model on a
+model and looking at it. If a gun clips through a shoulder or floats off a hip,
+that is expected at this stage — tell me which weapon and which way it is
+wrong, and it is six numbers in one table.
+
+### The rest of the notes
+
+| | Check | How | Expect |
+|---|---|---|---|
+| ☐ | **Crosshair is half the size** | Look around | Was too big; the dot is now half the radius it was |
+| ☐ | **This scale is 1x** | Menu → Settings → Interface scale | The size you approved is **1x**. Steps run 0.6 / 0.7 / 0.8 / 0.9 / **1** / 1.2 / 1.4 — weighted downward because it is already large |
+| ☐ | **Right-click options are wider** | Right-click an item | Wider menu, taller rows, more inset. Say if it is still tight |
+| ☐ | **Inventory slides and fades** | Hold C, release | Rises and fades in over ~0.12s, drops and fades out over ~0.10s. It should read as quick, not as an animation you wait through |
+| ☐ | **Inventory is centred** | Hold C | Centred, not shifted right, with the player view to its left |
+| ☐ | **The background blurs** | Hold C | Slight blur behind the window — enough to separate it, not enough to hide the street |
+| ☐ | **Ammunition, bottom right** | Draw a gun and keep it out | Loaded count large, `/ reserve` small and dimmer beside it. **Stays while the gun is held** and fades with the draw rather than timing out |
+| ☐ | **The reserve is real** | Fire, reload, drop rounds, pick rounds up | The number after the slash tracks what is actually in your pockets **for that caliber** — a .45 in the coat is not the revolver's reserve |
+| ☐ | **Stamina lasts longer** | Sprint | Same twelve notches, about 13 seconds of sprint. Still not enough, or too much? |
+
+### The chat box
+
+The engine's chat is gone; this is ours. Messages stack upward from the bottom
+left, hold for twelve seconds, and fade to nothing — the screen returns to
+empty, as GDD §8 wants.
+
+| | Check | How | Expect |
+|---|---|---|---|
+| ☐ | **It opens and sends** | Y (or your bind), type, enter | Line goes out, appears in the list |
+| ☐ | **The channel is named before you speak** | Type `/w hello`, then `/y hello`, don't send | The channel shown on the input line changes as you type, so you know who will hear it |
+| ☐ | **`/me` is italic** | `/me coughs` | "Tiny Marino coughs" in italics — reads as description, never as speech |
+| ☐ | **Long lines wrap** | Send a very long sentence | Wraps against the column, no text running off the edge |
+| ☐ | **It goes away** | Send something, wait | Full for ~12s, fades over ~2s, gone. Opening chat brings the recent lines back to full while you are typing |
+| ☐ | **Console still works** | Open chat, type a console command | The engine still owns the field's focus and passthrough — nothing about that was reimplemented |
+| ☐ | **Scale follows the setting** | Change interface scale, open chat | The italic face rebuilds with the rest of the type |
+
+---
+
+## 2. The frozen spawn — two independent causes, both fixed (2026-07-31)
 
 **Test this before anything else: can you get into the city at all.**
 
@@ -55,7 +131,7 @@ was no client-ready handshake anywhere in the gamemode; there is now.
 If you are still frozen after this, the next suspect is the account load itself
 — send me the server console from join and I will read it rather than guess.
 
-## 2. The twenty-four-item field report (2026-07-31)
+## 3. The twenty-four-item field report (2026-07-31)
 
 **Start here: `omerta_help`.** Every console command in the game, grouped by
 area, with arguments and which ones need a *client* console. `omerta_help
@@ -100,7 +176,7 @@ bringing it back is a re-registration, not a rebuild. **F1** is the pause menu.
 | ☐ | **Loot all** | Search a body, press LOOT ALL | Top to bottom, ~half a second each: the row greys, a progress bar sweeps its full width, the rustle plays, the item moves. Stops when empty or when something will not fit |
 | ☐ | **Body actions are buttons now** | Search a downed character | Stabilize / Treat (and Finish on a body you can finish) as buttons at the foot of their column |
 
-## 3. The style guide, implemented (2026-07-31)
+## 4. The style guide, implemented (2026-07-31)
 
 Your handoff zip read clean, and direction **1a** is now the standard — the
 IBM-Carbon detour (and its blue) is gone. `modules/hud/sh_theme.lua` holds the
@@ -108,7 +184,7 @@ guide's six hex, the 4px grid and the type ladder, all pinned by tests
 (including "nothing in the palette may be blue"); the guide itself is
 versioned at `docs/design/style-guide/`.
 
-**Superseded in places by §1** — the guide's Oswald/Archivo pairing was tried
+**Superseded in places by the passes above** — the guide's Oswald/Archivo pairing was tried
 and rejected in the field, so Germania One carries every role again except the
 mono captions; the creation screen's wording and buttons changed too. The
 palette, the 4px grid and the plate/rule/selection grammar all still stand.
@@ -121,10 +197,10 @@ palette, the 4px grid and the plate/rule/selection grammar all still stand.
 | ☐ | **Inventory is the ledger (§09)** | Hold C | One ink plate: ITEM/QTY/BULK/STATE mono captions, the in-hands item as the full brass-inverted row, WORN/CARRIED in brass, the bulk tick meter, ON HAND and APPETITE bottom-right |
 | ☐ | **Loot is one plate, two columns (§10)** | Search a body | Identical columns, one vertical rule, hover = brass wash + 1px brass edge on the travel side. C dismisses |
 | ☐ | **Item menu (§10)** | Right-click a row | Mono header naming the item; verbs; hovered verb brass-inverted; **Drop alone at the bottom, under a rule, in the red** |
-| ☐ | **Verb menu (§06)** | Hold E on a body | A 200px scrim plate under the dot; selected verb is the brass-filled row with ink type |
+| — | ~~Verb menu (§06)~~ | — | **Removed.** Held-E is gone; E does the one obvious thing. Nothing to test |
 | ☐ | **Hotbar (§07)** | Scroll / press 1–4 | Column of 52px slot squares, left-centre; only the held slot gets the brass border and the name caption under the column |
 | ☐ | **Stamina is ticks (§07)** | Sprint | Twelve 9×3 ticks bottom-left; spent ones dim to 18% and STAY — no sliding bar |
-| ☐ | **Ammunition block (§07)** | Draw, fire, reload | Bottom-right: big tabular count over "IN THE CYLINDER" (revolver) / "IN THE MAGAZINE" (Thompson); "EMPTY · PRESS R" when dry; gone 2s later |
+| ☐ | **Ammunition block (§07)** | Draw, fire, reload | Bottom-right: big tabular count, `/ reserve` small beside it, "EMPTY · PRESS R" when dry. **Rewritten in §1** — it now stays while the gun is held rather than timing out after two seconds |
 | ☐ | **Timed action (§08)** | Search a stranger | Bottom-centre 320px plate: "SEARCHING…" in Oswald caps, bare 2px progress line, no number; vanishes instantly on cancel |
 | ☐ | **Notices** | Trigger two notices quickly | Top-left scrim plates stacking down, newest loud, older at 50% |
 | ☐ | **Bleeding out (§14)** | `omerta_injury_state incapacitated` | Four nested ink rectangles closing in (no red gradient); the clock is a 2px red line at the bottom BREATHING at your pulse rate, shortening — no bar, no track |
@@ -141,7 +217,7 @@ card still says "YOU HAVE DIED…" rather than the character's name + epitaph
 those jobs); treasury and payphone windows are still on stock Derma — they
 are the next restyle targets now the kit exists.
 
-## 4. The front end (intro + main menu) — from an earlier pass
+## 5. The front end (intro + main menu) — from an earlier pass
 
 The intro and menu are **placeholder sets for M27/M28**, built as systems so
 those milestones fill in data. Three of their open rulings I had to assume an
@@ -168,10 +244,10 @@ the real shots are per-map authoring work that lands with the map (Q-9).
 | ☐ | **Nothing is rounded any more** | Inventory, menu, loot windows | Square corners everywhere — a Carbon signature and the quickest way to spot a panel that has not been converted |
 | ☐ | **Scale still holds** | `omerta_ui_scale 0.75` then `1.5`, walk around | Menu, inventory, hotbar and HUD all stay laid out; nothing overlaps or leaves the screen |
 
-## 5. The UI and interaction pass (2026-07-30)
+## 6. The UI and interaction pass (2026-07-30)
 
-**Controls changed:** **C** now opens the inventory — as a toggle; the
-hold-to-view behaviour you found is fixed in §1. The old hold-C menu is now on
+**Controls changed:** **C** now opens the inventory — **hold to view, release
+to close**, which you confirmed is what you wanted. The old hold-C menu is now on
 **E**: tap E for the obvious thing,
 hold E for the full menu. Your report said tap-E on a body should default to
 drag in one line and search in another — **I went with drag** (it was the
@@ -210,15 +286,15 @@ the word and it flips.
 | ☐ | Stamina lasts (~8 s sprint) | Sprint from full | Was ~5.5 s |
 | ☐ | Creation form keyboard flow | New character | First box focused, Tab cycles the name fields |
 
-## 6. W0 — the weapon foundation
+## 7. W0 — the weapon foundation
 
 | | Check | How | Expect |
 |---|---|---|---|
 | ☐ | The arsenal exists | `omerta_weapons_list` | revolver and thompson, classes `weapon_omerta_*` |
 | ☑ | Getting armed | `omerta_item_give weapon.revolver`, equip it | The revolver appears in your hands, **empty** |
-| ☒ | Rounds are items | press R with ammo carried | **Failed 2026-07-29** (OwnerOf pair misread) — fixed, re-test in §1 |
+| ☒ | Rounds are items | press R with ammo carried | **Failed 2026-07-29** (OwnerOf pair misread) — fixed 2026-07-30, re-test alongside the reserve readout in §1 |
 | ☐ | Firing works and is server-real | Shoot a second character | Damage lands through M19 — enough hits puts them down |
-| ☐ | The round counter is contextual | Draw, fire, wait ~3 s | Count appears near the stamina bar, then fades |
+| ☐ | The round counter | Draw, fire, holster | Bottom-right while the gun is out, gone with it. Superseded by the §1 rewrite — test it there |
 | ☐ | Dry fire | Empty the clip, keep pressing | Click, "Empty — press R", nothing fires |
 | ☐ | Out of ammo | Reload with none carried | "You are out of .38 rounds." |
 | ☐ | **The Thompson cannot be pocketed** | `omerta_item_give weapon.thompson`, empty pockets | Refused (bulk 22 vs 20); fits with an overcoat on |
@@ -228,7 +304,7 @@ the word and it flips.
 | ☐ | Disconnect refund | Load a clip, disconnect, rejoin | Rounds in inventory, clip empty |
 | ☐ | Procurement | `omerta_procure` as a family with funds | Revolver $85, Thompson $340 (second approver), ammo boxes |
 
-## 7. M20 — confirmed death and succession (nothing verified yet)
+## 8. M20 — confirmed death and succession (nothing verified yet)
 
 | | Check | How | Expect |
 |---|---|---|---|
@@ -243,7 +319,7 @@ the word and it flips.
 
 ---
 
-## 8. M19 — earlier fixes, still unverified
+## 9. M19 — earlier fixes, still unverified
 
 | | Check | How | Expect |
 |---|---|---|---|
@@ -262,7 +338,7 @@ the word and it flips.
 
 ---
 
-## 9. Older, still unconfirmed
+## 10. Older, still unconfirmed
 
 | | Check | How |
 |---|---|---|
@@ -271,7 +347,7 @@ the word and it flips.
 
 ---
 
-## 10. Known gaps — not bugs, just not built
+## 11. Known gaps — not bugs, just not built
 
 - **Audio is ~46 MB uncompressed** (four originals + the new rustle). MP3 conversion is a local ffmpeg step; no encoder in my environment.
 - **Sound licensing** — the Freesound files and "Cry Me a River" are a pre-release gate. The two new UI sounds and icons came from you; tell me if they carry terms. Germania One is OFL, licence ships next to the TTF.
