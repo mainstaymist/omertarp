@@ -11,35 +11,11 @@ local S = Omerta.Injury.STATE
 --------------------------------------------------------------------------------
 
 function Internal.RegisterInteractions()
-    Omerta.Interaction.Register("injury.grab", {
-        -- The tap default for a body: E takes hold, E lets go (below). The
-        -- rest of what can be done to somebody stays behind the held menu.
-        label = "Drag", range = 96, order = 40, default = true,
-        predicate = function(ply, target)
-            local characterId = Omerta.Injury.CharacterOfBody(target)
-            if not characterId then return false end
-            if Omerta.Injury.DraggedBy(ply) then return false, "your hands are full" end
-            if Internal.DraggerOf(characterId) then
-                return false, "somebody already has them"
-            end
-            return true
-        end,
-        run = function(ply, target)
-            Omerta.Injury.Grab(ply, Omerta.Injury.CharacterOfBody(target),
-                function(ok, err)
-                    if not ok and err then Omerta.Chat.Notice(ply, err) end
-                end)
-        end,
-    })
-
-    Omerta.Interaction.Register("injury.letgo", {
-        label = "Let Go", range = 256, order = 41, default = true,
-        predicate = function(ply, target)
-            local characterId = Omerta.Injury.CharacterOfBody(target)
-            return characterId ~= nil and Omerta.Injury.DraggedBy(ply) == characterId
-        end,
-        run = function(ply) Omerta.Injury.LetGo(ply) end,
-    })
+    -- Dragging is shelved, not deleted: the grab/letgo registrations that
+    -- lived here are gone until the mechanic is worked out, but sv_bodies'
+    -- Grab/LetGo/TickDrags and the sh_injury drag maths stay — the headless
+    -- tests cover the pure rules, so bringing it back is a re-registration,
+    -- not a rebuild.
 
     Omerta.Interaction.Register("injury.stabilize", {
         label = "Stabilize", range = 72, order = 42,
@@ -75,9 +51,10 @@ function Internal.RegisterInteractions()
 
     -- Searching a body. M9 owns what is in somebody's pockets; M19 only says
     -- that an unconscious man cannot stop you looking, and that it takes a
-    -- moment to go through them.
+    -- moment to go through them. This is the E press on a body — with dragging
+    -- shelved, search is the one obvious thing to do to somebody on the floor.
     Omerta.Interaction.Register("injury.search", {
-        label = "Search", range = 72, order = 44,
+        label = "Search", range = 72, order = 44, default = true,
         -- Best effort: a corpse whose pockets happen to be loaded and empty
         -- says so up front, sparing the four-second rummage for nothing. An
         -- unloaded inventory keeps the plain label — the search finds out.
@@ -102,18 +79,13 @@ function Internal.RegisterInteractions()
     })
 end
 
--- USE on a body takes hold of it, or lets go. Same server-side path as the
--- menu; there is no shortcut around the checks.
+-- USE on a body searches it — the engine +use fallback lands on the same
+-- BeginSearch path the interaction default takes, so there is no shortcut
+-- around the checks either way in.
 function Internal.HandleUse(ply, body)
     local characterId = Omerta.Injury.CharacterOfBody(body)
     if not characterId then return end
-    if Omerta.Injury.DraggedBy(ply) == characterId then
-        Omerta.Injury.LetGo(ply)
-        return
-    end
-    Omerta.Injury.Grab(ply, characterId, function(ok, err)
-        if not ok and err then Omerta.Chat.Notice(ply, err) end
-    end)
+    Internal.BeginSearch(ply, characterId)
 end
 
 --------------------------------------------------------------------------------

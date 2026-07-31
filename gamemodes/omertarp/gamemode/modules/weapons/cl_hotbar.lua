@@ -91,9 +91,6 @@ end
 
 hook.Add("PlayerBindPress", "omerta.weapons.hotbar", function(ply, bind, pressed)
     if not pressed then return end
-    -- The C menu owns the wheel while it is open; it swallows these binds
-    -- itself, and this stands aside so hook order can never matter.
-    if Omerta.Interaction.IsMenuOpen and Omerta.Interaction.IsMenuOpen() then return end
     -- On the floor or dead you choose nothing — and the death screen's
     -- "press any key" must not be eaten here.
     local C = Omerta.Injury and Omerta.Injury.Client
@@ -120,7 +117,15 @@ hook.Add("Think", "omerta.weapons.hotbar_watch", function()
     local active = ply:GetActiveWeapon()
     local class = IsValid(active) and active:GetClass() or ""
     if class ~= lastActive then
-        if lastActive ~= nil then shownUntil = CurTime() + SHOW_FOR end
+        -- Hands going EMPTY is not a choice being made. Weapons are stripped
+        -- on going down and on death, and re-showing the bar for that flashed
+        -- it back over the death screen mid-fade — same reason the binds
+        -- above stand down while incapable.
+        local injury = Omerta.Injury and Omerta.Injury.Client
+        local incapable = injury and Omerta.Injury.IsIncapable(injury.state)
+        if lastActive ~= nil and class ~= "" and not incapable then
+            shownUntil = CurTime() + SHOW_FOR
+        end
         lastActive = class
     end
 end)
@@ -156,6 +161,10 @@ Omerta.HUD.Register("weapons.hotbar", {
         return CurTime() < shownUntil
     end,
     draw = function(alpha)
+        -- Nothing draws below this: scrims, 1px outlines and tinted PNGs at
+        -- near-zero alpha shimmer against the world, which read as the bar
+        -- glitching on its way out rather than fading.
+        if alpha < 0.03 then return end
         local slots = buildSlots()
         if not slots then return end
         local scale = Omerta.HUD.Scale()

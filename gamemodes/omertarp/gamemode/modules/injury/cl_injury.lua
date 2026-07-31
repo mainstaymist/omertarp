@@ -14,41 +14,6 @@ C.bodyIndex = 0    -- resolved lazily; see C.Body()
 
 local prompt, promptUntil = nil, 0
 local promptStart, promptTotal = 0, 0
-C.drag = nil -- { bodyIndex, anchor }
-
--- The sound of a timed action, from inside it. One BASS channel, seeked to a
--- random stretch of the rustle bed so no two searches sound identical, and
--- stopped the moment the prompt goes — a cancelled search goes quiet with it.
-local rustle = { channel = nil, stopAt = 0 }
-
-local function stopRustle()
-    if rustle.channel and rustle.channel:IsValid() then
-        rustle.channel:Stop()
-    end
-    rustle.channel = nil
-end
-
-local function startRustle(duration)
-    stopRustle()
-    -- "noplay": opened paused so it can be seeked before it makes a sound.
-    -- (NOT "noblock" — that flag silently fails for disk files.)
-    sound.PlayFile("sound/omertarp/ui/searching-rustle.wav", "noplay", function(channel)
-        if not (channel and channel:IsValid()) then return end
-        -- The prompt may have ended while the file opened.
-        if CurTime() > rustle.stopAt then channel:Stop() return end
-        local length = channel:GetLength() or 0
-        if length > duration + 1 then
-            channel:SetTime(math.Rand(0, length - duration - 0.5))
-        end
-        channel:SetVolume(0.6)
-        channel:Play()
-        rustle.channel = channel
-    end)
-end
-
-hook.Add("Think", "omerta.injury.rustle", function()
-    if rustle.channel and CurTime() > rustle.stopAt then stopRustle() end
-end)
 
 -- The server sends the clock ONCE, when the state changes. It is not a stream
 -- and must not become one — so the client is given a deadline and counts down
@@ -84,10 +49,14 @@ function C.Body()
     return IsValid(ent) and ent or nil
 end
 
+-- The rummage is audible from inside it: a RUSTLE-coded prompt plays a
+-- stretch of the shared rustle bed for exactly the prompt's window. The
+-- player itself lives in the hud module — injury owned its own BASS channel
+-- once, and two copies of a sound player is how one of them keeps playing.
 hook.Add("Omerta.InjuryPrompt", "omerta.injury.prompt", function(text, duration, soundKind)
     if not text or text == "" then
         prompt = nil
-        stopRustle()
+        Omerta.HUD.StopRustle()
         return
     end
     prompt = text
@@ -96,55 +65,17 @@ hook.Add("Omerta.InjuryPrompt", "omerta.injury.prompt", function(text, duration,
     promptUntil = CurTime() + (duration or 4)
 
     if soundKind == Omerta.Injury.PROMPT_SOUND.RUSTLE then
-        rustle.stopAt = promptUntil
-        startRustle(duration or 4)
+        Omerta.HUD.Rustle(duration or 4)
     else
-        stopRustle()
+        Omerta.HUD.StopRustle()
     end
 end)
-
-hook.Add("Omerta.InjuryDragging", "omerta.injury.dragging", function(index, bone, anchor)
-    C.drag = index > 0 and { bodyIndex = index, bone = bone or 0, anchor = anchor } or nil
-end)
-
--- The body currently being hauled, or nil. Resolved on demand for the same
--- reason C.Body() is: the entity may not have replicated when the message
--- naming it arrived.
-function C.DragBody()
-    if not C.drag then return nil end
-    local ent = Entity(C.drag.bodyIndex)
-    return IsValid(ent) and ent or nil
-end
-
--- The client computes tension itself from two positions it already has, using
--- the same pure rule the server enforces with. Nothing about the rope needs to
--- travel over the wire every frame.
--- Where the rope actually meets the body: the physics object that was taken
--- hold of, not the entity origin. Grab a hand and the line ends at the hand.
-function C.DragGrip()
-    local body = C.DragBody()
-    if not body then return nil end
-    local phys = body:GetPhysicsObjectNum(C.drag.bone or 0)
-    if IsValid(phys) then return phys:GetPos() end
-    return body:GetPos()
-end
-
--- The client computes tension itself from two positions it already has, using
--- the same pure rules the server enforces with — including the hold point, so
--- the line on screen tightens at exactly the moment the body starts to move.
-function C.DragTension()
-    local grip = C.DragGrip()
-    if not grip then return 0 end
-    local ply = LocalPlayer()
-    local hold = Omerta.Injury.HoldPoint(ply:GetPos(), ply:GetAimVector())
-    return Omerta.Injury.DragTension(grip:Distance(hold))
-end
 
 hook.Add("Omerta.CharactersState", "omerta.injury.reset", function()
     C.state = Omerta.Injury.STATE.HEALTHY
     C.deadline, C.total, C.bodyIndex = nil, 0, 0
-    prompt, C.drag = nil, nil
-    stopRustle()
+    prompt = nil
+    Omerta.HUD.StopRustle()
 end)
 
 -- Seconds left on the clock right now, counted locally.
@@ -210,6 +141,13 @@ Omerta.HUD.Register("injury.blur", {
     end,
 })
 
+-- A nested-ink-rectangles version replaced the gradients for a while and was
+-- rejected: hard-edged frames read as a picture mount around the screen, not
+-- as vision going. The soft edges are the effect.
+local GRADIENT_LEFT  = Material("gui/gradient")
+local GRADIENT_UP    = Material("gui/gradient_up")
+local GRADIENT_DOWN  = Material("gui/gradient_down")
+
 local pulsePhase = 0
 
 hook.Add("Think", "omerta.injury.pulse", function()
@@ -217,37 +155,32 @@ hook.Add("Think", "omerta.injury.pulse", function()
     pulsePhase = pulsePhase + FrameTime() * math.pi * 2 * Omerta.Injury.PulseRate(C.Progress())
 end)
 
--- The guide's §14: the world closing in is FOUR NESTED TRANSLUCENT INK
--- RECTANGLES thickening as you go — cheap, immediate-mode, no gradient asset,
--- and it reads as the edges of vision going rather than a colour filter. The
--- same VignetteReach curve drives the total thickness (with its one-sided
--- heartbeat), split across the four frames from the outside in.
-local FRAMES = { 0.55, 0.50, 0.45, 0.40 } -- each layer's ink, outermost first
-
-local function drawFrame(inset, thick, a)
-    local w, h = ScrW(), ScrH()
-    surface.DrawRect(inset, inset, w - inset * 2, thick)                       -- top
-    surface.DrawRect(inset, h - inset - thick, w - inset * 2, thick)           -- bottom
-    surface.DrawRect(inset, inset + thick, thick, h - (inset + thick) * 2)     -- left
-    surface.DrawRect(w - inset - thick, inset + thick, thick,
-        h - (inset + thick) * 2)                                               -- right
-end
-
 Omerta.HUD.Register("injury.vignette", {
     order = 5,
     fade = 1.2,
     visible = function() return C.IsDying() end,
     draw = function(alpha)
+        local w, h = ScrW(), ScrH()
         local reach = Omerta.Injury.VignetteReach(C.Progress(), pulsePhase)
-        local total = math.min(ScrW(), ScrH()) * 0.5 * reach
-        local layer = total / #FRAMES
+        local thickX, thickY = w * 0.5 * reach, h * 0.5 * reach
 
-        local inset = 0
-        for _, ink in ipairs(FRAMES) do
-            surface.SetDrawColor(4, 4, 5, 255 * ink * alpha)
-            drawFrame(inset, layer, alpha)
-            inset = inset + layer
-        end
+        -- Deep red rather than black: this is blood loss, not a fade to menu.
+        local a = 255 * alpha
+        surface.SetDrawColor(120, 10, 10, a)
+
+        surface.SetMaterial(GRADIENT_DOWN)
+        surface.DrawTexturedRect(0, 0, w, thickY)
+        surface.SetMaterial(GRADIENT_UP)
+        surface.DrawTexturedRect(0, h - thickY, w, thickY)
+
+        surface.SetMaterial(GRADIENT_LEFT)
+        surface.DrawTexturedRect(0, 0, thickX, h)
+        -- Mirrored U, so the same material serves the right-hand edge.
+        surface.DrawTexturedRectUV(w - thickX, 0, thickX, h, 1, 0, 0, 1)
+
+        -- A flat wash underneath, so the very last seconds genuinely dim.
+        surface.SetDrawColor(60, 0, 0, math.min(140, 160 * C.Progress()) * alpha)
+        surface.DrawRect(0, 0, w, h)
     end,
 })
 
@@ -362,59 +295,6 @@ Omerta.HUD.Register("injury.prompt", {
 })
 
 --------------------------------------------------------------------------------
--- The rope
---------------------------------------------------------------------------------
--- A line from your hands to whoever you have hold of, drawn taut. It is the
--- only feedback that says how hard you are pulling, and it tightens, reddens
--- and finally shudders as you approach the point where your grip goes.
-
-Omerta.HUD.Register("injury.drag", {
-    order = 47,
-    fade = 0.25,
-    visible = function() return C.DragBody() ~= nil end,
-    draw = function(alpha)
-        local grip = C.DragGrip()
-        if not grip then return end
-
-        local tension = C.DragTension()
-        local scale = Omerta.HUD.Scale()
-
-        -- The rope is anchored at the CROSSHAIR, not the bottom of the screen.
-        -- That is what makes the mouse part of the mechanic: the hold point in
-        -- the world follows where you are looking, so swinging the view swings
-        -- the body, and the line on screen is the handle you are swinging.
-        local fromX, fromY = ScrW() * 0.5, ScrH() * 0.5
-
-        local at = grip:ToScreen()
-        if not at.visible then return end
-
-        -- A taut rope shivers. Amplitude rides on tension, so a slack line is
-        -- perfectly still and a straining one is visibly working.
-        local shudder = tension * tension * 3 * scale
-        local jitter = shudder > 0 and math.sin(CurTime() * 34) * shudder or 0
-
-        surface.SetDrawColor(
-            150 + 90 * tension,
-            120 - 70 * tension,
-            110 - 70 * tension,
-            (110 + 120 * tension) * alpha)
-        surface.DrawLine(fromX, fromY, at.x + jitter, at.y)
-
-        -- ONE line, deliberately. A second, fainter line back to the original
-        -- grab point shipped first and read as a bug — two ropes to one body —
-        -- rather than as distance covered. The rope you are holding is the
-        -- crosshair one; the anchor stays in the data for the server's use.
-
-        local label = tension >= 0.98 and "Your grip is going"
-            or tension > 0.05 and "Hauling" or "You have hold of them"
-        Omerta.HUD.Text(label, "small",
-            ScrW() * 0.5, ScrH() * 0.62,
-            Omerta.HUD.Colour(tension >= 0.98 and "danger" or "secondary", 235 * alpha),
-            TEXT_ALIGN_CENTER, TEXT_ALIGN_TOP)
-    end,
-})
-
---------------------------------------------------------------------------------
 -- The dot lights up for a body worth walking to
 --------------------------------------------------------------------------------
 -- Predicate rather than class: bodies are prop_ragdolls now, and lighting the
@@ -440,6 +320,5 @@ Omerta.Identity.RegisterLabelPredicate("injury.body", isBody)
 -- each other at guessed offsets.
 Omerta.HUD.RegisterTargetHint("injury.body", function(target)
     if not isBody(target) then return nil end
-    if C.DragBody() ~= nil then return "E to let go" end
-    return "E to drag — hold E for more"
+    return "E to search"
 end)
