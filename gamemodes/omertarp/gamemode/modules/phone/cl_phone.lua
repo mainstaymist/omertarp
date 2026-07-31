@@ -22,11 +22,21 @@ local OFF_HOOK = 3
 hook.Add("Omerta.PhoneState", "omerta.phone.state", function(payload)
     state = payload
     if state.state == 0 then
-        if IsValid(frame) then frame:Remove() end
+        -- The receiver is back on the hook. A dismissal, so it SINKS out
+        -- rather than blinking away — putting a telephone down is a gesture and
+        -- it should look like one.
+        if IsValid(frame) then frame:OmertaClose() end
         heard = {}
         return
     end
-    if IsValid(frame) then frame:Rebuild() else Omerta.Phone.Show() end
+    -- A handset that is sinking out counts as gone: picking the receiver
+    -- straight back up must build a new window rather than refill the one that
+    -- is already leaving, which would leave the caller with nothing on screen.
+    if Omerta.HUD.Revealed(frame) then
+        frame:Rebuild()
+    else
+        Omerta.Phone.Show()
+    end
 end)
 
 hook.Add("Omerta.PhoneRinging", "omerta.phone.ring", function()
@@ -39,7 +49,7 @@ end)
 hook.Add("Omerta.PhoneHeard", "omerta.phone.heard", function(number, text)
     heard[#heard + 1] = { number = number, text = text, at = CurTime() }
     if #heard > 12 then table.remove(heard, 1) end
-    if IsValid(frame) then frame:Rebuild() end
+    if Omerta.HUD.Revealed(frame) then frame:Rebuild() end
 end)
 
 --------------------------------------------------------------------------------
@@ -51,6 +61,7 @@ local function act(action)
 end
 
 function Omerta.Phone.Show()
+    -- Remove, not Close: the handset is being replaced, not put down.
     if IsValid(frame) then frame:Remove() end
     local scale = Omerta.HUD.Scale()
 
@@ -64,6 +75,9 @@ function Omerta.Phone.Show()
         surface.SetDrawColor(COLOURS.line)
         surface.DrawOutlinedRect(0, 0, w, h, 1)
     end
+
+    -- Rises in, sinks out, and the corner close button plays the way out.
+    Omerta.HUD.Reveal(frame)
 
     local header = vgui.Create("DPanel", frame)
     header:Dock(TOP)

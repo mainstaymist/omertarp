@@ -20,9 +20,16 @@ local COLOURS = {
     good    = Color(150, 170, 140),
 }
 
+-- A counter that is sinking out counts as gone: a state update landing in the
+-- tenth of a second after the player closed it must build a NEW window rather
+-- than refill the one that is already leaving.
 hook.Add("Omerta.BusinessState", "omerta.business.state", function(payload)
     state = payload
-    if IsValid(frame) then frame:Rebuild() else Omerta.Business.Show() end
+    if Omerta.HUD.Revealed(frame) then
+        frame:Rebuild()
+    else
+        Omerta.Business.Show()
+    end
 end)
 
 hook.Add("Omerta.BusinessMenu", "omerta.business.menu", function(payload)
@@ -36,7 +43,7 @@ hook.Add("Omerta.BusinessMenu", "omerta.business.menu", function(payload)
     if payload.last then
         menu.items = menu.receiving
         menu.receiving = nil
-        if IsValid(frame) then frame:Rebuild() end
+        if Omerta.HUD.Revealed(frame) then frame:Rebuild() end
     end
 end)
 
@@ -51,6 +58,9 @@ local function act(action, target)
 end
 
 function Omerta.Business.Show()
+    -- Remove, not Close: this is the window being REPLACED, not dismissed, and
+    -- an outgoing animation on a window that is about to be rebuilt in the same
+    -- place would only be a flicker.
     if IsValid(frame) then frame:Remove() end
     local scale = Omerta.HUD.Scale()
 
@@ -64,6 +74,12 @@ function Omerta.Business.Show()
         surface.SetDrawColor(COLOURS.line)
         surface.DrawOutlinedRect(0, 0, w, h, 1)
     end
+
+    -- Rises in, sinks out, and the close button in the corner gets the play-out
+    -- for free — DFrame's own button calls :Close(), which the reveal owns.
+    -- Installed after Paint and after Center(), which is where the reveal reads
+    -- the resting place from.
+    Omerta.HUD.Reveal(frame)
 
     local header = vgui.Create("DPanel", frame)
     header:Dock(TOP)

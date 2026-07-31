@@ -19,9 +19,16 @@ local COLOURS = {
     good    = Color(150, 170, 140),
 }
 
+-- A safe that is sinking out counts as shut: a state update landing in the
+-- tenth of a second after the player closed it must open a NEW window rather
+-- than refill the one already leaving.
 hook.Add("Omerta.TreasuryState", "omerta.treasury.state", function(payload)
     state = payload
-    if IsValid(frame) then frame:Rebuild() else Omerta.Treasury.Show() end
+    if Omerta.HUD.Revealed(frame) then
+        frame:Rebuild()
+    else
+        Omerta.Treasury.Show()
+    end
 end)
 
 hook.Add("Omerta.ProcurementEntry", "omerta.treasury.catalogue", function(payload)
@@ -31,7 +38,7 @@ hook.Add("Omerta.ProcurementEntry", "omerta.treasury.catalogue", function(payloa
     if payload.last then
         catalogue.entries = catalogue.receiving
         catalogue.receiving = nil
-        if IsValid(frame) then frame:Rebuild() end
+        if Omerta.HUD.Revealed(frame) then frame:Rebuild() end
     end
 end)
 
@@ -41,7 +48,7 @@ hook.Add("Omerta.TreasuryLine", "omerta.treasury.history", function(payload)
     if payload.last then
         history.lines = history.receiving
         history.receiving = nil
-        if IsValid(frame) then frame:Rebuild() end
+        if Omerta.HUD.Revealed(frame) then frame:Rebuild() end
     end
 end)
 
@@ -54,6 +61,7 @@ end
 --------------------------------------------------------------------------------
 
 function Omerta.Treasury.Show()
+    -- Remove, not Close: the window is being replaced, not shut.
     if IsValid(frame) then frame:Remove() end
     local scale = Omerta.HUD.Scale()
 
@@ -67,6 +75,9 @@ function Omerta.Treasury.Show()
         surface.SetDrawColor(COLOURS.line)
         surface.DrawOutlinedRect(0, 0, w, h, 1)
     end
+
+    -- Rises in, sinks out, and the corner close button plays the way out.
+    Omerta.HUD.Reveal(frame)
 
     local header = vgui.Create("DPanel", frame)
     header:Dock(TOP)

@@ -104,7 +104,13 @@ function Internal.EndStream(payload)
     incoming = nil
     streamSerial = streamSerial + 1
 
-    local looting = IsValid(frame) and state.container and state.container > 0
+    -- A window that is SINKING OUT counts as gone, everywhere below. It is
+    -- still IsValid for a tenth of a second after the player let go of C, and a
+    -- loot push that arrived in that tenth used to rebuild the leaving window
+    -- into a loot plate that then finished leaving — so searching a body
+    -- immediately after closing your pockets showed nothing at all.
+    local open = Omerta.Inventory.IsOpen()
+    local looting = open and state.container and state.container > 0
 
     if arrived.container == 0 then
         if looting then
@@ -114,12 +120,12 @@ function Internal.EndStream(payload)
         else
             state = arrived
         end
-        if IsValid(frame) then frame:Rebuild() end
+        if open then frame:Rebuild() end
         return
     end
 
     state = arrived
-    if IsValid(frame) then
+    if open then
         frame:Rebuild()
     else
         Omerta.Inventory.Show()
@@ -139,7 +145,7 @@ end
 -- progress in particular, which appears on the item's own row while the
 -- pockets are open and as a plate on the HUD once they are not.
 function Omerta.Inventory.IsOpen()
-    return IsValid(frame) and not frame.OmertaClosing
+    return Omerta.HUD.Revealed(frame)
 end
 
 -- Which verbs a body offers depends on its INJURY state, not on what is left
@@ -863,6 +869,10 @@ end)
 --------------------------------------------------------------------------------
 
 function Omerta.Inventory.Show()
+    -- Remove, not Close: the window is being REPLACED. This is also the path
+    -- that takes a sinking window off screen early — reopen your pockets in the
+    -- tenth of a second one is leaving and the new window is on the key, with
+    -- no wait for the old one to finish going.
     if IsValid(frame) then frame:Remove() end
 
     local scale = Omerta.HUD.Scale()
@@ -881,19 +891,14 @@ function Omerta.Inventory.Show()
     --
     -- Held open by a key, it is on screen for a second or two at a time, and
     -- appearing in one frame read as a flash rather than as a thing being
-    -- looked at. It is deliberately fast — 0.12s in, 0.1s out — because an
-    -- animation you wait for on every glance becomes the most irritating
-    -- thing in the game. `anim` runs 0..1; the frame's own position is set
-    -- from it every frame rather than tweened by the panel system, so the
-    -- close can run after Rebuild has moved it.
-    frame.OmertaAnim = 0
-    frame.OmertaClosing = false
-    frame.OmertaRestY = nil
-
-    local RISE = 42 * scale
-
+    -- looked at. This window is where the motion was invented; it is now
+    -- Omerta.HUD.Reveal and every window in the game shares it, so what used to
+    -- be forty lines here is one call below Paint. `self.OmertaEased` is the
+    -- 0..1 curve the reveal is currently at, which this frame's own paint needs
+    -- for something the shared fade cannot do for it: the STRENGTH of the blur
+    -- behind it, which has to ramp rather than merely become more opaque.
     frame.Paint = function(self, w, h)
-        local eased = self.OmertaAnim * self.OmertaAnim * (3 - 2 * self.OmertaAnim)
+        local eased = self.OmertaEased or 0
 
         -- The world softens behind it, gently: the player is still standing in
         -- the street and may need to see somebody walk into it.
@@ -916,35 +921,10 @@ function Omerta.Inventory.Show()
         surface.DrawOutlinedRect(0, 0, w, h, 1)
     end
 
-    -- Children inherit the fade by riding the frame's alpha; the rise is the
-    -- frame's own position, so everything inside moves with it for free.
-    frame.Think = function(self)
-        local dt = FrameTime()
-        if self.OmertaClosing then
-            self.OmertaAnim = self.OmertaAnim - dt / 0.10
-            if self.OmertaAnim <= 0 then
-                self.OmertaAnim = 0
-                self:Remove()
-                return
-            end
-        elseif self.OmertaAnim < 1 then
-            self.OmertaAnim = math.min(1, self.OmertaAnim + dt / 0.12)
-        end
-
-        local eased = self.OmertaAnim * self.OmertaAnim * (3 - 2 * self.OmertaAnim)
-        self:SetAlpha(255 * eased)
-        if self.OmertaRestY then
-            self:SetPos(self:GetX(), self.OmertaRestY + RISE * (1 - eased))
-        end
-    end
-
-    -- Closing is a request, not a removal: the frame takes itself off screen
-    -- once it has finished sinking. Everything that used to call frame:Close()
-    -- or frame:Remove() goes through here so the animation cannot be skipped.
-    frame.OmertaClose = function(self)
-        if self.OmertaClosing then return end
-        self.OmertaClosing = true
-    end
+    -- Installed after Paint, which is the rule: it wraps whatever is there.
+    -- Children inherit the fade by riding the frame's alpha, and the rise is
+    -- the frame's own position, so everything inside moves with it for free.
+    Omerta.HUD.Reveal(frame)
 
     local function rule(parent, x, height)
         local divider = vgui.Create("DPanel", parent)
@@ -1038,10 +1018,12 @@ function Omerta.Inventory.Show()
             footer.OmertaOwned = true
         end
 
-        -- Where the window rests once it has finished rising. Captured after
-        -- the layout has placed it, because Think offsets from this and would
-        -- otherwise compound its own offset on every rebuild.
-        self.OmertaRestY = self:GetY()
+        -- Where the window rests once it has finished rising. Re-anchored after
+        -- the layout has placed it — BOTH branches above re-centre the window,
+        -- and the reveal offsets from the resting place, so a rebuild that did
+        -- not say where the window now rests would leave it animating toward
+        -- the position it had before the loot column appeared.
+        self:OmertaAnchor()
     end
 
     frame:Rebuild()
@@ -1115,7 +1097,7 @@ hook.Add("Think", "omerta.inventory.hold", function()
     -- A window that is sinking out counts as closed, so tapping C again
     -- during the animation reopens immediately rather than waiting for it to
     -- finish and then ignoring the press.
-    local open = IsValid(frame) and not frame.OmertaClosing
+    local open = Omerta.Inventory.IsOpen()
     local looting = open and state.container and state.container > 0
 
     if looting then

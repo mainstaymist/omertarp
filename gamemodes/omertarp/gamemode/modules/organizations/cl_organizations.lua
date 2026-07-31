@@ -18,7 +18,10 @@ local frame = nil
 
 hook.Add("Omerta.MembershipUpdated", "omerta.organizations.self", function(org, rank, perms)
     self_ = { org = org, rank = rank, perms = perms }
-    if IsValid(frame) then frame:Rebuild() end
+    -- Revealed, not IsValid: a window that is sinking out is on its way to
+    -- being gone and refilling it puts fresh rows into something the player has
+    -- already dismissed.
+    if Omerta.HUD.Revealed(frame) then frame:Rebuild() end
 end)
 
 function Omerta.Organizations.Membership()
@@ -97,7 +100,7 @@ hook.Add("Omerta.RosterEntry", "omerta.organizations.roster", function(payload)
     if payload.last then
         roster.entries = roster.receiving
         roster.receiving = nil
-        if IsValid(frame) then frame:Rebuild() end
+        if Omerta.HUD.Revealed(frame) then frame:Rebuild() end
     end
 end)
 
@@ -114,6 +117,7 @@ function Omerta.Organizations.Show()
         chat.AddText(COLOURS.muted, "You belong to nothing.")
         return
     end
+    -- Remove, not Close: the window is being replaced, not dismissed.
     if IsValid(frame) then frame:Remove() end
 
     local scale = Omerta.HUD.Scale()
@@ -127,6 +131,10 @@ function Omerta.Organizations.Show()
         surface.SetDrawColor(COLOURS.line)
         surface.DrawOutlinedRect(0, 0, w, h, 1)
     end
+
+    -- The books rise into place and sink back out, and the corner close button
+    -- plays the way out because :Close() routes through the reveal.
+    Omerta.HUD.Reveal(frame)
 
     local header = vgui.Create("DPanel", frame)
     header:Dock(TOP)

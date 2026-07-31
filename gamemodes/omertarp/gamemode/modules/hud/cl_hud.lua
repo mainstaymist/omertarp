@@ -17,9 +17,24 @@ function Omerta.HUD.Register(id, def)
     if def.visible ~= nil and type(def.visible) ~= "function" then
         error("HUD element '" .. id .. "' visible must be a function", 2)
     end
+    if def.rise ~= nil and (type(def.rise) ~= "number" or def.rise < 0) then
+        error("HUD element '" .. id .. "' rise must be a distance in design px", 2)
+    end
     def.id = id
     def.order = def.order or 100
     def.fade = def.fade or 0.3
+    -- Travel, in design pixels, opt-IN and zero by default.
+    --
+    -- The default is the important half of this. Most of what the controller
+    -- draws is an INSTRUMENT rather than an announcement — the crosshair, the
+    -- stamina ticks, the hotbar, the ammunition count, the ladder of hints
+    -- under the dot — and an instrument that moves is one the eye has to find
+    -- again every time it appears. The hint ladder is the sharpest case: it is
+    -- anchored to the crosshair by construction, so anything that slid it would
+    -- be sliding it away from the thing it is describing. Rise is therefore
+    -- something a plate has to ask for, and the plates that ask for it are the
+    -- ones that genuinely POP UP: a timed action starting, a notice arriving.
+    def.rise = def.rise or 0
     elements[id] = def
     alphas[id] = 0
     ordered = nil
@@ -251,14 +266,31 @@ function Omerta.HUD.Suppressed()
     return false
 end
 
+-- draw(alpha, rise) — `rise` is how far BELOW its resting place the element
+-- should draw itself this frame, in real pixels, and is zero for everything
+-- that did not ask for travel. An element opts in by adding it to whatever Y it
+-- already computes; one that ignores the second argument keeps behaving exactly
+-- as it did, which is why this could be added to a live controller at all.
+--
+-- The OFFSET is eased even though the alpha is not. The fade is linear because
+-- StepAlpha is the state and reversing it mid-fade has to be free; movement
+-- with a linear ramp reads as a mechanism rather than as a thing arriving, so
+-- the curve is applied where it is seen and nowhere else. Both are driven from
+-- the same 0..1, so a plate that starts fading out halfway in turns round and
+-- sinks from exactly where it had got to.
 hook.Add("HUDPaint", "omerta.hud.draw", function()
     if Omerta.HUD.Suppressed() then return end
     local dt = FrameTime()
+    local scale = Omerta.HUD.Scale()
     for _, def in ipairs(Omerta.HUD.GetElements()) do
         local want = def.visible == nil or def.visible() == true
         alphas[def.id] = Omerta.HUD.StepAlpha(alphas[def.id] or 0, want, dt, def.fade)
         if alphas[def.id] > 0 then
-            local ok, err = pcall(def.draw, alphas[def.id])
+            local rise = def.rise > 0
+                and Omerta.HUD.RevealOffset(Omerta.HUD.RevealEase(alphas[def.id]),
+                    def.rise * scale)
+                or 0
+            local ok, err = pcall(def.draw, alphas[def.id], rise)
             if not ok then
                 -- A broken element must not take the whole screen down with it.
                 Omerta.Log.Error("hud", "element '%s' failed to draw: %s", def.id, tostring(err))
@@ -281,13 +313,19 @@ end
 Omerta.HUD.Register("cues", {
     order = 90,
     fade = 0.2,
+    -- A notice is the definition of a thing that pops up: it was not there, an
+    -- event happened, and now it is. Twelve rather than the full window rise —
+    -- the stack sits at the screen margin with nothing to travel over, and a
+    -- plate that came from further away than the corner it lives in would read
+    -- as having been thrown at the player.
+    rise = 12,
     visible = function()
         for i = #cues, 1, -1 do
             if CurTime() > cues[i].expires then table.remove(cues, i) end
         end
         return #cues > 0
     end,
-    draw = function(alpha)
+    draw = function(alpha, rise)
         -- The guide's transient notices: plates stacking down from the
         -- top-left at the screen margin, newest first and loudest, older ones
         -- dropping to half presence — no counters, no queue indicator.
@@ -295,7 +333,9 @@ Omerta.HUD.Register("cues", {
         local margin = Omerta.HUD.Space(5)
         local width = 380 * scale
         local pad = Omerta.HUD.Space(3)
-        local y = margin
+        -- The whole stack travels together, so notices already on screen do not
+        -- jump when a new one arrives underneath them.
+        local y = margin + rise
 
         surface.SetFont(Omerta.HUD.Font("body"))
         for index = #cues, 1, -1 do

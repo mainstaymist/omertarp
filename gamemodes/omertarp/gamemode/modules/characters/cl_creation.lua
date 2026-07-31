@@ -319,6 +319,11 @@ function Omerta.Characters.ConfirmModal(fullName, onConfirm)
             TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
     end
 
+    -- The full rise. This is the one modal in the game that interrupts, and
+    -- arriving with a direction is exactly what stops it reading as the screen
+    -- glitching over the form the player was mid-way through.
+    H.Reveal(modal)
+
     local prose = vgui.Create("DLabel", modal)
     prose:SetPos(H.Space(5), H.Space(7) + 18 * scale)
     prose:SetSize(width - H.Space(5) * 2, height - H.Space(7) * 2 - 40 * scale)
@@ -337,12 +342,15 @@ function Omerta.Characters.ConfirmModal(fullName, onConfirm)
     buttons:SetPaintBackground(false)
 
     local confirm = H.Button(buttons, "Confirm", "commit", function()
-        modal:Remove()
+        -- Close, not Remove: the modal sinks out while the commit runs. The
+        -- fade to black starts on this same click, so the two overlap and the
+        -- warning is not simply deleted out from under the answer to it.
+        modal:Close()
         onConfirm()
     end)
     confirm:Dock(FILL)
 
-    local back = H.Button(buttons, "Back", "quiet", function() modal:Remove() end)
+    local back = H.Button(buttons, "Back", "quiet", function() modal:Close() end)
     back:Dock(LEFT)
     back:DockMargin(0, 0, H.Space(1), 0)
     back.PerformLayout = function(self)
@@ -359,6 +367,9 @@ end
 -- a full-screen scrim, the form in a left column, the booth on the right.
 
 local function buildFrame()
+    -- Remove, not Close: this window is being REPLACED (or a notice is being
+    -- swapped for the form), and playing one out under the one arriving in its
+    -- place would be two full-screen scrims cross-fading for no reason.
     if IsValid(frame) then frame:Remove() end
 
     local scale = Omerta.HUD.Scale()
@@ -383,6 +394,12 @@ local function buildFrame()
             H.Space(7), h * 0.2 - H.Space(3), H.Colour("text"),
             TEXT_ALIGN_LEFT, TEXT_ALIGN_BOTTOM)
     end
+
+    -- Fade only, no rise. This frame is the whole screen, and a full-screen
+    -- panel cannot travel: the 42px it moves away from is 42px of bare world
+    -- along the top edge, which reads as the interface having come loose. Same
+    -- reasoning as the menu rail — see cl_menu.lua.
+    H.Reveal(frame, { rise = 0 })
 
     local column = vgui.Create("DPanel", frame)
     column:SetPos(H.Space(7), ScrH() * 0.2)
@@ -423,6 +440,11 @@ local function showMessage(text)
         surface.SetDrawColor(Omerta.HUD.Colour("rule"))
         surface.DrawOutlinedRect(0, 0, w, h, 1)
     end
+
+    -- A box this small is a notice, and a notice is exactly the shape the
+    -- reveal was written for.
+    Omerta.HUD.Reveal(frame)
+
     local label = vgui.Create("DLabel", frame)
     label:SetPos(16 * scale, 30 * scale)
     label:SetSize(428 * scale, 80 * scale)
@@ -487,7 +509,10 @@ hook.Add("Omerta.CharactersState", "omerta.characters.ui", function(state)
         creationPending = false
         buildFrame()
     elseif state == STATE.ACTIVE then
-        if IsValid(frame) then frame:Remove() end
+        -- Close, not Remove: the character is standing in the city and the form
+        -- (or the "no season" notice, which shares this window) is finished
+        -- with, so it leaves rather than being switched off.
+        if IsValid(frame) then frame:Close() end
         -- The character now exists server-side (it is cached before this
         -- message is sent), so the held mugshot has something to attach to.
         -- On an ordinary reconnect there is nothing held and nothing happens.

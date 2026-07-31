@@ -257,8 +257,15 @@ Omerta.HUD.Register("injury.down", {
 Omerta.HUD.Register("injury.prompt", {
     order = 45,
     fade = 0.2,
+    -- This is the plate the project lead was describing: start searching a body
+    -- and it appears with the clock running. It pops up, so it arrives like
+    -- everything else that pops up — twelve pixels, the plate distance, not the
+    -- window one. The weapon-draw plate below it in cl_equip.lua uses the same
+    -- number for the same reason, and must keep doing so: the two are
+    -- deliberately the same object in two modules' hands.
+    rise = 12,
     visible = function() return prompt ~= nil and CurTime() < promptUntil end,
-    draw = function(alpha)
+    draw = function(alpha, rise)
         local scale = Omerta.HUD.Scale()
 
         -- The guide's §08 timed-action plate: a 320px scrim above the bottom
@@ -270,7 +277,11 @@ Omerta.HUD.Register("injury.prompt", {
         local timed = promptTotal > 0
         local tall = timed and 62 * scale or 48 * scale
         local x = ScrW() * 0.5 - width * 0.5
-        local y = ScrH() - 120 * scale - tall
+        -- The plate's own Y, plus wherever the reveal currently has it. Every
+        -- part of the plate is drawn relative to this one number, so the words
+        -- and the progress line travel with the scrim rather than each needing
+        -- to remember the offset.
+        local y = ScrH() - 120 * scale - tall + rise
 
         Omerta.HUD.Scrim(x, y, width, tall, "top", alpha)
 

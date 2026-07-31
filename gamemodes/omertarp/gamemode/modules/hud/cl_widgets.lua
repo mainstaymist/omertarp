@@ -20,6 +20,157 @@
 Omerta.HUD = Omerta.HUD or {}
 
 --------------------------------------------------------------------------------
+-- The reveal
+--------------------------------------------------------------------------------
+-- Everything that pops up rises into place and sinks back out. ONE
+-- implementation of it, installed on any panel with one line:
+--
+--     Omerta.HUD.Reveal(frame)
+--
+-- and dismissed with frame:Close(), which now plays the animation out and
+-- removes the panel when it has finished rather than removing it immediately.
+--
+-- The curve, the two durations and the distance are in sh_hud.lua, where the
+-- headless suite can reach them; this is the panel plumbing that drives them.
+--
+-- WHY IT WRAPS THE PANEL'S OWN PAINT AND THINK rather than owning them. This
+-- was a private copy inside the inventory window for a while and it is now on
+-- every window in the game; if installing it meant "and rewrite your Paint to
+-- multiply every alpha by an eased value" then it would be a rewrite per
+-- window, an opportunity per window to miss one draw call, and the next window
+-- anybody adds would quietly not animate at all. A call site adds a line and
+-- its existing paint code is untouched. The order that follows from that:
+-- INSTALL LAST, after Paint and Think are set, because a Paint assigned
+-- afterwards replaces the wrapper rather than being wrapped by it.
+--
+-- WHY THE FADE IS SetAlpha AND NOT AN ALPHA MULTIPLIER AROUND THE PAINT. A
+-- panel's alpha cascades to its children through PaintTraverse, so one call
+-- fades the window, its rows, its buttons and its text inputs together —
+-- exactly what is wanted, and unreachable from a Paint wrapper, which can only
+-- reach the panel's own drawing. A window whose plate faded while its rows
+-- stayed solid was the first attempt at this and it looked broken.
+--
+-- WHY THE POSITION IS SET EVERY FRAME instead of being tweened: see the note in
+-- sh_hud.lua. Several of these windows re-lay-out and re-centre themselves
+-- while they are on screen, and a tween walks toward a coordinate the layout
+-- has already abandoned. The cost of recomputing is that the panel must be told
+-- where it now RESTS whenever a layout moves it — Panel:OmertaAnchor.
+--
+-- opts.rise overrides the travel in design pixels; opts.rise = 0 is a fade with
+-- no movement, which is the honest answer for a panel that covers the whole
+-- screen (see cl_menu.lua) — sliding one exposes a band of bare screen along
+-- the edge it moved away from.
+
+function Omerta.HUD.Reveal(panel, opts)
+    if not IsValid(panel) then return panel end
+    opts = opts or {}
+
+    panel.OmertaAnim = 0        -- 0..1, the raw position
+    panel.OmertaEased = 0       -- the smoothstepped one, for the panel's Paint
+    panel.OmertaClosing = false
+    panel.OmertaRise = (opts.rise or Omerta.HUD.REVEAL.RISE) * Omerta.HUD.Scale()
+    panel.OmertaRestY = panel:GetY()
+
+    -- Where the panel rests once it has finished rising. Captured here from
+    -- wherever the call site has just placed it, and re-captured by whoever
+    -- moves it afterwards — CALL THIS ONLY WHEN THE PANEL IS AT REST (straight
+    -- after a Center() or a SetPos), never mid-animation, or the current offset
+    -- is read as part of the resting place and every rebuild compounds it.
+    function panel:OmertaAnchor()
+        self.OmertaRestY = self:GetY()
+        self:SetPos(self:GetX(), self.OmertaRestY
+            + Omerta.HUD.RevealOffset(self.OmertaEased, self.OmertaRise))
+    end
+
+    -- Closing is a REQUEST, not a removal: the panel takes itself off screen
+    -- once it has finished sinking. Idempotent, because a window can be
+    -- dismissed twice in the tenth of a second it spends leaving — a click on
+    -- the close button and the key that also closes it, say — and the second
+    -- request must not restart the clock.
+    function panel:OmertaClose()
+        if self.OmertaClosing then return end
+        self.OmertaClosing = true
+    end
+
+    -- :Close() is Derma's word for "the user dismissed this", and it is what
+    -- DFrame's own close button calls. Routing it here is what makes the
+    -- animation impossible to skip by accident: a window gets the play-out
+    -- without its author having thought about it, and the close button in the
+    -- corner behaves like every other way out.
+    --
+    -- :Remove() is deliberately NOT routed. Instant teardown is a real need —
+    -- a window being rebuilt from scratch, or one taken down because the
+    -- character it belonged to has died — and it needs a word of its own.
+    -- Remove means gone now; Close means leave.
+    function panel:Close()
+        if self.OnClose then self:OnClose() end
+        self:OmertaClose()
+    end
+
+    local paint = panel.Paint
+    panel.Paint = function(self, w, h)
+        -- Nothing at all on the frame it is created: the panel exists, is laid
+        -- out and is measured, but has not begun arriving yet. Without this the
+        -- first frame of every window is a full-opacity flash, because Paint
+        -- runs before the first Think.
+        if (self.OmertaEased or 0) <= 0 then return end
+        if paint then paint(self, w, h) end
+    end
+
+    -- Note what `panel.Think` and `panel.Paint` resolve to before they are
+    -- overwritten: an instance override if the call site set one, otherwise the
+    -- CLASS method off the metatable. DFrame's own Think is what makes a window
+    -- draggable and sizeable, so capturing and calling it is not politeness —
+    -- it is the difference between wrapping a frame and quietly disabling half
+    -- of it.
+    local think = panel.Think
+    panel.Think = function(self)
+        if think then think(self) end
+        -- A wrapped Think that removed the panel leaves nothing to animate,
+        -- and every line below would be a method call on a dead panel.
+        if not IsValid(self) then return end
+
+        local position, finished = Omerta.HUD.StepReveal(self.OmertaAnim,
+            self.OmertaClosing, FrameTime())
+        self.OmertaAnim = position
+        self.OmertaEased = Omerta.HUD.RevealEase(position)
+
+        if finished then self:Remove() return end
+
+        self:SetAlpha(255 * self.OmertaEased)
+        -- A panel with no travel is never repositioned AT ALL, rather than
+        -- being repositioned to where it already is: a full-screen frame's
+        -- position belongs to whoever sized it to the screen, and this has no
+        -- business writing to it sixty times a second to say nothing.
+        if self.OmertaRise > 0 then
+            self:SetPos(self:GetX(), self.OmertaRestY
+                + Omerta.HUD.RevealOffset(self.OmertaEased, self.OmertaRise))
+        end
+    end
+
+    -- Invisible and already displaced on the frame it is born, so there is no
+    -- single frame of the window sitting finished at its resting place before
+    -- the animation starts. That flash is the whole thing this exists to stop.
+    panel:SetAlpha(0)
+    if panel.OmertaRise > 0 then
+        panel:SetPos(panel:GetX(), panel.OmertaRestY + panel.OmertaRise)
+    end
+
+    return panel
+end
+
+-- Is this window UP — as opposed to absent, or on its way out?
+--
+-- The distinction matters everywhere a module asks "is my window open" to
+-- decide whether to rebuild it or make a new one, because a sinking panel is
+-- still IsValid for a tenth of a second after the player dismissed it.
+-- Rebuilding one puts fresh contents into a window that is already leaving, and
+-- the window the player asked for never appears at all.
+function Omerta.HUD.Revealed(panel)
+    return IsValid(panel) and panel.OmertaClosing ~= true
+end
+
+--------------------------------------------------------------------------------
 -- Buttons
 --------------------------------------------------------------------------------
 -- style: "commit" (bone fill, ink Oswald caps) or "quiet" (rule box,

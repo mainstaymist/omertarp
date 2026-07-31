@@ -66,6 +66,126 @@ check("a zero fade time is instant, not a divide by zero", function()
 end)
 
 --------------------------------------------------------------------------------
+suite("hud.reveal")
+--------------------------------------------------------------------------------
+-- The one animation every popup in the game shares. Pinned here rather than
+-- trusted, because it is now installed on eight windows and three HUD plates
+-- from one place: a change to any of these three numbers changes all eleven at
+-- once, which is the point of the helper and also the risk of it.
+
+check("the standard is one set of numbers, and these are they", function()
+    loadModules()
+    local R = Omerta.HUD.REVEAL
+    assert(R.IN == 0.12, "0.12s in — the inventory's, arrived at in the field")
+    assert(R.OUT == 0.10, "0.10s out")
+    assert(R.RISE == 42, "42 design px of travel")
+    -- The asymmetry is deliberate and is the thing most likely to be tidied
+    -- away by somebody making the two match: the way out is quicker because the
+    -- player has already decided to leave.
+    assert(R.OUT < R.IN, "leaving must not take longer than arriving")
+    -- Both short enough that nobody waits on them. A window a player opens
+    -- hundreds of times a session cannot cost a third of a second each way.
+    assert(R.IN <= 0.2 and R.OUT <= 0.2, "an animation you wait for is a bug")
+end)
+
+check("the ease is a smoothstep, and cannot leave 0..1", function()
+    loadModules()
+    local E = Omerta.HUD.RevealEase
+    assert(E(0) == 0, "closed")
+    assert(E(1) == 1, "open")
+    assert(E(0.5) == 0.5, "symmetric about the middle")
+    assert(math.abs(E(0.25) - 0.15625) < 1e-9, "3t² - 2t³")
+
+    -- Zero velocity at both ends is the whole reason for the curve: a linear
+    -- ramp read as a jump-cut at the start and a drop at the finish.
+    assert(E(0.02) < 0.02, "eases in")
+    assert(E(0.98) > 0.98, "and eases out")
+
+    -- Monotonic, or the window would visibly go backwards mid-animation.
+    local previous = -1
+    for step = 0, 100 do
+        local value = E(step / 100)
+        assert(value >= previous, "the curve must never fall")
+        previous = value
+    end
+
+    -- One enormous frame (a map load, an alt-tab) hands this a position well
+    -- outside the range, and an alpha of 340 is a draw call that misbehaves
+    -- rather than an error anybody sees.
+    assert(E(1.7) == 1 and E(-3) == 0, "clamped, not trusted")
+    assert(E(nil) == 0 and E("nonsense") == 0 and E(0 / 0) == 0, "garbage-proof")
+end)
+
+check("a reveal opens, closes, and says when it is finished", function()
+    loadModules()
+    local S = Omerta.HUD.StepReveal
+    local R = Omerta.HUD.REVEAL
+
+    local position, finished = S(0, false, R.IN * 0.5)
+    assert(math.abs(position - 0.5) < 1e-9, "half a second's worth is half open")
+    assert(finished == false, "opening is never finished — only closing is")
+
+    position, finished = S(0.5, false, R.IN)
+    assert(position == 1 and finished == false, "completes and stops at 1")
+    assert(S(1, false, 10) == 1, "an open window does not keep opening")
+
+    position, finished = S(1, true, R.OUT * 0.5)
+    assert(math.abs(position - 0.5) < 1e-9, "half way out")
+    assert(finished == false, "still on screen")
+
+    -- The second return is what removes the panel, so it must arrive with the
+    -- position AT zero and not a frame before or after it: a panel removed
+    -- early is drawn at partial alpha and then vanishes, and one removed late
+    -- sits invisible on screen holding the mouse.
+    position, finished = S(0.4, true, R.OUT)
+    assert(position == 0 and finished == true, "reaching zero is being gone")
+end)
+
+check("closing halfway open sinks from halfway", function()
+    loadModules()
+    local S = Omerta.HUD.StepReveal
+    local R = Omerta.HUD.REVEAL
+    -- Tapping the key twice in a tenth of a second is ordinary play. The
+    -- position is the only state there is, so a reversal has no special case —
+    -- and must not snap to either end first.
+    local position = S(0, false, R.IN * 0.25)
+    assert(math.abs(position - 0.25) < 1e-9, tostring(position))
+    position = S(position, true, R.OUT * 0.1)
+    assert(position < 0.25 and position > 0, "falls back from where it was")
+end)
+
+check("a reveal is garbage-proof and cannot stall", function()
+    loadModules()
+    local S = Omerta.HUD.StepReveal
+    assert(S(nil, false, 1) == 1, "no position is a closed one")
+    assert(S(0 / 0, false, 1) == 1, "NaN does not poison it")
+    assert(S(0.5, true, nil) == 0.5, "no frame time is no movement")
+    -- A single frame long enough to overshoot must land exactly at the ends
+    -- rather than past them.
+    assert(S(0, false, 99) == 1, "a huge frame opens it fully, not more")
+    local position, finished = S(1, true, 99)
+    assert(position == 0 and finished == true, "and closes it fully")
+end)
+
+check("the offset is the travel remaining, and zero at rest", function()
+    loadModules()
+    local O = Omerta.HUD.RevealOffset
+    local E = Omerta.HUD.RevealEase
+    assert(O(E(1), 42) == 0, "at rest a window is exactly where the layout put it")
+    assert(O(E(0), 42) == 42, "and starts a full travel BELOW it — positive is down")
+    assert(O(E(0.5), 42) == 21, "half eased is half travelled")
+    assert(O(E(0.5), 0) == 0, "rise = 0 is a fade with no movement (full-screen panels)")
+    assert(O(E(0.5), nil) == 0, "and so is no rise at all")
+
+    -- The rise is a DESIGN pixel count, like every other constant in the
+    -- interface: the caller multiplies by the accessibility scale, so the
+    -- travel grows with the type rather than staying a fixed fraction of a
+    -- window that has got bigger.
+    assert(O(E(0), 42 * Omerta.HUD.SCALE_BASE) == 42 * 1.75,
+        "the helper never applies the scale itself")
+end)
+
+--------------------------------------------------------------------------------
 suite("hud.scale")
 --------------------------------------------------------------------------------
 

@@ -104,11 +104,16 @@ if Omerta.InEngine then
     Omerta.HUD.Register("weapons.equip", {
         order = 46,
         fade = 0.2,
+        -- The same twelve pixels M19's search plate uses, and it has to stay
+        -- the same number: these two are one object in the player's eye,
+        -- position included, and a draw that arrived from a different distance
+        -- than a search would give that away instantly.
+        rise = 12,
         visible = function()
             if inventoryIsOpen() then return false end
             return Omerta.Weapons.EquipProgress() ~= nil
         end,
-        draw = function(alpha)
+        draw = function(alpha, rise)
             local instance, fraction = Omerta.Weapons.EquipProgress()
             if not instance then return end
 
@@ -117,7 +122,7 @@ if Omerta.InEngine then
             local pad = 16 * scale
             local tall = 62 * scale
             local x = ScrW() * 0.5 - width * 0.5
-            local y = ScrH() - 120 * scale - tall
+            local y = ScrH() - 120 * scale - tall + rise
 
             Omerta.HUD.Scrim(x, y, width, tall, "top", alpha)
 

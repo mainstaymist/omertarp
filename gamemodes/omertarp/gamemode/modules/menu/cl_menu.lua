@@ -156,8 +156,11 @@ end
 
 local function closePause()
     if not Omerta.Menu.IsPaused() then return end
-    if IsValid(frame) then frame:Remove() end
-    frame = nil
+    -- Close, not Remove: the pause rail fades out rather than blinking away.
+    -- The local reference is deliberately KEPT while it does — Build() clears
+    -- whatever is there before making a new one, and a handle we had thrown
+    -- away would leave the outgoing rail on screen underneath the incoming one.
+    if IsValid(frame) then frame:Close() end
     M.phase = nil
     M.mode = "front"
     M.screen = "root"
@@ -435,6 +438,38 @@ function Omerta.Menu.Client.Build()
         draw.SimpleText(string.upper(season and season.label or "The city"),
             Omerta.HUD.Font("mono"), margin, h - margin,
             Omerta.HUD.Colour("dim"), TEXT_ALIGN_LEFT, TEXT_ALIGN_BOTTOM)
+    end
+
+    -- THE PAUSE RAIL IS REVEALED; THE FRONT END IS NOT. Both are this same
+    -- panel, and they are not the same kind of thing.
+    --
+    -- The front end is not a popup — it is the screen the game OPENS on, over a
+    -- drifting camera, and it is revealed by the intro's black lifting off it
+    -- (or, after a death, by the death sequence handing over). It has no
+    -- "before" to arrive from: there is nothing on screen for it to appear in
+    -- front of, so an entrance animation would be the interface announcing
+    -- itself to a player who has not yet been given anything else to look at,
+    -- and it would run UNDER the intro's own fade, where it cannot be seen
+    -- anyway. Fading the opening screen in a second time is not polish, it is
+    -- two fades fighting.
+    --
+    -- Pause genuinely pops up: the player is standing in the street, presses
+    -- F1, and something arrives over the top of what they were doing. That is
+    -- exactly the moment the reveal exists for, and it is worth the tenth of a
+    -- second on the way back out for the same reason it is worth it on the
+    -- inventory — the way out of a pause is a thing done hundreds of times.
+    --
+    -- NO RISE, EITHER WAY. This frame is the whole screen. Moving a full-screen
+    -- panel 42px up means 42px of bare, unblurred world along the top edge for
+    -- the length of the animation, which does not read as a window arriving —
+    -- it reads as the interface having come unstuck from the screen. The rail
+    -- inside it could be made to travel on its own, but that is a second
+    -- animation with its own state, driven from a different place than every
+    -- other window in the game, to buy motion on the one screen that is already
+    -- moving (the camera is orbiting behind it). The fade is the whole reveal
+    -- here, which the shared helper supports as rise = 0.
+    if M.mode == "pause" then
+        Omerta.HUD.Reveal(frame, { rise = 0 })
     end
 
     function frame:Rebuild()

@@ -67,6 +67,106 @@ function Omerta.HUD.StepAlpha(alpha, wantVisible, dt, fadeSeconds)
 end
 
 --------------------------------------------------------------------------------
+-- The reveal: how anything that pops up arrives, and how it leaves
+--------------------------------------------------------------------------------
+-- ONE curve, ONE pair of durations, ONE distance, for every window, modal and
+-- plate in the game. The inventory window had this to itself for a while and
+-- was the only thing on screen that felt made rather than switched on; the
+-- numbers below are that implementation's, promoted rather than re-tuned,
+-- because they were arrived at in the field and a second opinion on them buys
+-- nothing.
+--
+-- WHY THERE IS MOVEMENT AT ALL. The style guide says "MOTION IS FADE ... no
+-- slide, no scale" (sh_theme), and this departs from it deliberately, on the
+-- project lead's instruction. A thing that only fades has no direction: the
+-- window arrives from nowhere and reads as a state change rather than as
+-- something picked up and put down. Forty-two pixels is small enough that
+-- nobody watches it travel and large enough that the eye is told where the
+-- window came from. The rest of the guide's rule survives — nothing in this
+-- game slides sideways and nothing scales, so the departure is one axis wide.
+--
+-- WHY THE WAY OUT IS QUICKER THAN THE WAY IN. Coming in, the animation is the
+-- thing announcing itself and wants a moment to be seen. Going out, the player
+-- has already decided; anything they have to wait through on the way to
+-- something else is an irritation, and they will dismiss these windows hundreds
+-- of times a session. Twenty milliseconds is not a number anybody perceives as
+-- a duration, but the asymmetry is felt as responsiveness.
+--
+-- WHY THIS IS THREE PURE FUNCTIONS AND NOT Panel:AlphaTo/MoveTo. Derma's own
+-- animation system owns the panel's position for the length of the tween, and
+-- half these windows re-lay-out and re-centre themselves while they are on
+-- screen (the inventory does it on every inventory stream — several times a
+-- second during Loot All). A tween would keep walking the panel toward a
+-- coordinate the layout had already abandoned, and a close arriving mid-tween
+-- would fight the one already running. Holding a single 0..1 position and
+-- recomputing alpha and offset from it EVERY frame means a rebuild that moves
+-- the window simply moves where the animation is aiming, and reversing
+-- direction is one boolean rather than a cancel.
+--
+-- Pure and shared so the headless suite can pin all of it; the panel plumbing
+-- that consumes it is Omerta.HUD.Reveal in cl_widgets.lua.
+
+-- Seconds in, seconds out, and the travel in DESIGN pixels — before
+-- Omerta.HUD.Scale(), like every other pixel constant in the interface. One
+-- table rather than three loose constants so a call site cannot quietly pick up
+-- half of the standard.
+Omerta.HUD.REVEAL = {
+    IN = 0.12,
+    OUT = 0.10,
+    RISE = 42,
+}
+
+-- Smoothstep, the same curve the inventory used: it leaves and arrives with
+-- zero velocity, so neither end of the travel has a visible corner in it. A
+-- linear ramp was what the very first version did and it read as a jump-cut at
+-- both ends; an ease-out-only curve fixed the arrival and left the departure
+-- looking like the window had been dropped.
+--
+-- Clamped rather than trusted, because the position it eases is stepped by
+-- frame time and a single enormous frame (a map load, an alt-tab) would
+-- otherwise hand a negative or over-unity value straight to a draw call.
+function Omerta.HUD.RevealEase(position)
+    position = tonumber(position) or 0
+    if position ~= position then return 0 end -- NaN
+    position = math.max(0, math.min(1, position))
+    return position * position * (3 - 2 * position)
+end
+
+-- One step of a reveal's 0..1 position. Returns the new position and whether
+-- the play-out has FINISHED — one call answers both "where is it" and "is it
+-- gone", so a panel cannot be removed on a frame it is still being drawn on,
+-- and cannot linger invisible on the frame after it stopped being drawn.
+--
+-- Reversing mid-animation needs no special case for the same reason StepAlpha
+-- needs none: the position is the only state there is, so a window closed
+-- halfway through opening sinks from halfway rather than snapping to the top
+-- first.
+function Omerta.HUD.StepReveal(position, closing, dt)
+    position = tonumber(position) or 0
+    if position ~= position then position = 0 end -- NaN
+    dt = tonumber(dt) or 0
+
+    if closing then
+        local out = Omerta.HUD.REVEAL.OUT
+        position = position - (out > 0 and (dt / out) or 1)
+        if position <= 0 then return 0, true end
+        return position, false
+    end
+
+    if position >= 1 then return 1, false end
+    local inSeconds = Omerta.HUD.REVEAL.IN
+    return math.min(1, position + (inSeconds > 0 and (dt / inSeconds) or 1)), false
+end
+
+-- How far BELOW its resting place a thing at this point in its reveal sits.
+-- Positive is down, because screen Y is: at rest the offset is zero and the
+-- window is where the layout put it, so nothing that reads a position while the
+-- animation is finished has to know the animation exists.
+function Omerta.HUD.RevealOffset(eased, rise)
+    return (tonumber(rise) or 0) * (1 - (tonumber(eased) or 0))
+end
+
+--------------------------------------------------------------------------------
 -- Entity labels
 --------------------------------------------------------------------------------
 -- What is written under the interaction dot when you look at something.
