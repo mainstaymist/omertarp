@@ -165,6 +165,12 @@ function Internal.OnPlayerConnected(ply)
         return
     end
 
+    -- The join path is five asynchronous steps across three modules, and when
+    -- it stalls it stalls SILENTLY — the player simply stands there. One line
+    -- per stage costs nothing at one join per player and turns "I am frozen
+    -- and there are no errors" into a log that names the step it died on.
+    Omerta.Log.Info("accounts", "join: %s connected, loading account", sid)
+
     local settled = false
     if Omerta.InEngine then
         timer.Simple(Omerta.Config.Get("accounts.load_timeout"), function()

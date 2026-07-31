@@ -84,10 +84,22 @@ end
 -- when that client finally announces itself is say the same thing again.
 local told = {}
 
+local STATE_NAMES = {
+    [STATE.NEEDS_CREATION] = "needs a character",
+    [STATE.ACTIVE] = "active",
+    [STATE.NO_SEASON] = "no season",
+}
+
 local function sendState(ply, state)
     if not (Omerta.InEngine and IsValid(ply)) then return end
     local sid = ply:SteamID64()
     if sid then told[sid] = state end
+    -- Logged because this single message is the only thing that raises the
+    -- front end: if a player reports an empty screen, the first question is
+    -- whether the server ever said anything, and the second is whether the
+    -- client was listening when it did.
+    Omerta.Log.Info("characters", "join: telling %s '%s'",
+        sid or "?", STATE_NAMES[state] or tostring(state))
     Omerta.Net.Send("characters.state", { state = state }, ply)
 end
 
@@ -117,7 +129,16 @@ function Internal.OnClientReady(ply)
     if not (Omerta.InEngine and IsValid(ply)) then return end
     local sid = ply:SteamID64()
     local state = sid and told[sid]
-    if not state then return end
+    if not state then
+        -- Not a fault: the client got here first and the load will answer it.
+        -- Logged anyway, because "the client was ready before the server had
+        -- an answer" and "the server answered before the client was ready"
+        -- look identical from a frozen spawn and this is what tells them apart.
+        Omerta.Log.Info("characters", "join: %s is listening, nothing to tell it yet",
+            sid or "?")
+        return
+    end
+    Omerta.Log.Info("characters", "join: %s is listening, repeating its state", sid or "?")
     sendState(ply, state)
     local character = cachedFor(ply)
     if character then sendSelf(ply, character) end
@@ -438,6 +459,58 @@ function MODULE:OnEnable()
             if not IsValid(ply) then return end
             if not Omerta.Characters.IsLoaded(ply) then gate(ply) end
         end)
+    end)
+
+    -- Staff: what does the server actually believe about a connected player?
+    --
+    -- Written for a specific class of bug that keeps costing real time: a
+    -- player standing frozen at spawn with nothing on screen and nothing in
+    -- the log. Every stage of the join is asynchronous and any of them can end
+    -- in silence, so this asks all of them at once and prints the answer.
+    concommand.Add("omerta_whoami", function(caller, _, args)
+        if IsValid(caller) and not caller:IsSuperAdmin() then return end
+
+        local targets = {}
+        if args[1] then
+            for _, p in ipairs(player.GetAll()) do
+                if p:SteamID64() == args[1] then targets[1] = p end
+            end
+        elseif IsValid(caller) then
+            targets[1] = caller
+        else
+            targets = player.GetAll()
+        end
+        if #targets == 0 then
+            Omerta.Log.Error("characters", "nobody by that SteamID64 is connected")
+            return
+        end
+
+        for _, p in ipairs(targets) do
+            local sid = p:SteamID64() or "?"
+            local account = Omerta.Accounts and Omerta.Accounts.Get
+                and Omerta.Accounts.Get(p) or nil
+            local character = cachedFor(p)
+            local season = Omerta.Seasons.GetActive()
+
+            Omerta.Log.Info("characters", "%s (%s)", p:Nick(), sid)
+            Omerta.Log.Info("characters", "  account   : %s",
+                account and ("#" .. tostring(account.id)) or "NOT LOADED — the join stalled here")
+            Omerta.Log.Info("characters", "  season    : %s",
+                season and ("#" .. season.id .. " " .. tostring(season.name))
+                    or "none active")
+            Omerta.Log.Info("characters", "  character : %s",
+                character and ("#" .. character.id .. " " ..
+                    character.first_name .. " " .. character.last_name)
+                    or "none")
+            Omerta.Log.Info("characters", "  told      : %s",
+                told[sid] and (STATE_NAMES[told[sid]] or told[sid])
+                    or "NOTHING — this is why the screen is empty")
+            -- Frozen with a character is a bug; frozen without one is the
+            -- gate doing its job while the client shows the menu.
+            Omerta.Log.Info("characters", "  frozen    : %s%s",
+                tostring(p:IsFlagSet(FL_FROZEN) or false),
+                character and "" or "  (expected — no character)")
+        end
     end)
 
     -- Staff: retire a character. Real moderation tool, and it saves editing

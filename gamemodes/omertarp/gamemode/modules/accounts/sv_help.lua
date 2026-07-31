@@ -26,6 +26,7 @@ local COMMANDS = {
 
     -- Characters
     ["omerta_character_retire"] = { usage = "<characterId>", what = "Retire a character.", area = "Characters" },
+    ["omerta_whoami"] = { usage = "[steamID64]", what = "What the server believes about a connected player: account, season, character, what state it told them, whether they are frozen. The first thing to run when somebody is stuck at spawn.", area = "Characters" },
     ["omerta_portrait_clear"] = { usage = "<characterId>", what = "Delete a character's portrait.", area = "Characters" },
 
     -- Giving (pre-economy faucets)

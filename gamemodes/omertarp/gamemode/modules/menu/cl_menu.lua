@@ -170,14 +170,31 @@ function Omerta.Menu.TogglePause()
     openPause()
 end
 
--- F1 arrives as gm_showhelp. Swallowed either way, so the engine's own help
--- panel never appears over ours.
-hook.Add("PlayerBindPress", "omerta.menu.pause", function(ply, bind, pressed)
-    if bind ~= "gm_showhelp" then return end
-    if not pressed then return true end
-    if ply:IsTyping() or gui.IsGameUIVisible() or gui.IsConsoleVisible() then return true end
-    Omerta.Menu.TogglePause()
-    return true
+-- F1 is POLLED, not bound, for the same reason the inventory key is: the
+-- moment the menu takes the mouse it also takes the keyboard, and
+-- PlayerBindPress stops firing — so the bind could open the menu and then
+-- never hear the keypress that was meant to close it. Reading the physical
+-- key works whatever has focus.
+--
+-- The bind is still swallowed below so the engine's own help panel never
+-- opens behind ours.
+local f1WasDown = false
+
+hook.Add("Think", "omerta.menu.pause_key", function()
+    local ply = LocalPlayer()
+    if not IsValid(ply) then return end
+
+    local down = input.IsKeyDown(KEY_F1)
+        and not (ply.IsTyping and ply:IsTyping())
+        and not gui.IsGameUIVisible() and not gui.IsConsoleVisible()
+    local pressed = down and not f1WasDown
+    f1WasDown = down
+
+    if pressed then Omerta.Menu.TogglePause() end
+end)
+
+hook.Add("PlayerBindPress", "omerta.menu.pause", function(_, bind)
+    if bind == "gm_showhelp" then return true end
 end)
 
 -- Kept for a future "character exists, enter directly" path; today entering
