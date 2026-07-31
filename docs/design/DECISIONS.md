@@ -92,6 +92,16 @@ Resolves Q-4. Ending a season automatically retires every living character ("lea
 
 ---
 
+## D-041 — The crosshair is always drawn (DECIDED, 2026-07-31; amends D-017)
+
+**D-017 removed the engine crosshair and replaced it with a mark that appeared only when something interactable was under it. That is overturned in the playing hand.** A centre that blinks in and out gives the eye nothing to rest on, and a player cannot aim — a revolver, a conversation, a glance — at a point that is not drawn.
+
+The dot is now permanent, and carries D-017's information by **brightness** instead of by presence: faint with nothing in reach, full when there is. It is hidden only where a mouse cursor takes the screen (an open window, the menu, the console) and while down or dead, where there is nothing to aim.
+
+This is the ONE element permitted on an idle screen. GDD §8's empty-screen rule is otherwise untouched, and M8's acceptance test still fails the moment a second element joins it — the exception is named in the test rather than the assertion being weakened.
+
+**Affects:** D-017 (amended, not revoked — the engine crosshair stays gone and nothing else became permanent); M8 (`cl_hud.lua` element, `cl_selftest.lua` idle assertion).
+
 ## D-040 — The justice loop is The Ledger (DECIDED, 2026-07-28; resolves P-002 and Q-15)
 
 **Proposal 1, "The Ledger", is selected** for M18: systemic consequences — records, fines, probation, standing — with no prison map. The recommended hybrid's "Deal" resolution layer was not selected; the Island's playable prison stays deferred indefinitely. M18's design review will detail the loop within this model, and the remaining per-milestone questions for M14–M17 are explicitly deferred ("we will confront the rest later").

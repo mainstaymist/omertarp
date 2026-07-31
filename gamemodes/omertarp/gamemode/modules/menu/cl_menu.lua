@@ -233,6 +233,16 @@ hook.Add("Think", "omerta.menu.think", function()
         Omerta.Menu.Client.Build()
     end
 
+    -- The menu believes it is up but its panel has gone. Nothing should be
+    -- able to do that — but something did once (a material-system restart
+    -- takes every VGUI panel with it), and the result was a player frozen at
+    -- spawn with no interface and no error to explain it. A player who cannot
+    -- see the menu cannot leave it, so this rebuilds rather than trusting that
+    -- it will not happen again.
+    if M.phase == "menu" and not IsValid(frame) then
+        Omerta.Menu.Client.Build()
+    end
+
     if music.channel and music.channel:IsValid() then
         if music.fadingOut then
             music.out = math.max(0, music.out - FrameTime() / 1.4)
@@ -555,10 +565,15 @@ function Omerta.Menu.Client.BuildSettings(parent)
     local margin = Omerta.HUD.Space(5)
     local rowH = ROW_H * scale
 
+    -- Tall enough for everything in it, and anchored high enough that it does
+    -- not run off the bottom. The first version was four rows tall while the
+    -- content came to six, and docked children simply clip: the multi-core
+    -- toggle and the Back button were being drawn outside the panel, which
+    -- reads exactly like a screen that failed to build.
     local list = vgui.Create("DPanel", parent)
     list.OmertaOwned = true
-    list:SetPos(margin, ScrH() * 0.5 - rowH)
-    list:SetSize(COLUMN_W * scale, rowH * 4)
+    list:SetPos(margin, math.max(margin, ScrH() * 0.5 - rowH * 3))
+    list:SetSize(COLUMN_W * scale, math.min(rowH * 9, ScrH() - margin * 2))
     list.Paint = nil
 
     local label = Omerta.HUD.FieldLabel(list, "Interface scale")
@@ -623,30 +638,31 @@ end
 --------------------------------------------------------------------------------
 -- Multi-core rendering
 --------------------------------------------------------------------------------
--- The engine's experimental multithreaded renderer. It is off by default in
--- stock Garry's Mod and on in most frameworks, because on modern hardware it
--- is a large, free frame-rate win — and when a particular machine dislikes it,
--- it is one toggle away from off, which is why it lives in settings rather
--- than in a config nobody can reach mid-game.
-CreateClientConVar("omerta_mcore", "1", true, false)
+-- The engine's experimental multithreaded renderer. Other frameworks ship it
+-- on; this one does not, and the reason is worth writing down.
+--
+-- `mat_queue_mode` cannot be changed quietly: the engine tears down and
+-- rebuilds the material system to apply it, which takes the VGUI panels with
+-- it. The first version of this applied the setting from a Think hook the
+-- moment LocalPlayer() became valid — which is the same moment the front-end
+-- menu builds itself. The restart ate the menu, and the player was left
+-- frozen at spawn with no interface and no error: exactly the symptom
+-- reported. So:
+--
+--   * DEFAULT OFF, until it is proven on real clients.
+--   * Never applied automatically. It is applied when a player asks for it,
+--     from a screen where a rebuilt material system costs them nothing.
+--
+-- If it turns out to behave, the default is one character.
+CreateClientConVar("omerta_mcore", "0", true, false)
 
 function Omerta.Menu.ApplyMulticore(enabled)
     if enabled == nil then enabled = GetConVar("omerta_mcore"):GetBool() end
     RunConsoleCommand("gmod_mcore_test", enabled and "1" or "0")
     -- The queued material system is the half that actually threads the work;
-    -- -1 lets the engine choose (which means off on most setups).
+    -- -1 lets the engine choose, which means off on most setups.
     RunConsoleCommand("mat_queue_mode", enabled and "2" or "-1")
 end
-
--- Applied once the client is actually in a game, so the default takes effect
--- without the player ever opening settings.
-local mcoreApplied = false
-hook.Add("Think", "omerta.menu.mcore", function()
-    if mcoreApplied then return end
-    if not IsValid(LocalPlayer()) then return end
-    mcoreApplied = true
-    Omerta.Menu.ApplyMulticore()
-end)
 
 --------------------------------------------------------------------------------
 -- The handover into the world

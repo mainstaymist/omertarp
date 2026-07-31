@@ -435,20 +435,50 @@ function Omerta.HUD.RegisterTargetHint(id, fn)
     targetHints[id] = fn
 end
 
+-- The dot is ALWAYS there now, not only when something is in reach.
+--
+-- D-017 removed the engine crosshair and replaced it with a mark that appeared
+-- on a target, which was principled and awful to play: a centre that blinks in
+-- and out gives the eye nothing to rest on, and a player cannot aim a
+-- conversation, let alone a revolver, at a point that is not drawn. It is
+-- still not a reticle — it dims to a faint mark with nothing under it and
+-- comes up to full when something is, so the information D-017 wanted is
+-- carried by BRIGHTNESS rather than by presence.
+--
+-- It goes only where a mouse cursor takes over: with a window open, the
+-- pointer is the centre of attention and two of them is one too many.
+local function cursorHasScreen()
+    return vgui.CursorVisible() or gui.IsGameUIVisible() or gui.IsConsoleVisible()
+end
+
 Omerta.HUD.Register("interactable", {
     order = 40,
     fade = 0.15,
-    visible = function() return interactableTarget() ~= nil end,
+    visible = function()
+        if cursorHasScreen() then return false end
+        local ply = LocalPlayer()
+        if not (IsValid(ply) and ply:Alive()) then return false end
+        -- Nothing to aim while on the floor or watching the death screen.
+        local C = Omerta.Injury and Omerta.Injury.Client
+        if C and (C.death or C.leaving or Omerta.Injury.IsDown(C.state)) then
+            return false
+        end
+        return true
+    end,
     draw = function(alpha)
         local scale = Omerta.HUD.Scale()
         -- A CIRCLE, with its own ring of ink — a square this small read as a
         -- pixel error, and anything bigger as an aiming reticle.
         local radius = 3 * scale
         local cx, cy = ScrW() * 0.5, ScrH() * 0.5
+        -- Faint with nothing in reach, full when there is.
+        local presence = interactableTarget() and 1 or 0.45
         draw.RoundedBox(radius + 1, cx - radius - 1, cy - radius - 1,
-            (radius + 1) * 2, (radius + 1) * 2, Color(0, 0, 0, 230 * alpha))
+            (radius + 1) * 2, (radius + 1) * 2,
+            Color(0, 0, 0, 230 * alpha * presence))
         draw.RoundedBox(radius, cx - radius, cy - radius,
-            radius * 2, radius * 2, Omerta.HUD.Colour("text", 235 * alpha))
+            radius * 2, radius * 2,
+            Omerta.HUD.Colour("text", 235 * alpha * presence))
 
         -- The ladder: one centred column under the dot. The SUBJECT anchor is
         -- fixed so its baseline never moves; everything below advances by the

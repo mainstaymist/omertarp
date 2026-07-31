@@ -30,14 +30,28 @@ local function buildSteps()
         pass()
     end }
 
+    -- The empty-screen rule, with its ONE permitted exception.
+    --
+    -- D-017 replaced the engine crosshair with a mark that appeared only over
+    -- a target, and playing it proved that wrong: a centre that blinks in and
+    -- out gives the eye nothing to rest on, and you cannot aim at a point that
+    -- is not drawn. The dot is now always present and carries the same
+    -- information by BRIGHTNESS instead — faint with nothing in reach, full
+    -- when there is. It is the only element allowed to be on an idle screen,
+    -- and this test still fails the moment a second one joins it.
+    local IDLE_ALLOWED = { ["interactable"] = true }
+
     steps[#steps + 1] = { name = "the screen is empty when idle", fn = function(pass, fail)
-        local visible = Omerta.HUD.VisibleElements()
-        if #visible > 0 then
-            fail("on screen: " .. table.concat(visible, ", ") ..
+        local unexpected = {}
+        for _, id in ipairs(Omerta.HUD.VisibleElements()) do
+            if not IDLE_ALLOWED[id] then unexpected[#unexpected + 1] = id end
+        end
+        if #unexpected > 0 then
+            fail("on screen: " .. table.concat(unexpected, ", ") ..
                 " — stand still, look at nothing, and re-run")
             return
         end
-        pass("nothing drawn")
+        pass("nothing but the crosshair")
     end }
 
     steps[#steps + 1] = { name = "fade maths", fn = function(pass, fail)
