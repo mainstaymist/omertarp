@@ -77,6 +77,21 @@ check("scale is clamped and garbage-proof", function()
     assert(C(0) == Omerta.HUD.SCALE_MIN, "zero clamps up")
     assert(C(-5) == Omerta.HUD.SCALE_MIN)
     assert(C(100) == Omerta.HUD.SCALE_MAX)
+
+    -- 1.0 is the size signed off in the field, so it has to be a real option
+    -- and it has to sit INSIDE the range — and the steps offered are weighted
+    -- below it, because that is the direction players actually reach.
+    local steps = Omerta.HUD.SCALE_STEPS
+    assert(#steps >= 5, "a scale with three options is not an accessibility control")
+    local hasOne, below, above = false, 0, 0
+    for _, value in ipairs(steps) do
+        assert(C(value) == value, value .. "x is offered but would be clamped away")
+        if math.abs(value - 1) < 0.001 then hasOne = true
+        elseif value < 1 then below = below + 1
+        else above = above + 1 end
+    end
+    assert(hasOne, "1x must be offered — it is the size the game was tuned at")
+    assert(below > above, "the room below 1x is where the tuning happens")
     assert(C("nonsense") == 1, "unparseable falls back to 1")
     assert(C(nil) == 1, "nil falls back to 1")
     assert(C(0 / 0) == 1, "NaN falls back to 1")

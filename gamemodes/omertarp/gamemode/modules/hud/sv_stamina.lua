@@ -28,12 +28,13 @@ Omerta.Config.Define("movement.jump_power", {
     description = "How hard a rested character jumps.",
 })
 
--- 12 gives roughly eight seconds of flat sprint from full — 18 gave five and
--- change, which field-tested as running out before the corner you were
--- running for. The recovery rate is untouched: the wind still takes longer to
--- get back than to spend.
+-- Roughly thirteen seconds of flat sprint from full. It has come down twice
+-- from 18 — five seconds, then eight — and both were still short of a chase
+-- being a decision rather than an interruption. The recovery rate is
+-- untouched: wind still takes longer to get back than to spend, which is
+-- what keeps a sprint a cost at all.
 Omerta.Config.Define("stamina.drain_per_second", {
-    type = "number", default = 12, min = 1, max = 100, scope = "server",
+    type = "number", default = 7.5, min = 1, max = 100, scope = "server",
     description = "Stamina points lost per second while sprinting (of 100).",
 })
 Omerta.Config.Define("stamina.regen_per_second", {

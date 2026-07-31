@@ -13,6 +13,16 @@ Omerta.Weapons = Omerta.Weapons or {}
 local shownUntil = 0
 local lastClass, lastClip = nil, -1
 
+-- What is left in the coat. The clip is predicted and free to read, but rounds
+-- in a pocket are M9 inventory rows the client is not continuously told about
+-- — so the server sends this number when it changes, and the readout simply
+-- shows the last thing it was told.
+local reserve = 0
+
+hook.Add("Omerta.WeaponReserve", "omerta.weapons.reserve", function(count)
+    reserve = count or 0
+end)
+
 local function activeOmertaWeapon()
     local ply = LocalPlayer()
     if not IsValid(ply) then return nil end
@@ -36,11 +46,17 @@ hook.Add("Think", "omerta.weapons.readout", function()
     end
 end)
 
+-- The ammunition block, bottom right. It is present the whole time a gun is
+-- in the hands rather than for a few seconds after touching it: a drawn
+-- weapon is a decision the player is actively living with, and how many
+-- rounds are in it is the single fact that decision turns on. It fades in as
+-- the gun comes up and out as it goes away, so putting it away still returns
+-- the screen to empty.
 Omerta.HUD.Register("weapons.rounds", {
     order = 21,
-    fade = 0.3,
+    fade = 0.35,
     visible = function()
-        return activeOmertaWeapon() ~= nil and CurTime() < shownUntil
+        return activeOmertaWeapon() ~= nil
     end,
     draw = function(alpha)
         local wep = activeOmertaWeapon()
@@ -52,22 +68,33 @@ Omerta.HUD.Register("weapons.rounds", {
         local x = ScrW() - margin
         local y = ScrH() - margin
 
-        -- The guide's ammunition block, bottom-right: the count as the big
-        -- tabular number, the context under it in the system voice. No low
-        -- colour — the words carry it, and the guide colours nothing but the
-        -- selected and the irreversible.
-        local context
-        if clip <= 0 then
-            context = "EMPTY · PRESS R"
-        else
-            context = "IN THE " .. string.upper(def and def.chamber or "magazine")
-        end
+        -- LOADED / reserve. The loaded count is the big tabular number and
+        -- the reserve trails it, smaller and dimmer — a glance answers "can I
+        -- keep firing", a longer look answers "can I keep going".
+        local loaded = tostring(clip)
+        surface.SetFont(Omerta.HUD.Font("count"))
+        local loadedWide = surface.GetTextSize(loaded)
 
-        Omerta.HUD.Text(context, "mono", x, y,
-            Omerta.HUD.Colour("secondary", 235 * alpha),
-            TEXT_ALIGN_RIGHT, TEXT_ALIGN_BOTTOM)
-        Omerta.HUD.Text(clip, "count", x, y - 20 * scale,
+        Omerta.HUD.Text(loaded, "count", x, y,
             Omerta.HUD.Colour("text", 245 * alpha),
             TEXT_ALIGN_RIGHT, TEXT_ALIGN_BOTTOM)
+        Omerta.HUD.Text("/ " .. reserve, "label",
+            x - loadedWide - 6 * scale, y - 2 * scale,
+            Omerta.HUD.Colour("secondary", 150 * alpha),
+            TEXT_ALIGN_RIGHT, TEXT_ALIGN_BOTTOM)
+
+        -- The line under it only speaks when it has something to say: an
+        -- empty gun, or an empty gun with nothing to feed it.
+        local note
+        if clip <= 0 and reserve <= 0 then
+            note = "NOTHING LEFT"
+        elseif clip <= 0 then
+            note = "EMPTY · PRESS R"
+        end
+        if note then
+            Omerta.HUD.Text(note, "mono", x, y - 34 * scale,
+                Omerta.HUD.Colour(reserve <= 0 and "danger" or "secondary", 235 * alpha),
+                TEXT_ALIGN_RIGHT, TEXT_ALIGN_BOTTOM)
+        end
     end,
 })

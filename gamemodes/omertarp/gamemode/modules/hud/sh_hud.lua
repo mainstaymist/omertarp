@@ -14,7 +14,16 @@
 Omerta.HUD = Omerta.HUD or {}
 
 -- Accessibility: text scales, and the clamp is pure so it can be tested.
-Omerta.HUD.SCALE_MIN, Omerta.HUD.SCALE_MAX = 0.75, 1.5
+--
+-- 1.0 is the size the project lead signed off in the field, so it is the
+-- anchor rather than a midpoint: the room below it is where the tuning
+-- happens (the type is deliberately large, and some players will want it
+-- smaller), and the room above exists for players who need it.
+Omerta.HUD.SCALE_MIN, Omerta.HUD.SCALE_MAX = 0.6, 1.4
+
+-- The steps the settings screen offers. Weighted downward for the same
+-- reason: below 1.0 is where most people will actually reach.
+Omerta.HUD.SCALE_STEPS = { 0.6, 0.7, 0.8, 0.9, 1, 1.2, 1.4 }
 
 function Omerta.HUD.ClampScale(value)
     value = tonumber(value) or 1

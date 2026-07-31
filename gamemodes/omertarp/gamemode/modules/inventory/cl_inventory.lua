@@ -9,10 +9,11 @@
 -- is the same plate with two identical columns and one vertical rule between
 -- them, because symmetry already says "these two are the same kind of thing".
 --
--- Your own pockets are two panes of that one plate: the man on the left with
--- what he is running on written under him, the ledger on the right. The plate
--- sits right of centre so the left pane's body has somewhere to be without
--- covering what the player was looking at.
+-- Your own pockets are two panes of that one plate, centred: the man on the
+-- left with what he is running on written under him, the ledger on the right.
+-- It rises into place and sinks back out over about a tenth of a second —
+-- fast, because a window held open by a key is looked at in glances and an
+-- animation you wait for every time becomes the most irritating thing here.
 --
 -- Held open by C (see the bottom of the file), which is why there is no close
 -- button anywhere: chrome for closing would promise a different interaction
@@ -34,6 +35,10 @@ local state = {
     bulkUsed = 0,
     bulkLimit = 0,
 }
+
+-- The soft focus behind the window. One material, reused: rebuilding it per
+-- frame is what makes a blur expensive.
+local BLUR = Material("pp/blurscreen")
 
 local hunger = Omerta.Hunger.MAX
 local frame = nil
@@ -127,6 +132,14 @@ end
 
 function Omerta.Inventory.Request(containerEntIndex)
     Omerta.Net.Request("inventory.open", { target = containerEntIndex or 0 })
+end
+
+-- Whether the window currently owns the screen. Read by anything that draws a
+-- HUD element the window would otherwise duplicate — the weapon-equip
+-- progress in particular, which appears on the item's own row while the
+-- pockets are open and as a plate on the HUD once they are not.
+function Omerta.Inventory.IsOpen()
+    return IsValid(frame) and not frame.OmertaClosing
 end
 
 -- Which verbs a body offers depends on its INJURY state, not on what is left
@@ -410,12 +423,30 @@ local function buildRow(parent, entry, mine, wide)
             end
         end
 
-        -- The row LOOT ALL is lifting: the row itself is the progress bar,
+        -- A row the game is working on: LOOT ALL lifting it, or the character
+        -- drawing the weapon it names. The row ITSELF is the progress bar,
         -- sweeping its full width, and the words grey out while it does —
-        -- something being taken is not something you can still act on.
+        -- something mid-action is not something you can still act on.
+        --
+        -- Equipping shares the treatment deliberately. It is the same fact in
+        -- both cases (this row is busy, for this long), and the progress comes
+        -- from the server's own clock, which is what lets the bar hand off to
+        -- the HUD plate and back without ever jumping.
+        local drawingInstance, drawingProgress
+        if mine and Omerta.Weapons and Omerta.Weapons.EquipProgress then
+            drawingInstance, drawingProgress = Omerta.Weapons.EquipProgress()
+        end
+        local drawing = drawingInstance == entry.instance
+
+        local progress
         if taking then
-            local progress = math.Clamp(
+            progress = math.Clamp(
                 (CurTime() - lootAll.startedAt) / LOOT_ALL_SECONDS, 0, 1)
+        elseif drawing then
+            progress = math.Clamp(drawingProgress or 0, 0, 1)
+        end
+
+        if progress then
             surface.SetDrawColor(Omerta.HUD.Colour("brass",
                 Omerta.HUD.Theme.ALPHA.wash * 255))
             surface.DrawRect(0, 0, w * progress, h)
@@ -427,7 +458,7 @@ local function buildRow(parent, entry, mine, wide)
         local textColour = held and Omerta.HUD.Colour("ink") or Omerta.HUD.Colour("text")
         local faintColour = held and Omerta.HUD.Colour("ink", 175)
             or Omerta.HUD.Colour("secondary")
-        if taking then
+        if progress then
             textColour = Omerta.HUD.Colour("text", 115)
             faintColour = Omerta.HUD.Colour("secondary", 115)
         end
@@ -441,7 +472,7 @@ local function buildRow(parent, entry, mine, wide)
             local fit = math.min(cell / mw, cell / mh)
             iw, ih = mw * fit, mh * fit
         end
-        if taking then
+        if progress then
             surface.SetDrawColor(Omerta.HUD.Colour("text", 115))
         else
             surface.SetDrawColor(held and Omerta.HUD.Colour("ink")
@@ -834,13 +865,73 @@ function Omerta.Inventory.Show()
     -- rummage, which feels right for pockets.
     frame:SetKeyboardInputEnabled(false)
 
-    -- ONE plate, per the guide — never two floating windows.
-    frame.Paint = function(_, w, h)
+    -- The window RISES into place and sinks back out.
+    --
+    -- Held open by a key, it is on screen for a second or two at a time, and
+    -- appearing in one frame read as a flash rather than as a thing being
+    -- looked at. It is deliberately fast — 0.12s in, 0.1s out — because an
+    -- animation you wait for on every glance becomes the most irritating
+    -- thing in the game. `anim` runs 0..1; the frame's own position is set
+    -- from it every frame rather than tweened by the panel system, so the
+    -- close can run after Rebuild has moved it.
+    frame.OmertaAnim = 0
+    frame.OmertaClosing = false
+    frame.OmertaRestY = nil
+
+    local RISE = 42 * scale
+
+    frame.Paint = function(self, w, h)
+        local eased = self.OmertaAnim * self.OmertaAnim * (3 - 2 * self.OmertaAnim)
+
+        -- The world softens behind it, gently: the player is still standing in
+        -- the street and may need to see somebody walk into it.
+        if eased > 0.01 then
+            surface.SetMaterial(BLUR)
+            surface.SetDrawColor(255, 255, 255, 255)
+            for pass = 1, 2 do
+                BLUR:SetFloat("$blur", (pass / 2) * 3 * eased)
+                BLUR:Recompute()
+                render.UpdateScreenEffectTexture()
+                surface.DrawTexturedRect(-self:GetX(), -self:GetY(), ScrW(), ScrH())
+            end
+        end
+
+        -- ONE plate, per the guide — never two floating windows.
         surface.SetDrawColor(Omerta.HUD.Colour("plate",
-            Omerta.HUD.Theme.ALPHA.focus * 255))
+            Omerta.HUD.Theme.ALPHA.focus * 255 * eased))
         surface.DrawRect(0, 0, w, h)
-        surface.SetDrawColor(Omerta.HUD.Colour("rule"))
+        surface.SetDrawColor(Omerta.HUD.Colour("rule", 255 * eased))
         surface.DrawOutlinedRect(0, 0, w, h, 1)
+    end
+
+    -- Children inherit the fade by riding the frame's alpha; the rise is the
+    -- frame's own position, so everything inside moves with it for free.
+    frame.Think = function(self)
+        local dt = FrameTime()
+        if self.OmertaClosing then
+            self.OmertaAnim = self.OmertaAnim - dt / 0.10
+            if self.OmertaAnim <= 0 then
+                self.OmertaAnim = 0
+                self:Remove()
+                return
+            end
+        elseif self.OmertaAnim < 1 then
+            self.OmertaAnim = math.min(1, self.OmertaAnim + dt / 0.12)
+        end
+
+        local eased = self.OmertaAnim * self.OmertaAnim * (3 - 2 * self.OmertaAnim)
+        self:SetAlpha(255 * eased)
+        if self.OmertaRestY then
+            self:SetPos(self:GetX(), self.OmertaRestY + RISE * (1 - eased))
+        end
+    end
+
+    -- Closing is a request, not a removal: the frame takes itself off screen
+    -- once it has finished sinking. Everything that used to call frame:Close()
+    -- or frame:Remove() goes through here so the animation cannot be skipped.
+    frame.OmertaClose = function(self)
+        if self.OmertaClosing then return end
+        self.OmertaClosing = true
     end
 
     local function rule(parent, x, height)
@@ -911,10 +1002,11 @@ function Omerta.Inventory.Show()
             buildLootActions()
             Internal.QueryLootActions(false)
         else
-            -- Right of centre: the plate is held up beside the world rather
-            -- than laid over it, and the pane on the left is a whole body.
-            self:SetPos(ScrW() * 0.5 - width * 0.5 + ScrW() * 0.07,
-                ScrH() * 0.5 - height * 0.5)
+            -- Centred, with the man on the left of the same plate. The first
+            -- version shifted the whole thing right to make room for him,
+            -- which put the ledger off-axis for the sake of a pane that was
+            -- always going to be part of the same object.
+            self:Center()
 
             local paneWide = math.floor(width * 0.38)
             local character = buildCharacterPane(self, paneWide, height)
@@ -931,6 +1023,11 @@ function Omerta.Inventory.Show()
             local footer = buildFooter(column)
             footer.OmertaOwned = true
         end
+
+        -- Where the window rests once it has finished rising. Captured after
+        -- the layout has placed it, because Think offsets from this and would
+        -- otherwise compound its own offset on every rebuild.
+        self.OmertaRestY = self:GetY()
     end
 
     frame:Rebuild()
@@ -971,7 +1068,7 @@ local wasDown = false
 concommand.Add("omerta_inventory", function()
     if IsValid(frame) and pinned then
         pinned = false
-        frame:Close()
+        frame:OmertaClose()
         return
     end
     pinned = true
@@ -996,13 +1093,16 @@ hook.Add("Think", "omerta.inventory.hold", function()
         return
     end
 
-    local open = IsValid(frame)
+    -- A window that is sinking out counts as closed, so tapping C again
+    -- during the animation reopens immediately rather than waiting for it to
+    -- finish and then ignoring the press.
+    local open = IsValid(frame) and not frame.OmertaClosing
     local looting = open and state.container and state.container > 0
 
     if looting then
         -- A press dismisses the loot plate; holding is not required while
         -- both hands are in somebody's coat.
-        if pressed then frame:Close() end
+        if pressed then frame:OmertaClose() end
         return
     end
 
@@ -1013,7 +1113,7 @@ hook.Add("Think", "omerta.inventory.hold", function()
         frame.OmertaHeld = true
         Omerta.Inventory.Request(0)
     elseif not down and open and frame.OmertaHeld then
-        frame:Close()
+        frame:OmertaClose()
     end
 end)
 

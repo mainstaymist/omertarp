@@ -467,9 +467,11 @@ Omerta.HUD.Register("interactable", {
     end,
     draw = function(alpha)
         local scale = Omerta.HUD.Scale()
-        -- A CIRCLE, with its own ring of ink — a square this small read as a
-        -- pixel error, and anything bigger as an aiming reticle.
-        local radius = 3 * scale
+        -- A CIRCLE, with its own ring of ink. Small on purpose: this marks
+        -- where you are looking, and anything bigger starts reading as an
+        -- aiming reticle — which is a promise about gunplay this game does
+        -- not make.
+        local radius = 1.5 * scale
         local cx, cy = ScrW() * 0.5, ScrH() * 0.5
         -- Faint with nothing in reach, full when there is.
         local presence = interactableTarget() and 1 or 0.45

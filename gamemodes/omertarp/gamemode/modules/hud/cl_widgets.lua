@@ -251,7 +251,9 @@ end)
 function Omerta.HUD.Menu()
     local scale = Omerta.HUD.Scale()
     local menu = DermaMenu()
-    menu:SetMinimumWidth(176 * scale)
+    -- Wide enough that the verbs are not squeezed against their own edges;
+    -- the first two attempts at this were both reported as too narrow.
+    menu:SetMinimumWidth(260 * scale)
     menu.Paint = function(_, w, h)
         surface.SetDrawColor(Omerta.HUD.Colour("plate",
             Omerta.HUD.Theme.ALPHA.menu * 255))
@@ -297,8 +299,8 @@ function Omerta.HUD.MenuOption(menu, label, onSelect, opts)
     option:SetFont(Omerta.HUD.Font("label"))
     -- Room above and below the words: the stock option height crops the
     -- type and makes the list read as cramped.
-    option:SetTall(36 * Omerta.HUD.Scale())
-    option:SetTextInset(14 * Omerta.HUD.Scale(), 0)
+    option:SetTall(42 * Omerta.HUD.Scale())
+    option:SetTextInset(18 * Omerta.HUD.Scale(), 0)
     option.Paint = function(self, w, h)
         local hovered = self:IsHovered()
         if hovered and not opts.danger then

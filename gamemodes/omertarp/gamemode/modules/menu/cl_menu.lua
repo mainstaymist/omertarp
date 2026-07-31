@@ -605,7 +605,7 @@ function Omerta.Menu.Client.BuildSettings(parent)
     row:DockMargin(0, Omerta.HUD.Space(1), 0, 0)
     row.Paint = nil
 
-    for _, value in ipairs({ 0.75, 1, 1.25, 1.5 }) do
+    for _, value in ipairs(Omerta.HUD.SCALE_STEPS) do
         local current = math.abs(Omerta.HUD.Scale() - value) < 0.01
         local button = Omerta.HUD.Button(row, value .. "x",
             current and "commit" or "quiet", function()
@@ -616,7 +616,10 @@ function Omerta.Menu.Client.BuildSettings(parent)
                 end)
             end)
         button:Dock(LEFT)
-        button:SetWide(84 * scale)
+        -- Seven steps have to share the rail, so they are sized from it
+        -- rather than from a number that happened to fit four.
+        button:SetWide(math.floor((COLUMN_W * scale - Omerta.HUD.Space(1) * 6)
+            / #Omerta.HUD.SCALE_STEPS))
         button:DockMargin(0, 0, Omerta.HUD.Space(1), 0)
     end
 
