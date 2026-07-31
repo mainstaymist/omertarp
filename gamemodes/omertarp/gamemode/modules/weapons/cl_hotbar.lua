@@ -125,10 +125,30 @@ hook.Add("Think", "omerta.weapons.hotbar_watch", function()
     end
 end)
 
--- No panels, no borders: four lines of type down the left edge, and the one
--- you are holding is simply the most PRESENT of them — full paper, shadowed,
--- while the rest sit faded behind it. Chrome around a list this small was
--- furniture, and the empty-screen rule hates furniture.
+-- The guide's §07 hotbar: a single column of 52px slot squares with 4px
+-- gutters, left-centre. Each slot is a scrim square with a 1px rule, its
+-- number in the corner in the system voice, and its item's icon tinted bone.
+-- ONLY the held slot gets the brass border, the brass number and the caption
+-- underneath — so "what is in my hands" is answerable without counting.
+-- Empty slots sit at 45%.
+
+local SLOT_ICON = {
+    [2] = "icon_gun",   -- primary
+    [3] = "icon_gun",   -- sidearm
+    [4] = "icon_tools", -- melee
+}
+
+local iconCache = {}
+
+local function slotIcon(index)
+    local name = SLOT_ICON[index]
+    if not name then return nil end
+    if not iconCache[name] then
+        iconCache[name] = Material("omertarp/icons/" .. name .. ".png", "smooth")
+    end
+    return iconCache[name]
+end
+
 Omerta.HUD.Register("weapons.hotbar", {
     order = 22,
     fade = 0.25,
@@ -141,28 +161,58 @@ Omerta.HUD.Register("weapons.hotbar", {
         local scale = Omerta.HUD.Scale()
         local active = activeIndex(slots)
 
-        local rowH = 42 * scale
-        local x = 28 * scale
-        local y = (ScrH() - 4 * rowH) * 0.5
+        local size = 52 * scale
+        local gap = Omerta.HUD.Space(1)
+        local x = Omerta.HUD.Space(5)
+        local y = (ScrH() - (4 * size + 3 * gap)) * 0.5
+        local theme = Omerta.HUD.Theme
 
         for i = 1, 4 do
             local slot = slots[i]
             local held = IsValid(slot.wep)
             local isActive = i == active
+            local presence = (isActive and 1 or held and 0.72 or 0.45) * alpha
 
-            Omerta.HUD.Text(i, "small", x, y + rowH * 0.5,
-                Color(120, 113, 103, (isActive and 220 or 120) * alpha),
-                TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+            surface.SetDrawColor(Omerta.HUD.Colour("plate",
+                theme.ALPHA.scrim * 255 * presence))
+            surface.DrawRect(x, y, size, size)
+            surface.SetDrawColor(Omerta.HUD.Colour(isActive and "brass" or "rule",
+                255 * presence))
+            surface.DrawOutlinedRect(x, y, size, size, 1)
 
-            -- A held slot names its item; an empty one dimly names itself, so
-            -- the bar reads as places things could be rather than a mystery.
-            local text = held and slot.name or slot.label
-            local textAlpha = isActive and 245 or held and 120 or 65
-            Omerta.HUD.Text(text, "body", x + 22 * scale, y + rowH * 0.5,
-                Color(232, 226, 210, textAlpha * alpha),
-                TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+            draw.SimpleText(i, Omerta.HUD.Font("mono"),
+                x + 4 * scale, y + 3 * scale,
+                Omerta.HUD.Colour(isActive and "brass" or "secondary", 235 * presence),
+                TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
 
-            y = y + rowH
+            local mat = held and slotIcon(i) or nil
+            if mat then
+                local cell = 24 * scale
+                local iw, ih = cell, cell
+                local mw, mh = mat:Width(), mat:Height()
+                if mw > 0 and mh > 0 then
+                    local fit = math.min(cell / mw, cell / mh)
+                    iw, ih = mw * fit, mh * fit
+                end
+                surface.SetDrawColor(Omerta.HUD.Colour(isActive and "brass" or "text",
+                    235 * presence))
+                surface.SetMaterial(mat)
+                surface.DrawTexturedRect(x + (size - iw) * 0.5, y + (size - ih) * 0.5, iw, ih)
+            end
+
+            y = y + size + gap
+        end
+
+        -- The caption: the held thing's name, and the fact it is in hands.
+        local heldSlot = slots[active]
+        if heldSlot and IsValid(heldSlot.wep) then
+            Omerta.HUD.Text(heldSlot.name or heldSlot.label, "small",
+                x, y + 2 * scale,
+                Omerta.HUD.Colour("text", 235 * alpha),
+                TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
+            Omerta.HUD.Text("in hands", "small", x, y + 20 * scale,
+                Omerta.HUD.Colour("secondary", 220 * alpha),
+                TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
         end
     end,
 })

@@ -50,6 +50,7 @@ Omerta.Weapons.Register("weapon.revolver", {
     rpm = 150,            -- 0.4s between shots: aimed fire, not a hose
     clip = 6,
     ammo = "ammo.38",
+    chamber = "cylinder", -- what the ammunition counter calls where rounds sit
     spread = 0.9,
     recoil = 2.2,
     reloadTime = 2.8,
@@ -77,6 +78,7 @@ Omerta.Weapons.Register("weapon.thompson", {
     rpm = 540,
     clip = 20,            -- the stick magazine; a drum is a later table edit
     ammo = "ammo.45",
+    chamber = "magazine",
     spread = 2.4,
     recoil = 0.9,
     reloadTime = 3.6,

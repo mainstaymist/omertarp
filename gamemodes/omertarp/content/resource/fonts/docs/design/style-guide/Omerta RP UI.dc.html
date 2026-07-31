@@ -1,0 +1,739 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@300;400;500&family=Archivo:wght@400;500;600&family=Playfair+Display:wght@400;700&family=Crimson+Pro:wght@400;600&family=Barlow+Condensed:wght@300;400;500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  body { margin:0; background:#1a1a1c; }
+  a { color:#C8A96A; text-decoration:none; border-bottom:1px solid #6b5c3a; }
+  a:hover { color:#E4CB96; border-bottom-color:#C8A96A; }
+  @keyframes omBreath { 0%,100% { opacity:.28 } 50% { opacity:.9 } }
+</style>
+</helmet>
+
+<section style="display:flex;flex-direction:column;gap:64px;padding:64px;background:#1a1a1c;font-family:Archivo,sans-serif">
+
+  <div style="display:flex;flex-direction:column;gap:10px;max-width:1000px">
+    <div style="font:500 11px/1 'IBM Plex Mono',monospace;letter-spacing:.22em;color:#7d766a">OMERTÀ RP — TURN 1</div>
+    <h1 style="margin:0;font:300 46px/1.05 Oswald,sans-serif;letter-spacing:.02em;color:#EEEAE1;text-transform:uppercase">Three directions, one built out</h1>
+    <p style="margin:0;font:400 15px/1.6 Archivo,sans-serif;color:#9A948A;text-wrap:pretty">Direction <a href="#1a">1a</a> Carbon is the recommendation and is mocked out in full. <a href="#1b">1b</a> Vellum and <a href="#1c">1c</a> Hairline are specified to the same depth with three sample screens each. Every frame is 1280×720, i.e. 1080p at 2/3 — px values quoted in the notes are the real 1080p values, and each direction states its 1.5× rule.</p>
+  </div>
+
+  <div style="display:flex;flex-wrap:wrap;gap:72px;align-items:flex-start">
+
+    <!-- ══════════════════════ 1a CARBON ══════════════════════ -->
+    <div id="1a" style="display:flex;flex-direction:column;gap:40px;flex:0 0 1280px;min-width:1280px">
+
+      <div style="display:flex;align-items:baseline;gap:16px;border-bottom:1px solid #34322d;padding-bottom:14px">
+        <span style="font:500 12px/1 'IBM Plex Mono',monospace;letter-spacing:.18em;color:#0A0A0B;background:#C8A96A;padding:6px 9px">1a</span>
+        <span style="font:400 34px/1 Oswald,sans-serif;letter-spacing:.06em;color:#EEEAE1;text-transform:uppercase">Carbon</span>
+        <span style="font:400 14px/1.4 Archivo,sans-serif;color:#8b857a">Recommended. Ink plates, hairline rules, condensed sign-painter caps. The UI behaves like a thing printed on the world, not a thing floating above it.</span>
+      </div>
+
+      <!-- SPEC SHEET -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:32px">
+
+        <div style="background:#0A0A0B;border:1px solid #34322d;padding:28px;display:flex;flex-direction:column;gap:22px">
+          <div style="font:500 11px/1 'IBM Plex Mono',monospace;letter-spacing:.2em;color:#6f695f">01 · TYPE — TWO FILES</div>
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <div style="font:300 52px/1 Oswald,sans-serif;letter-spacing:.04em;color:#EEEAE1;text-transform:uppercase">Oswald 300/400</div>
+            <div style="font:400 12px/1.5 'IBM Plex Mono',monospace;color:#8b857a">Google Fonts · OFL · display: titles, labels, verbs, all caps, tracking .08em</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:4px">
+            <div style="font:400 26px/1.35 Archivo,sans-serif;color:#EEEAE1">Archivo 400/500/600 — 1,240 · 12ga · Anna Vitale</div>
+            <div style="font:400 12px/1.5 'IBM Plex Mono',monospace;color:#8b857a">Google Fonts · OFL · text: names, body, quantities. Tabular numerals, so ledgers and ammo don't jitter.</div>
+          </div>
+          <div style="height:1px;background:#2a2823"></div>
+          <div style="display:grid;grid-template-columns:auto 1fr;gap:6px 18px;font:400 13px/1.5 Archivo,sans-serif;color:#9A948A">
+            <span style="color:#EEEAE1">13px</span><span>mono-cased label, caps, .18em — system voice</span>
+            <span style="color:#EEEAE1">15px</span><span>body / hint line</span>
+            <span style="color:#EEEAE1">20px</span><span>what you are looking at</span>
+            <span style="color:#EEEAE1">26px</span><span>window title</span>
+            <span style="color:#EEEAE1">46px</span><span>death title — the only large type in the game</span>
+          </div>
+          <div style="font:400 13px/1.6 Archivo,sans-serif;color:#6f695f">Condensed gothic caps are the lettering of 1930s American signage, tickets and newsprint decks — period without costume, and it survives being small.</div>
+        </div>
+
+        <div style="background:#0A0A0B;border:1px solid #34322d;padding:28px;display:flex;flex-direction:column;gap:22px">
+          <div style="font:500 11px/1 'IBM Plex Mono',monospace;letter-spacing:.2em;color:#6f695f">02 · PALETTE — SIX HEX</div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px">
+            <div style="display:flex;flex-direction:column;gap:8px"><div style="height:56px;background:#0A0A0B;border:1px solid #34322d"></div><div style="font:400 11px/1.5 'IBM Plex Mono',monospace;color:#8b857a">#0A0A0B<br>plate</div></div>
+            <div style="display:flex;flex-direction:column;gap:8px"><div style="height:56px;background:#3A362F"></div><div style="font:400 11px/1.5 'IBM Plex Mono',monospace;color:#8b857a">#3A362F<br>rule 1px</div></div>
+            <div style="display:flex;flex-direction:column;gap:8px"><div style="height:56px;background:#EEEAE1"></div><div style="font:400 11px/1.5 'IBM Plex Mono',monospace;color:#8b857a">#EEEAE1<br>text · icon tint</div></div>
+            <div style="display:flex;flex-direction:column;gap:8px"><div style="height:56px;background:#9A948A"></div><div style="font:400 11px/1.5 'IBM Plex Mono',monospace;color:#8b857a">#9A948A<br>secondary</div></div>
+            <div style="display:flex;flex-direction:column;gap:8px"><div style="height:56px;background:#C8A96A"></div><div style="font:400 11px/1.5 'IBM Plex Mono',monospace;color:#8b857a">#C8A96A<br>brass · selection</div></div>
+            <div style="display:flex;flex-direction:column;gap:8px"><div style="height:56px;background:#8E2B22"></div><div style="font:400 11px/1.5 'IBM Plex Mono',monospace;color:#8b857a">#8E2B22<br>irreversible</div></div>
+          </div>
+          <div style="font:400 13px/1.6 Archivo,sans-serif;color:#6f695f">Bone-warm white instead of #FFF so the UI reads as ink and paper, not glass. Brass marks the one thing under the cursor; #8E2B22 is reserved for what cannot be undone — dropping, drinking, dying. Nothing else is ever coloured.</div>
+          <div style="height:1px;background:#2a2823"></div>
+          <div style="font:500 11px/1 'IBM Plex Mono',monospace;letter-spacing:.2em;color:#6f695f">03 · SPACE, LINE, SHAPE</div>
+          <div style="display:grid;grid-template-columns:auto 1fr;gap:6px 18px;font:400 13px/1.5 Archivo,sans-serif;color:#9A948A">
+            <span style="color:#EEEAE1">4px</span><span>base unit. Only 4·8·12·16·24·32·48 exist.</span>
+            <span style="color:#EEEAE1">0px</span><span>corner radius, everywhere, no exceptions.</span>
+            <span style="color:#EEEAE1">1px</span><span>every rule and border. Never 2px, never doubled.</span>
+            <span style="color:#EEEAE1">24px</span><span>screen-edge margin (36px at 1.5×).</span>
+          </div>
+          <div style="font:400 13px/1.6 Archivo,sans-serif;color:#6f695f">Rectangles only, aligned to a 4px grid, so the whole system is expressible as draw.RoundedBox(0,…) and surf.DrawLine.</div>
+        </div>
+      </div>
+
+      <!-- LEGIBILITY -->
+      <div style="background:#0A0A0B;border:1px solid #34322d;padding:28px;display:flex;flex-direction:column;gap:20px">
+        <div style="display:flex;align-items:baseline;gap:16px">
+          <span style="font:500 11px/1 'IBM Plex Mono',monospace;letter-spacing:.2em;color:#6f695f">04 · LEGIBILITY OVER LIVE VIDEO</span>
+          <span style="font:400 14px/1.5 Archivo,sans-serif;color:#9A948A">Two techniques, chosen by layer. Nothing gets both.</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px">
+          <div style="display:flex;flex-direction:column;gap:12px">
+            <div style="font:400 15px/1.5 Archivo,sans-serif;color:#EEEAE1"><b>World layer → 1px hard outline.</b> Four black offsets at 100% alpha, no blur, no soft shadow. A blurred shadow disappears against mid-grey; a hard outline is a shape and cannot.</div>
+            <div style="display:flex;gap:0">
+              <div style="flex:1;height:104px;display:flex;align-items:center;justify-content:center;background:#C9CCC7;background-image:repeating-linear-gradient(135deg,#C9CCC7 0px,#C9CCC7 12px,#BFC3BE 12px,#BFC3BE 24px)">
+                <span style="font:400 20px/1 Archivo,sans-serif;color:#EEEAE1;text-shadow:0 1px 0 #000,0 -1px 0 #000,1px 0 0 #000,-1px 0 0 #000">Marco Vitale</span>
+              </div>
+              <div style="flex:1;height:104px;display:flex;align-items:center;justify-content:center;background:#0E1012;background-image:repeating-linear-gradient(135deg,#0E1012 0px,#0E1012 12px,#141719 12px,#141719 24px)">
+                <span style="font:400 20px/1 Archivo,sans-serif;color:#EEEAE1;text-shadow:0 1px 0 #000,0 -1px 0 #000,1px 0 0 #000,-1px 0 0 #000">Marco Vitale</span>
+              </div>
+            </div>
+            <div style="font:400 12px/1.5 'IBM Plex Mono',monospace;color:#6f695f">bright sky · dark alley — same colour, same weight, no scrim</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:12px">
+            <div style="font:400 15px/1.5 Archivo,sans-serif;color:#EEEAE1"><b>Cluster layer → scrim plate.</b> Anything with more than three lines (hotbar, verb menu, timed action) sits on #0A0A0B at 62%, 12px padding, one 1px #3A362F rule on the side facing the screen edge. Focus windows go to 94% + full-screen blur, because at that point the player is not playing.</div>
+            <div style="display:flex;gap:0">
+              <div style="flex:1;height:104px;display:flex;align-items:center;justify-content:center;background:#C9CCC7;background-image:repeating-linear-gradient(135deg,#C9CCC7 0px,#C9CCC7 12px,#BFC3BE 12px,#BFC3BE 24px)">
+                <span style="font:400 20px/1 Archivo,sans-serif;color:#EEEAE1;background:rgba(10,10,11,.62);padding:12px 16px;border-left:1px solid #3A362F">Marco Vitale</span>
+              </div>
+              <div style="flex:1;height:104px;display:flex;align-items:center;justify-content:center;background:#0E1012;background-image:repeating-linear-gradient(135deg,#0E1012 0px,#0E1012 12px,#141719 12px,#141719 24px)">
+                <span style="font:400 20px/1 Archivo,sans-serif;color:#EEEAE1;background:rgba(10,10,11,.62);padding:12px 16px;border-left:1px solid #3A362F">Marco Vitale</span>
+              </div>
+            </div>
+            <div style="font:400 12px/1.5 'IBM Plex Mono',monospace;color:#6f695f">62% ink is dark enough for a sky and light enough to keep the alley visible through it</div>
+          </div>
+        </div>
+        <div style="height:1px;background:#2a2823"></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:24px;font:400 13px/1.6 Archivo,sans-serif;color:#9A948A">
+          <div><span style="color:#EEEAE1">Icons.</span> White line art, 24px box, 1.5px stroke, tinted #EEEAE1 at rest / #C8A96A when selected / #9A948A at 45% when unavailable. Tint only — never a baked colour, never two tints in one icon.</div>
+          <div><span style="color:#EEEAE1">Motion.</span> Fade only: 120ms in, 220ms out, no slide, no scale. Position is information — a thing that moves while appearing reads as a second thing.</div>
+          <div><span style="color:#EEEAE1">1.5× scale.</span> Everything is expressed in units of the 4px grid, so scaling multiplies the unit, not the layout. Only fixed pixel value in the system is the 1px rule and the 1px text outline — both stay 1px at every scale, because a 1.5px hairline is a grey smear.</div>
+        </div>
+      </div>
+
+      <!-- ─────────── HUD LAYER ─────────── -->
+      <div style="display:flex;align-items:baseline;gap:14px;margin-top:8px">
+        <span style="font:400 22px/1 Oswald,sans-serif;letter-spacing:.1em;color:#EEEAE1;text-transform:uppercase">Contextual layer</span>
+        <span style="font:400 13px/1.5 Archivo,sans-serif;color:#6f695f">on screen for 2–5 seconds, over a moving world</span>
+      </div>
+
+      <!-- interaction stack ladder -->
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div style="font:500 11px/1 'IBM Plex Mono',monospace;letter-spacing:.2em;color:#6f695f">05 · INTERACTION DOT + TARGET + HINT — ONE COLUMN, THREE STAGES</div>
+        <div style="display:flex;gap:16px">
+          <div style="width:404px;height:227px;position:relative;overflow:hidden;background:#0E1012;background-image:repeating-linear-gradient(135deg,#0E1012 0px,#0E1012 14px,#141719 14px,#141719 28px)">
+            <div style="position:absolute;left:50%;top:50%;width:3px;height:3px;margin:-1.5px 0 0 -1.5px;background:#EEEAE1;opacity:.55;box-shadow:0 0 0 1px rgba(0,0,0,.9)"></div>
+            <span style="position:absolute;left:12px;bottom:10px;font:400 10px/1 'IBM Plex Mono',monospace;letter-spacing:.14em;color:#4A4F56">NOTHING IN REACH</span>
+          </div>
+          <div style="width:404px;height:227px;position:relative;overflow:hidden;background:#0E1012;background-image:repeating-linear-gradient(135deg,#0E1012 0px,#0E1012 14px,#141719 14px,#141719 28px)">
+            <div style="position:absolute;left:50%;top:50%;width:3px;height:3px;margin:-1.5px 0 0 -1.5px;background:#EEEAE1;box-shadow:0 0 0 1px rgba(0,0,0,.9)"></div>
+            <div style="position:absolute;left:0;right:0;top:50%;margin-top:24px;text-align:center;font:400 20px/1 Archivo,sans-serif;color:#EEEAE1;text-shadow:0 1px 0 #000,0 -1px 0 #000,1px 0 0 #000,-1px 0 0 #000">Unknown</div>
+            <span style="position:absolute;left:12px;bottom:10px;font:400 10px/1 'IBM Plex Mono',monospace;letter-spacing:.14em;color:#4A4F56">A STRANGER · NAME NOT KNOWN TO YOU</span>
+          </div>
+          <div style="width:404px;height:227px;position:relative;overflow:hidden;background:#0E1012;background-image:repeating-linear-gradient(135deg,#0E1012 0px,#0E1012 14px,#141719 14px,#141719 28px)">
+            <div style="position:absolute;left:50%;top:50%;width:3px;height:3px;margin:-1.5px 0 0 -1.5px;background:#EEEAE1;box-shadow:0 0 0 1px rgba(0,0,0,.9)"></div>
+            <div style="position:absolute;left:0;right:0;top:50%;margin-top:24px;display:flex;flex-direction:column;align-items:center;gap:6px">
+              <div style="font:400 20px/1 Archivo,sans-serif;color:#EEEAE1;text-shadow:0 1px 0 #000,0 -1px 0 #000,1px 0 0 #000,-1px 0 0 #000">Marco Vitale</div>
+              <div style="font:400 14px/1 Archivo,sans-serif;color:#9A948A;text-shadow:0 1px 0 #000,0 -1px 0 #000,1px 0 0 #000,-1px 0 0 #000"><span style="color:#EEEAE1">E</span> to drag &nbsp;·&nbsp; hold <span style="color:#EEEAE1">E</span> for more</div>
+            </div>
+            <span style="position:absolute;left:12px;bottom:10px;font:400 10px/1 'IBM Plex Mono',monospace;letter-spacing:.14em;color:#4A4F56">KNOWN PERSON + AVAILABLE VERB</span>
+          </div>
+        </div>
+        <div style="font:400 13px/1.6 Archivo,sans-serif;color:#9A948A;max-width:900px">One centred column, fixed anchors: dot at centre, subject at +24px, hint at +48px. They can't collide because the hint never renders without the subject line above it, and the subject line's baseline never moves — the hint is the only thing that appears and disappears. The dot dims to 55% and shrinks its alpha, not its size, when nothing is in reach, so the crosshair never turns into an aiming reticle.</div>
+      </div>
+
+      <!-- verb menu + hotbar/stamina -->
+      <div style="display:flex;gap:16px;flex-wrap:wrap">
+        <div style="display:flex;flex-direction:column;gap:14px">
+          <div style="font:500 11px/1 'IBM Plex Mono',monospace;letter-spacing:.2em;color:#6f695f">06 · HELD-KEY VERB MENU — MOUSE WHEEL</div>
+          <div style="width:632px;height:356px;position:relative;overflow:hidden;background:#0E1012;background-image:repeating-linear-gradient(135deg,#0E1012 0px,#0E1012 14px,#141719 14px,#141719 28px)">
+            <div style="position:absolute;left:50%;top:50%;width:3px;height:3px;margin:-1.5px 0 0 -1.5px;background:#EEEAE1;box-shadow:0 0 0 1px rgba(0,0,0,.9)"></div>
+            <div style="position:absolute;left:50%;top:50%;margin:22px 0 0 -100px;width:200px;background:rgba(10,10,11,.62);border-top:1px solid #3A362F;padding:10px 0">
+              <div style="padding:6px 14px;font:400 15px/1.2 Archivo,sans-serif;color:#9A948A">Search</div>
+              <div style="padding:6px 14px;font:400 15px/1.2 Archivo,sans-serif;color:#0A0A0B;background:#C8A96A;display:flex;justify-content:space-between"><span>Drag</span><span style="font:400 12px/1.4 'IBM Plex Mono',monospace;opacity:.7">LMB</span></div>
+              <div style="padding:6px 14px;font:400 15px/1.2 Archivo,sans-serif;color:#9A948A">Check pulse</div>
+              <div style="padding:6px 14px;font:400 15px/1.2 Archivo,sans-serif;color:#9A948A">Hide body</div>
+            </div>
+            <span style="position:absolute;left:12px;bottom:10px;font:400 10px/1 'IBM Plex Mono',monospace;letter-spacing:.14em;color:#4A4F56">HOLD E · WHEEL TO CHANGE · RELEASE TO COMMIT</span>
+          </div>
+          <div style="font:400 13px/1.6 Archivo,sans-serif;color:#9A948A;max-width:632px">The menu grows out of the same column the hint line used, replacing it — the hint <i>was</i> the promise of this list, so it should become it rather than sit beside it. Selection is a filled brass row with black type: the only inversion in the game, unmistakable in peripheral vision at speed.</div>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:14px">
+          <div style="font:500 11px/1 'IBM Plex Mono',monospace;letter-spacing:.2em;color:#6f695f">07 · HOTBAR + STAMINA + AMMUNITION</div>
+          <div style="width:632px;height:356px;position:relative;overflow:hidden;background:#0E1012;background-image:repeating-linear-gradient(135deg,#0E1012 0px,#0E1012 14px,#141719 14px,#141719 28px)">
+            <div style="position:absolute;left:16px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:4px">
+              <div style="width:52px;height:52px;background:rgba(10,10,11,.62);border:1px solid #C8A96A;position:relative;display:flex;align-items:center;justify-content:center">
+                <div style="width:22px;height:22px;border:1.5px solid #C8A96A;transform:rotate(45deg)"></div>
+                <span style="position:absolute;left:4px;top:3px;font:400 10px/1 'IBM Plex Mono',monospace;color:#C8A96A">1</span>
+              </div>
+              <div style="width:52px;height:52px;background:rgba(10,10,11,.5);border:1px solid #3A362F;position:relative;display:flex;align-items:center;justify-content:center;opacity:.72">
+                <div style="width:20px;height:20px;border:1.5px solid #EEEAE1;border-radius:50%"></div>
+                <span style="position:absolute;left:4px;top:3px;font:400 10px/1 'IBM Plex Mono',monospace;color:#9A948A">2</span>
+              </div>
+              <div style="width:52px;height:52px;background:rgba(10,10,11,.5);border:1px solid #3A362F;position:relative;display:flex;align-items:center;justify-content:center;opacity:.72">
+                <div style="width:22px;height:14px;border:1.5px solid #EEEAE1"></div>
+                <span style="position:absolute;left:4px;top:3px;font:400 10px/1 'IBM Plex Mono',monospace;color:#9A948A">3</span>
+              </div>
+              <div style="width:52px;height:52px;background:rgba(10,10,11,.5);border:1px solid #3A362F;position:relative;opacity:.45">
+                <span style="position:absolute;left:4px;top:3px;font:400 10px/1 'IBM Plex Mono',monospace;color:#9A948A">4</span>
+              </div>
+              <div style="width:52px;font:400 11px/1.3 Archivo,sans-serif;color:#EEEAE1;text-shadow:0 1px 0 #000,1px 0 0 #000,-1px 0 0 #000;padding-top:2px">Knife<br><span style="color:#9A948A">in hands</span></div>
+            </div>
+            <div style="position:absolute;left:16px;bottom:22px;display:flex;gap:2px">
+              <div style="width:9px;height:3px;background:#EEEAE1"></div><div style="width:9px;height:3px;background:#EEEAE1"></div><div style="width:9px;height:3px;background:#EEEAE1"></div><div style="width:9px;height:3px;background:#EEEAE1"></div><div style="width:9px;height:3px;background:#EEEAE1"></div><div style="width:9px;height:3px;background:#EEEAE1"></div><div style="width:9px;height:3px;background:#EEEAE1"></div>
+              <div style="width:9px;height:3px;background:#EEEAE1;opacity:.18"></div><div style="width:9px;height:3px;background:#EEEAE1;opacity:.18"></div><div style="width:9px;height:3px;background:#EEEAE1;opacity:.18"></div><div style="width:9px;height:3px;background:#EEEAE1;opacity:.18"></div><div style="width:9px;height:3px;background:#EEEAE1;opacity:.18"></div>
+            </div>
+            <div style="position:absolute;right:16px;bottom:18px;text-align:right">
+              <div style="font:500 30px/1 Archivo,sans-serif;font-variant-numeric:tabular-nums;color:#EEEAE1;text-shadow:0 1px 0 #000,0 -1px 0 #000,1px 0 0 #000,-1px 0 0 #000">6</div>
+              <div style="font:400 12px/1.4 'IBM Plex Mono',monospace;letter-spacing:.1em;color:#9A948A;text-shadow:0 1px 0 #000,1px 0 0 #000,-1px 0 0 #000">IN THE CYLINDER · 12 LOOSE</div>
+            </div>
+            <span style="position:absolute;left:16px;bottom:8px;font:400 10px/1 'IBM Plex Mono',monospace;letter-spacing:.14em;color:#4A4F56">STAMINA — SPENT SEGMENTS STAY, THEY DON'T SLIDE</span>
+          </div>
+          <div style="font:400 13px/1.6 Archivo,sans-serif;color:#9A948A;max-width:632px">Hotbar is a single 52px column with 4px gutters; only the held slot gets a brass border and a name caption, so "what is in my hands" is answerable without counting. Stamina is 12 discrete 9×3px ticks rather than a bar — a bar invites reading a percentage; ticks read as "a few breaths left". Ammunition appears on draw, reload, fire and holster, then leaves after 2s; it never persists.</div>
+        </div>
+      </div>
+
+      <!-- timed action + notice -->
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div style="font:500 11px/1 'IBM Plex Mono',monospace;letter-spacing:.2em;color:#6f695f">08 · TIMED ACTION + TRANSIENT NOTICE</div>
+        <div style="width:1280px;height:720px;position:relative;overflow:hidden;background:#0E1012;background-image:repeating-linear-gradient(135deg,#0E1012 0px,#0E1012 16px,#141719 16px,#141719 32px)">
+          <div style="position:absolute;left:24px;top:24px;max-width:380px;background:rgba(10,10,11,.62);border-top:1px solid #3A362F;padding:12px 16px">
+            <div style="font:400 15px/1.5 Archivo,sans-serif;color:#EEEAE1">The bleeding has stopped, but he won't walk on that leg tonight.</div>
+          </div>
+          <div style="position:absolute;left:24px;top:132px;max-width:380px;background:rgba(10,10,11,.45);border-top:1px solid #2a2823;padding:12px 16px;opacity:.5">
+            <div style="font:400 15px/1.5 Archivo,sans-serif;color:#EEEAE1">You hear a car door, two streets over.</div>
+          </div>
+          <div style="position:absolute;left:50%;top:50%;width:3px;height:3px;margin:-1.5px 0 0 -1.5px;background:#EEEAE1;opacity:.55;box-shadow:0 0 0 1px rgba(0,0,0,.9)"></div>
+          <div style="position:absolute;left:50%;bottom:120px;transform:translateX(-50%);width:320px;background:rgba(10,10,11,.62);border-top:1px solid #3A362F;padding:14px 16px 16px">
+            <div style="display:flex;justify-content:space-between;align-items:baseline">
+              <span style="font:400 16px/1 Oswald,sans-serif;letter-spacing:.14em;color:#EEEAE1;text-transform:uppercase">Stabilizing</span>
+              <span style="font:400 12px/1 'IBM Plex Mono',monospace;letter-spacing:.1em;color:#9A948A">HOLD</span>
+            </div>
+            <div style="margin-top:12px;height:2px;background:rgba(238,234,225,.18)"><div style="width:62%;height:2px;background:#EEEAE1"></div></div>
+          </div>
+          <span style="position:absolute;left:24px;bottom:16px;font:400 11px/1 'IBM Plex Mono',monospace;letter-spacing:.14em;color:#4A4F56">3D WORLD — DARK ALLEY · TWO NOTICES, OLDER ONE ALREADY FADING</span>
+        </div>
+        <div style="font:400 13px/1.6 Archivo,sans-serif;color:#9A948A;max-width:1000px">Notices stack downward from the top-left with a 24px gutter, each fading independently over 6s, older ones dropping to 50% so the newest line is always the loud one — no counters, no queue indicator. The progress line has no ticks and no number; it is 2px tall and 320px wide, and it breaks (jumps back to 0 and vanishes) the instant you release, which teaches the rule better than a label would.</div>
+      </div>
+
+      <!-- ─────────── FOCUS WINDOWS ─────────── -->
+      <div style="display:flex;align-items:baseline;gap:14px;margin-top:8px">
+        <span style="font:400 22px/1 Oswald,sans-serif;letter-spacing:.1em;color:#EEEAE1;text-transform:uppercase">Focus windows</span>
+        <span style="font:400 13px/1.5 Archivo,sans-serif;color:#6f695f">mouse captured · world blurred 8px and darkened 35% · plate at 94%</span>
+      </div>
+
+      <!-- INVENTORY -->
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div style="font:500 11px/1 'IBM Plex Mono',monospace;letter-spacing:.2em;color:#6f695f">09 · INVENTORY</div>
+        <div style="width:1280px;height:720px;position:relative;overflow:hidden;background:#0E1012;background-image:repeating-linear-gradient(135deg,#0E1012 0px,#0E1012 40px,#131619 40px,#131619 80px)">
+          <div style="position:absolute;inset:0;background:rgba(6,6,7,.35)"></div>
+          <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:720px;background:rgba(10,10,11,.94);border:1px solid #3A362F">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;padding:20px 24px 16px;border-bottom:1px solid #3A362F">
+              <span style="font:400 26px/1 Oswald,sans-serif;letter-spacing:.1em;color:#EEEAE1;text-transform:uppercase">Pockets</span>
+              <span style="font:400 12px/1 'IBM Plex Mono',monospace;letter-spacing:.14em;color:#6f695f">TAB TO CLOSE</span>
+            </div>
+            <div style="display:grid;grid-template-columns:40px 1fr 56px 72px 96px;gap:0;padding:10px 24px 6px;font:400 11px/1 'IBM Plex Mono',monospace;letter-spacing:.14em;color:#6f695f;border-bottom:1px solid #23221e">
+              <span></span><span>ITEM</span><span style="text-align:right">QTY</span><span style="text-align:right">BULK</span><span style="text-align:right">STATE</span>
+            </div>
+            <div style="padding:4px 0">
+              <div style="display:grid;grid-template-columns:40px 1fr 56px 72px 96px;align-items:center;padding:9px 24px;background:#C8A96A">
+                <div style="width:20px;height:20px;border:1.5px solid #0A0A0B;transform:rotate(45deg)"></div>
+                <span style="font:400 15px/1.2 Archivo,sans-serif;color:#0A0A0B">Folding knife</span>
+                <span style="font:400 15px/1.2 Archivo,sans-serif;font-variant-numeric:tabular-nums;color:#0A0A0B;text-align:right">1</span>
+                <span style="font:400 15px/1.2 Archivo,sans-serif;font-variant-numeric:tabular-nums;color:#0A0A0B;text-align:right">1</span>
+                <span style="font:400 12px/1.2 'IBM Plex Mono',monospace;letter-spacing:.1em;color:#0A0A0B;text-align:right">IN HANDS</span>
+              </div>
+              <div style="display:grid;grid-template-columns:40px 1fr 56px 72px 96px;align-items:center;padding:9px 24px">
+                <div style="width:20px;height:20px;border:1.5px solid #EEEAE1"></div>
+                <span style="font:400 15px/1.2 Archivo,sans-serif;color:#EEEAE1">Wool overcoat</span>
+                <span style="font:400 15px/1.2 Archivo,sans-serif;font-variant-numeric:tabular-nums;color:#EEEAE1;text-align:right">1</span>
+                <span style="font:400 15px/1.2 Archivo,sans-serif;font-variant-numeric:tabular-nums;color:#9A948A;text-align:right">4</span>
+                <span style="font:400 12px/1.2 'IBM Plex Mono',monospace;letter-spacing:.1em;color:#C8A96A;text-align:right">WORN</span>
+              </div>
+              <div style="display:grid;grid-template-columns:40px 1fr 56px 72px 96px;align-items:center;padding:9px 24px">
+                <div style="width:18px;height:20px;border:1.5px solid #EEEAE1;border-radius:50% 50% 0 0"></div>
+                <span style="font:400 15px/1.2 Archivo,sans-serif;color:#EEEAE1">Bread, half a loaf</span>
+                <span style="font:400 15px/1.2 Archivo,sans-serif;font-variant-numeric:tabular-nums;color:#EEEAE1;text-align:right">1</span>
+                <span style="font:400 15px/1.2 Archivo,sans-serif;font-variant-numeric:tabular-nums;color:#9A948A;text-align:right">1</span>
+                <span style="font:400 12px/1.2 'IBM Plex Mono',monospace;letter-spacing:.1em;color:#6f695f;text-align:right">—</span>
+              </div>
+              <div style="display:grid;grid-template-columns:40px 1fr 56px 72px 96px;align-items:center;padding:9px 24px">
+                <div style="width:20px;height:12px;border:1.5px solid #EEEAE1"></div>
+                <span style="font:400 15px/1.2 Archivo,sans-serif;color:#EEEAE1">.38 cartridges</span>
+                <span style="font:400 15px/1.2 Archivo,sans-serif;font-variant-numeric:tabular-nums;color:#EEEAE1;text-align:right">12</span>
+                <span style="font:400 15px/1.2 Archivo,sans-serif;font-variant-numeric:tabular-nums;color:#9A948A;text-align:right">1</span>
+                <span style="font:400 12px/1.2 'IBM Plex Mono',monospace;letter-spacing:.1em;color:#6f695f;text-align:right">—</span>
+              </div>
+              <div style="display:grid;grid-template-columns:40px 1fr 56px 72px 96px;align-items:center;padding:9px 24px">
+                <div style="width:20px;height:20px;border:1.5px solid #EEEAE1;border-radius:50%"></div>
+                <span style="font:400 15px/1.2 Archivo,sans-serif;color:#EEEAE1">Pocket watch, no chain</span>
+                <span style="font:400 15px/1.2 Archivo,sans-serif;font-variant-numeric:tabular-nums;color:#EEEAE1;text-align:right">1</span>
+                <span style="font:400 15px/1.2 Archivo,sans-serif;font-variant-numeric:tabular-nums;color:#9A948A;text-align:right">1</span>
+                <span style="font:400 12px/1.2 'IBM Plex Mono',monospace;letter-spacing:.1em;color:#6f695f;text-align:right">—</span>
+              </div>
+              <div style="display:grid;grid-template-columns:40px 1fr 56px 72px 96px;align-items:center;padding:9px 24px">
+                <div style="width:20px;height:16px;border:1.5px solid #EEEAE1"></div>
+                <span style="font:400 15px/1.2 Archivo,sans-serif;color:#EEEAE1">Letter, unopened</span>
+                <span style="font:400 15px/1.2 Archivo,sans-serif;font-variant-numeric:tabular-nums;color:#EEEAE1;text-align:right">1</span>
+                <span style="font:400 15px/1.2 Archivo,sans-serif;font-variant-numeric:tabular-nums;color:#9A948A;text-align:right">1</span>
+                <span style="font:400 12px/1.2 'IBM Plex Mono',monospace;letter-spacing:.1em;color:#6f695f;text-align:right">—</span>
+              </div>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:flex-end;padding:16px 24px 20px;border-top:1px solid #3A362F">
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <span style="font:400 11px/1 'IBM Plex Mono',monospace;letter-spacing:.14em;color:#6f695f">POCKETS — 9 OF 14</span>
+                <div style="display:flex;gap:2px">
+                  <div style="width:12px;height:4px;background:#EEEAE1"></div><div style="width:12px;height:4px;background:#EEEAE1"></div><div style="width:12px;height:4px;background:#EEEAE1"></div><div style="width:12px;height:4px;background:#EEEAE1"></div><div style="width:12px;height:4px;background:#EEEAE1"></div><div style="width:12px;height:4px;background:#EEEAE1"></div><div style="width:12px;height:4px;background:#EEEAE1"></div><div style="width:12px;height:4px;background:#EEEAE1"></div><div style="width:12px;height:4px;background:#EEEAE1"></div>
+                  <div style="width:12px;height:4px;background:#EEEAE1;opacity:.18"></div><div style="width:12px;height:4px;background:#EEEAE1;opacity:.18"></div><div style="width:12px;height:4px;background:#EEEAE1;opacity:.18"></div><div style="width:12px;height:4px;background:#EEEAE1;opacity:.18"></div><div style="width:12px;height:4px;background:#EEEAE1;opacity:.18"></div>
+                </div>
+              </div>
+              <div style="display:flex;gap:40px;text-align:right">
+                <div><div style="font:400 11px/1 'IBM Plex Mono',monospace;letter-spacing:.14em;color:#6f695f">ON HAND</div><div style="margin-top:6px;font:500 20px/1 Archivo,sans-serif;font-variant-numeric:tabular-nums;color:#EEEAE1">$4.15</div></div>
+                <div><div style="font:400 11px/1 'IBM Plex Mono',monospace;letter-spacing:.14em;color:#6f695f">APPETITE</div><div style="margin-top:6px;font:400 20px/1 Archivo,sans-serif;color:#C8A96A">Hungry</div></div>
+              </div>
+            </div>
+          </div>
+          <span style="position:absolute;left:24px;bottom:16px;font:400 11px/1 'IBM Plex Mono',monospace;letter-spacing:.14em;color:#4A4F56">WORLD BLURRED 8PX + 35% INK — THE PLAYER IS NOT PLAYING</span>
+        </div>
+        <div style="font:400 13px/1.6 Archivo,sans-serif;color:#9A948A;max-width:1000px">A ledger, not a grid of boxes: rows are how a 1930s person would actually account for what they carry, and rows scale to long item names where a grid does not. Bulk is the constraint, so it gets the tick meter; hunger is a word, not a bar, because the character feels it rather than measures it. Worn state is brass, held state is the inverted row — the same two selection languages as the HUD, nothing new to learn.</div>
+      </div>
+
+      <!-- LOOTING + CONTEXT MENU -->
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div style="font:500 11px/1 'IBM Plex Mono',monospace;letter-spacing:.2em;color:#6f695f">10 · LOOTING A BODY, WITH ITEM MENU OPEN</div>
+        <div style="width:1280px;height:720px;position:relative;overflow:hidden;background:#0E1012;background-image:repeating-linear-gradient(135deg,#0E1012 0px,#0E1012 40px,#131619 40px,#131619 80px)">
+          <div style="position:absolute;inset:0;background:rgba(6,6,7,.35)"></div>
+          <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:960px;display:flex;background:rgba(10,10,11,.94);border:1px solid #3A362F">
+            <div style="flex:1;border-right:1px solid #3A362F">
+              <div style="display:flex;justify-content:space-between;align-items:baseline;padding:20px 24px 16px;border-bottom:1px solid #3A362F">
+                <span style="font:400 22px/1 Oswald,sans-serif;letter-spacing:.1em;color:#EEEAE1;text-transform:uppercase">Pockets</span>
+                <span style="font:400 11px/1 'IBM Plex Mono',monospace;letter-spacing:.14em;color:#6f695f">9 / 14</span>
+              </div>
+              <div style="padding:6px 0">
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:9px 24px"><span style="font:400 15px Archivo,sans-serif;color:#EEEAE1">Folding knife</span><span style="font:400 12px 'IBM Plex Mono',monospace;color:#C8A96A">IN HANDS</span></div>
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:9px 24px"><span style="font:400 15px Archivo,sans-serif;color:#EEEAE1">Wool overcoat</span><span style="font:400 12px 'IBM Plex Mono',monospace;color:#C8A96A">WORN</span></div>
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:9px 24px"><span style="font:400 15px Archivo,sans-serif;color:#EEEAE1">.38 cartridges</span><span style="font:400 15px Archivo,sans-serif;font-variant-numeric:tabular-nums;color:#9A948A">12</span></div>
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:9px 24px"><span style="font:400 15px Archivo,sans-serif;color:#EEEAE1">Bread, half a loaf</span><span style="font:400 15px Archivo,sans-serif;color:#9A948A">1</span></div>
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:9px 24px"><span style="font:400 15px Archivo,sans-serif;color:#EEEAE1">Letter, unopened</span><span style="font:400 15px Archivo,sans-serif;color:#9A948A">1</span></div>
+                <div style="height:120px"></div>
+              </div>
+            </div>
+            <div style="flex:1;position:relative">
+              <div style="display:flex;justify-content:space-between;align-items:baseline;padding:20px 24px 16px;border-bottom:1px solid #3A362F">
+                <span style="font:400 22px/1 Oswald,sans-serif;letter-spacing:.1em;color:#EEEAE1;text-transform:uppercase">A dead man</span>
+                <span style="font:400 11px/1 'IBM Plex Mono',monospace;letter-spacing:.14em;color:#6f695f">5 / 14</span>
+              </div>
+              <div style="padding:6px 0">
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:9px 24px;background:rgba(200,169,106,.14);border-left:1px solid #C8A96A"><span style="font:400 15px Archivo,sans-serif;color:#EEEAE1">Revolver, .38</span><span style="font:400 12px 'IBM Plex Mono',monospace;color:#9A948A">HELD</span></div>
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:9px 24px"><span style="font:400 15px Archivo,sans-serif;color:#EEEAE1">Union card</span><span style="font:400 15px Archivo,sans-serif;color:#9A948A">1</span></div>
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:9px 24px"><span style="font:400 15px Archivo,sans-serif;color:#EEEAE1">Cash</span><span style="font:400 15px Archivo,sans-serif;font-variant-numeric:tabular-nums;color:#EEEAE1">$18.40</span></div>
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:9px 24px"><span style="font:400 15px Archivo,sans-serif;color:#EEEAE1">Cigarettes</span><span style="font:400 15px Archivo,sans-serif;color:#9A948A">7</span></div>
+                <div style="height:120px"></div>
+              </div>
+              <div style="position:absolute;left:150px;top:64px;width:176px;background:rgba(10,10,11,.97);border:1px solid #3A362F">
+                <div style="padding:10px 14px 8px;font:400 11px/1 'IBM Plex Mono',monospace;letter-spacing:.14em;color:#6f695f;border-bottom:1px solid #23221e">REVOLVER, .38</div>
+                <div style="padding:9px 14px;font:400 15px Archivo,sans-serif;color:#0A0A0B;background:#C8A96A">Take</div>
+                <div style="padding:9px 14px;font:400 15px Archivo,sans-serif;color:#EEEAE1">Equip</div>
+                <div style="padding:9px 14px;font:400 15px Archivo,sans-serif;color:#EEEAE1">Use</div>
+                <div style="padding:9px 14px;font:400 15px Archivo,sans-serif;color:#6f695f">Split</div>
+                <div style="height:1px;background:#23221e;margin:4px 0"></div>
+                <div style="padding:9px 14px;font:400 15px Archivo,sans-serif;color:#8E2B22">Drop</div>
+              </div>
+            </div>
+          </div>
+          <div style="position:absolute;left:50%;bottom:120px;transform:translateX(-50%);font:400 13px/1 'IBM Plex Mono',monospace;letter-spacing:.14em;color:#6f695f">DOUBLE-CLICK MOVES · SHIFT-CLICK MOVES ALL · DRAG FOR A SPLIT</div>
+          <span style="position:absolute;left:24px;bottom:16px;font:400 11px/1 'IBM Plex Mono',monospace;letter-spacing:.14em;color:#4A4F56">CONTAINER NAMES ARE WHAT THE CHARACTER KNOWS: "A DEAD MAN", NOT A STEAM NAME</span>
+        </div>
+        <div style="font:400 13px/1.6 Archivo,sans-serif;color:#9A948A;max-width:1000px">Identical columns, identical row grammar, one vertical rule between them — no arrows, no drop zones, because symmetry already says "these two are the same kind of thing". Hover uses a 14% brass wash plus a 1px brass edge on the side the item would travel toward. Destructive verbs sit alone under a rule, in #8E2B22, always last: the hand has to travel to reach them.</div>
+      </div>
+
+      <!-- CHARACTER CREATION -->
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div style="font:500 11px/1 'IBM Plex Mono',monospace;letter-spacing:.2em;color:#6f695f">11 · CHARACTER CREATION</div>
+        <div style="width:1280px;height:720px;position:relative;overflow:hidden;background:#0A0A0B;display:flex">
+          <div style="width:520px;padding:56px 48px;display:flex;flex-direction:column;gap:32px">
+            <div>
+              <div style="font:400 11px/1 'IBM Plex Mono',monospace;letter-spacing:.2em;color:#6f695f">NEW ARRIVAL · 1931</div>
+              <div style="margin-top:14px;font:300 40px/1 Oswald,sans-serif;letter-spacing:.05em;color:#EEEAE1;text-transform:uppercase">Who are you</div>
+            </div>
+            <div style="display:flex;gap:16px">
+              <div style="flex:1"><div style="font:400 11px/1 'IBM Plex Mono',monospace;letter-spacing:.14em;color:#6f695f">GIVEN NAME</div><div style="margin-top:8px;padding:10px 0;border-bottom:1px solid #C8A96A;font:400 20px/1 Archivo,sans-serif;color:#EEEAE1">Anna<span style="opacity:.6;animation:omBreath 1.1s infinite">|</span></div></div>
+              <div style="flex:1"><div style="font:400 11px/1 'IBM Plex Mono',monospace;letter-spacing:.14em;color:#6f695f">FAMILY NAME</div><div style="margin-top:8px;padding:10px 0;border-bottom:1px solid #3A362F;font:400 20px/1 Archivo,sans-serif;color:#6f695f">Vitale</div></div>
+            </div>
+            <div>
+              <div style="font:400 11px/1 'IBM Plex Mono',monospace;letter-spacing:.14em;color:#6f695f">APPEARANCE</div>
+              <div style="margin-top:12px;display:flex;gap:4px">
+                <div style="width:52px;height:52px;border:1px solid #C8A96A;background:rgba(200,169,106,.14)"></div>
+                <div style="width:52px;height:52px;border:1px solid #3A362F"></div>
+                <div style="width:52px;height:52px;border:1px solid #3A362F"></div>
+                <div style="width:52px;height:52px;border:1px solid #3A362F"></div>
+                <div style="width:52px;height:52px;border:1px solid #3A362F"></div>
+                <div style="width:52px;height:52px;border:1px solid #3A362F"></div>
+              </div>
+              <div style="margin-top:8px;font:400 12px/1 'IBM Plex Mono',monospace;color:#6f695f">6 OF 24 — WHEEL TO BROWSE</div>
+            </div>
+            <div>
+              <div style="font:400 11px/1 'IBM Plex Mono',monospace;letter-spacing:.14em;color:#6f695f">WHAT YOU'VE BEEN DOING</div>
+              <div style="margin-top:12px;display:flex;flex-direction:column">
+                <div style="padding:12px 14px;background:#C8A96A"><div style="font:400 16px/1.2 Archivo,sans-serif;color:#0A0A0B">Off the boat, six weeks</div><div style="margin-top:4px;font:400 13px/1.3 Archivo,sans-serif;color:rgba(10,10,11,.68)">No money, no contacts, nobody looking for you.</div></div>
+                <div style="padding:12px 14px;border-top:1px solid #23221e"><div style="font:400 16px/1.2 Archivo,sans-serif;color:#EEEAE1">Laid off at the yards</div><div style="margin-top:4px;font:400 13px/1.3 Archivo,sans-serif;color:#6f695f">A trade, a bad back, and rent already late.</div></div>
+                <div style="padding:12px 14px;border-top:1px solid #23221e"><div style="font:400 16px/1.2 Archivo,sans-serif;color:#EEEAE1">Two years upstate</div><div style="margin-top:4px;font:400 13px/1.3 Archivo,sans-serif;color:#6f695f">People know your face. Not all of them fondly.</div></div>
+              </div>
+            </div>
+          </div>
+          <div style="flex:1;border-left:1px solid #3A362F;position:relative;background:#0E0E10;background-image:repeating-linear-gradient(135deg,#0E0E10 0px,#0E0E10 18px,#131315 18px,#131315 36px)">
+            <div style="position:absolute;left:24px;top:24px;font:400 11px/1 'IBM Plex Mono',monospace;letter-spacing:.14em;color:#4A4F56">PORTRAIT BOOTH — LIVE CHARACTER MODEL, DRAG TO TURN</div>
+            <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:200px;height:300px;border:1px solid #2a2823;display:flex;align-items:center;justify-content:center;font:400 11px/1.6 'IBM Plex Mono',monospace;letter-spacing:.1em;color:#4A4F56;text-align:center">3D MODEL<br>SHOULDERS UP</div>
+            <div style="position:absolute;right:24px;bottom:24px;display:flex;gap:4px;align-items:stretch">
+              <div style="padding:14px 20px;border:1px solid #3A362F;font:400 14px/1 Oswald,sans-serif;letter-spacing:.14em;color:#9A948A;text-transform:uppercase;display:flex;align-items:center">Back</div>
+              <div style="padding:14px 24px;background:#EEEAE1;font:400 14px/1 Oswald,sans-serif;letter-spacing:.14em;color:#0A0A0B;text-transform:uppercase;display:flex;align-items:center">Step into the city</div>
+            </div>
+            <div style="position:absolute;right:24px;bottom:76px;max-width:280px;text-align:right;font:400 13px/1.5 Archivo,sans-serif;color:#6f695f">This character can die. There is no second copy of her.</div>
+          </div>
+        </div>
+        <div style="font:400 13px/1.6 Archivo,sans-serif;color:#9A948A;max-width:1000px">The one screen that is allowed a full-bleed layout, because it is the only time the player is not in the world — form on the left in reading order, model on the right, submit anchored to the model so you press it while looking at her. Life paths are prose, not stat blocks; the permadeath warning is a plain sentence beside the button rather than a modal, because the game does not raise its voice.</div>
+      </div>
+
+      <!-- TREASURY + PAYPHONE -->
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div style="font:500 11px/1 'IBM Plex Mono',monospace;letter-spacing:.2em;color:#6f695f">12 · FAMILY TREASURY</div>
+        <div style="width:1280px;height:720px;position:relative;overflow:hidden;background:#0E1012;background-image:repeating-linear-gradient(135deg,#0E1012 0px,#0E1012 40px,#131619 40px,#131619 80px)">
+          <div style="position:absolute;inset:0;background:rgba(6,6,7,.35)"></div>
+          <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:1000px;background:rgba(10,10,11,.94);border:1px solid #3A362F">
+            <div style="display:flex;justify-content:space-between;align-items:flex-end;padding:24px;border-bottom:1px solid #3A362F">
+              <div>
+                <div style="font:400 11px/1 'IBM Plex Mono',monospace;letter-spacing:.2em;color:#6f695f">VITALE FAMILY · TREASURY</div>
+                <div style="margin-top:10px;font:500 40px/1 Archivo,sans-serif;font-variant-numeric:tabular-nums;color:#EEEAE1">$12,480.65</div>
+              </div>
+              <div style="text-align:right;font:400 13px/1.5 Archivo,sans-serif;color:#6f695f">You are a <span style="color:#C8A96A">soldier</span>.<br>You may draw up to $250 alone.</div>
+            </div>
+            <div style="display:flex">
+              <div style="flex:1.15;border-right:1px solid #3A362F">
+                <div style="padding:16px 24px 10px;font:400 11px/1 'IBM Plex Mono',monospace;letter-spacing:.14em;color:#6f695f">LEDGER — LAST SEVEN DAYS</div>
+                <div style="padding-bottom:16px">
+                  <div style="display:grid;grid-template-columns:1fr auto;gap:2px 16px;padding:9px 24px;border-top:1px solid #1c1b18"><span style="font:400 15px Archivo,sans-serif;color:#EEEAE1">Docks, protection</span><span style="font:400 15px Archivo,sans-serif;font-variant-numeric:tabular-nums;color:#EEEAE1">+$1,200.00</span><span style="font:400 12px 'IBM Plex Mono',monospace;color:#6f695f">TUE · SAL RUSSO</span></div>
+                  <div style="display:grid;grid-template-columns:1fr auto;gap:2px 16px;padding:9px 24px;border-top:1px solid #1c1b18"><span style="font:400 15px Archivo,sans-serif;color:#EEEAE1">Precinct 9, envelope</span><span style="font:400 15px Archivo,sans-serif;font-variant-numeric:tabular-nums;color:#9A948A">−$800.00</span><span style="font:400 12px 'IBM Plex Mono',monospace;color:#6f695f">TUE · DON VITALE</span></div>
+                  <div style="display:grid;grid-template-columns:1fr auto;gap:2px 16px;padding:9px 24px;border-top:1px solid #1c1b18"><span style="font:400 15px Archivo,sans-serif;color:#EEEAE1">Still, Canal St. — repairs</span><span style="font:400 15px Archivo,sans-serif;font-variant-numeric:tabular-nums;color:#9A948A">−$145.20</span><span style="font:400 12px 'IBM Plex Mono',monospace;color:#6f695f">MON · ANNA VITALE</span></div>
+                  <div style="display:grid;grid-template-columns:1fr auto;gap:2px 16px;padding:9px 24px;border-top:1px solid #1c1b18"><span style="font:400 15px Archivo,sans-serif;color:#EEEAE1">Whiskey, forty cases</span><span style="font:400 15px Archivo,sans-serif;font-variant-numeric:tabular-nums;color:#EEEAE1">+$3,050.00</span><span style="font:400 12px 'IBM Plex Mono',monospace;color:#6f695f">SUN · TOMMY BRUNO</span></div>
+                  <div style="display:grid;grid-template-columns:1fr auto;gap:2px 16px;padding:9px 24px;border-top:1px solid #1c1b18"><span style="font:400 15px Archivo,sans-serif;color:#EEEAE1">Funeral, M. Falcone</span><span style="font:400 15px Archivo,sans-serif;font-variant-numeric:tabular-nums;color:#9A948A">−$310.00</span><span style="font:400 12px 'IBM Plex Mono',monospace;color:#6f695f">SAT · DON VITALE</span></div>
+                </div>
+              </div>
+              <div style="flex:1">
+                <div style="padding:16px 24px 10px;font:400 11px/1 'IBM Plex Mono',monospace;letter-spacing:.14em;color:#6f695f">ORDERS</div>
+                <div style="padding-bottom:16px">
+                  <div style="display:flex;justify-content:space-between;align-items:center;padding:11px 24px;border-top:1px solid #1c1b18"><div><div style="font:400 15px Archivo,sans-serif;color:#EEEAE1">Case of gin</div><div style="font:400 12px 'IBM Plex Mono',monospace;color:#6f695f">YOURS TO ORDER</div></div><span style="font:400 15px Archivo,sans-serif;font-variant-numeric:tabular-nums;color:#EEEAE1">$95</span></div>
+                  <div style="display:flex;justify-content:space-between;align-items:center;padding:11px 24px;border-top:1px solid #1c1b18"><div><div style="font:400 15px Archivo,sans-serif;color:#EEEAE1">Thompson, one</div><div style="font:400 12px 'IBM Plex Mono',monospace;color:#C8A96A">NEEDS A SECOND SIGNATURE</div></div><span style="font:400 15px Archivo,sans-serif;font-variant-numeric:tabular-nums;color:#EEEAE1">$1,400</span></div>
+                  <div style="display:flex;justify-content:space-between;align-items:center;padding:11px 24px;border-top:1px solid #1c1b18;background:rgba(200,169,106,.14)"><div><div style="font:400 15px Archivo,sans-serif;color:#EEEAE1">Truck, flatbed</div><div style="font:400 12px 'IBM Plex Mono',monospace;color:#C8A96A">SIGNED BY SAL RUSSO — WAITING ON YOU</div></div><span style="font:400 15px Archivo,sans-serif;font-variant-numeric:tabular-nums;color:#EEEAE1">$2,200</span></div>
+                  <div style="display:flex;justify-content:space-between;align-items:center;padding:11px 24px;border-top:1px solid #1c1b18;opacity:.5"><div><div style="font:400 15px Archivo,sans-serif;color:#EEEAE1">Judge, one favour</div><div style="font:400 12px 'IBM Plex Mono',monospace;color:#6f695f">THE DON ONLY</div></div><span style="font:400 15px Archivo,sans-serif;font-variant-numeric:tabular-nums;color:#9A948A">$5,000</span></div>
+                </div>
+                <div style="padding:0 24px 20px;display:flex;gap:4px">
+                  <div style="padding:12px 20px;background:#EEEAE1;font:400 13px/1 Oswald,sans-serif;letter-spacing:.14em;color:#0A0A0B;text-transform:uppercase">Countersign</div>
+                  <div style="padding:12px 20px;border:1px solid #3A362F;font:400 13px/1 Oswald,sans-serif;letter-spacing:.14em;color:#9A948A;text-transform:uppercase">Refuse</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <span style="position:absolute;left:24px;bottom:16px;font:400 11px/1 'IBM Plex Mono',monospace;letter-spacing:.14em;color:#4A4F56">EVERY LINE NAMES A PERSON — THE LEDGER IS THE ONLY SURVEILLANCE IN THE GAME</span>
+        </div>
+        <div style="font:400 13px/1.6 Archivo,sans-serif;color:#9A948A;max-width:1000px">Balance is set as the largest number in the game and left unaccompanied, because in this fiction money is the score. Approval state is written as a sentence in brass rather than a badge or an icon — "signed by Sal Russo, waiting on you" carries the social pressure that a checkbox destroys. Your own authority is stated once, top right, so a refused purchase never needs an error.</div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div style="font:500 11px/1 'IBM Plex Mono',monospace;letter-spacing:.2em;color:#6f695f">13 · PAYPHONE — DIALLING / RINGING / CONNECTED</div>
+        <div style="display:flex;gap:16px">
+          <div style="width:414px;height:340px;position:relative;overflow:hidden;background:#0E1012;background-image:repeating-linear-gradient(135deg,#0E1012 0px,#0E1012 32px,#131619 32px,#131619 64px)">
+            <div style="position:absolute;inset:0;background:rgba(6,6,7,.35)"></div>
+            <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:280px;background:rgba(10,10,11,.94);border:1px solid #3A362F;padding:24px">
+              <div style="font:400 11px/1 'IBM Plex Mono',monospace;letter-spacing:.2em;color:#6f695f">PAY STATION · CANAL &amp; 4TH</div>
+              <div style="margin-top:20px;font:500 34px/1 Archivo,sans-serif;font-variant-numeric:tabular-nums;letter-spacing:.06em;color:#EEEAE1">KL5&#8209;22<span style="opacity:.6;animation:omBreath 1.1s infinite">|</span></div>
+              <div style="margin-top:8px;height:1px;background:#3A362F"></div>
+              <div style="margin-top:16px;font:400 13px/1.5 Archivo,sans-serif;color:#6f695f">Type the number. Nobody keeps a directory.</div>
+              <div style="margin-top:20px;display:flex;gap:4px">
+                <div style="padding:10px 16px;background:#EEEAE1;font:400 12px/1 Oswald,sans-serif;letter-spacing:.14em;color:#0A0A0B;text-transform:uppercase">Call</div>
+                <div style="padding:10px 16px;border:1px solid #3A362F;font:400 12px/1 Oswald,sans-serif;letter-spacing:.14em;color:#9A948A;text-transform:uppercase">Hang up</div>
+              </div>
+            </div>
+          </div>
+          <div style="width:414px;height:340px;position:relative;overflow:hidden;background:#0E1012;background-image:repeating-linear-gradient(135deg,#0E1012 0px,#0E1012 32px,#131619 32px,#131619 64px)">
+            <div style="position:absolute;inset:0;background:rgba(6,6,7,.35)"></div>
+            <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:280px;background:rgba(10,10,11,.94);border:1px solid #3A362F;padding:24px">
+              <div style="font:400 11px/1 'IBM Plex Mono',monospace;letter-spacing:.2em;color:#6f695f">CALLING</div>
+              <div style="margin-top:20px;font:500 34px/1 Archivo,sans-serif;font-variant-numeric:tabular-nums;letter-spacing:.06em;color:#9A948A">KL5&#8209;2214</div>
+              <div style="margin-top:24px;display:flex;align-items:center;gap:10px">
+                <div style="width:8px;height:8px;background:#EEEAE1;animation:omBreath 2s infinite"></div>
+                <span style="font:400 15px/1 Archivo,sans-serif;color:#EEEAE1">Ringing</span>
+              </div>
+              <div style="margin-top:24px;padding:10px 16px;border:1px solid #3A362F;font:400 12px/1 Oswald,sans-serif;letter-spacing:.14em;color:#9A948A;text-transform:uppercase;display:inline-block">Hang up</div>
+            </div>
+          </div>
+          <div style="width:414px;height:340px;position:relative;overflow:hidden;background:#0E1012;background-image:repeating-linear-gradient(135deg,#0E1012 0px,#0E1012 32px,#131619 32px,#131619 64px)">
+            <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:280px;background:rgba(10,10,11,.62);border-top:1px solid #3A362F;padding:16px">
+              <div style="font:400 11px/1 'IBM Plex Mono',monospace;letter-spacing:.2em;color:#6f695f">CONNECTED · 00:41</div>
+              <div style="margin-top:12px;font:400 18px/1.4 Archivo,sans-serif;color:#EEEAE1;text-shadow:0 1px 0 #000,1px 0 0 #000,-1px 0 0 #000">Somebody picked up. They haven't said anything.</div>
+              <div style="margin-top:14px;font:400 13px/1.5 Archivo,sans-serif;color:#9A948A">Speak — the other end hears your voice, wherever they are.</div>
+            </div>
+            <span style="position:absolute;left:12px;bottom:10px;font:400 10px/1 'IBM Plex Mono',monospace;letter-spacing:.14em;color:#4A4F56">MOUSE RELEASED — YOU'RE BACK IN THE WORLD, STILL HOLDING THE RECEIVER</span>
+          </div>
+        </div>
+        <div style="font:400 13px/1.6 Archivo,sans-serif;color:#9A948A;max-width:1000px">Dialling and ringing take focus; the moment the line connects the panel drops to the world-layer scrim and the mouse goes back to the player, because a connected call is something you do <i>while</i> standing in an alley watching the street. The only timer in the game is this one — a call is billed, and being on a wire too long is a real risk.</div>
+      </div>
+
+      <!-- FULL SCREEN -->
+      <div style="display:flex;align-items:baseline;gap:14px;margin-top:8px">
+        <span style="font:400 22px/1 Oswald,sans-serif;letter-spacing:.1em;color:#EEEAE1;text-transform:uppercase">Full-screen moments</span>
+        <span style="font:400 13px/1.5 Archivo,sans-serif;color:#6f695f">the only times the system is allowed to be loud, and it still isn't</span>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div style="font:500 11px/1 'IBM Plex Mono',monospace;letter-spacing:.2em;color:#6f695f">14 · BLEEDING OUT — LATE STAGE</div>
+        <div style="width:1280px;height:720px;position:relative;overflow:hidden;background:#0E1012;background-image:repeating-linear-gradient(135deg,#0E1012 0px,#0E1012 16px,#141719 16px,#141719 32px)">
+          <div style="position:absolute;inset:0;border:120px solid rgba(4,4,5,.55)"></div>
+          <div style="position:absolute;inset:60px;border:90px solid rgba(4,4,5,.5)"></div>
+          <div style="position:absolute;inset:150px;border:70px solid rgba(4,4,5,.45)"></div>
+          <div style="position:absolute;inset:220px;border:60px solid rgba(4,4,5,.4)"></div>
+          <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);text-align:center;display:flex;flex-direction:column;gap:18px;align-items:center">
+            <div style="font:400 22px/1.5 Archivo,sans-serif;color:#EEEAE1;text-shadow:0 1px 0 #000,0 -1px 0 #000,1px 0 0 #000,-1px 0 0 #000;max-width:620px">You are on your side in the wet. Somebody is shouting, further away than they were.</div>
+            <div style="font:400 13px/1 'IBM Plex Mono',monospace;letter-spacing:.18em;color:#9A948A;text-shadow:0 1px 0 #000,1px 0 0 #000,-1px 0 0 #000">HOLD SPACE TO CALL OUT</div>
+          </div>
+          <div style="position:absolute;left:50%;bottom:64px;transform:translateX(-50%);width:220px;height:2px;background:#8E2B22;animation:omBreath 2.6s infinite"></div>
+          <span style="position:absolute;left:24px;bottom:16px;font:400 11px/1 'IBM Plex Mono',monospace;letter-spacing:.14em;color:#4A4F56">FOUR NESTED INK RECTS · PULSE SLOWS 72→28 BPM AND SHORTENS AS YOU GO</span>
+        </div>
+        <div style="font:400 13px/1.6 Archivo,sans-serif;color:#9A948A;max-width:1000px">Time is a pulse, not a bar: one 2px #8E2B22 line at the bottom edge that breathes at your heart rate, slowing and shortening as you fade — you feel how long you have without being able to read it, and you can't strategise off it. The closing world is four nested translucent ink rectangles thickening frame by frame (cheap, immediate-mode, no gradient needed). Sound and the copy carry the rest; the text loses words as you go until only one is left.</div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div style="font:500 11px/1 'IBM Plex Mono',monospace;letter-spacing:.2em;color:#6f695f">15 · DEATH → HANDOVER</div>
+        <div style="width:1280px;height:720px;position:relative;overflow:hidden;background:#050506;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:0">
+          <div style="width:520px;height:1px;background:#3A362F"></div>
+          <div style="padding:40px 0 0;font:300 62px/1 Oswald,sans-serif;letter-spacing:.14em;color:#EEEAE1;text-transform:uppercase">Anna Vitale</div>
+          <div style="margin-top:18px;font:400 18px/1.6 Archivo,sans-serif;color:#9A948A;text-align:center;max-width:560px">Born somewhere else. Died on Canal Street, in the rain, on the fourth of March, 1931. Nobody was with her.</div>
+          <div style="margin-top:40px;width:520px;height:1px;background:#3A362F"></div>
+          <div style="margin-top:40px;font:400 13px/1 'IBM Plex Mono',monospace;letter-spacing:.2em;color:#6f695f;animation:omBreath 3s infinite">PRESS ANY KEY</div>
+          <span style="position:absolute;left:24px;bottom:16px;font:400 11px/1 'IBM Plex Mono',monospace;letter-spacing:.14em;color:#4A4F56">HOLDS FOR 6S BEFORE THE PROMPT APPEARS · THEN CUTS TO CHARACTER CREATION, NO MENU BETWEEN</span>
+        </div>
+        <div style="font:400 13px/1.6 Archivo,sans-serif;color:#9A948A;max-width:1000px">The dead character's name gets the largest type in the whole system — once, and never again. No statistics, no cause of death, no killer's name: the player learns only what the city would record. The prompt is deliberately late so the screen is silent long enough to be uncomfortable.</div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div style="font:500 11px/1 'IBM Plex Mono',monospace;letter-spacing:.2em;color:#6f695f">16 · NEWSPAPER — SKETCH ONLY</div>
+        <div style="display:flex;gap:24px;align-items:flex-start">
+          <div style="width:620px;background:#E8E2D4;padding:28px 26px;display:flex;flex-direction:column;gap:14px">
+            <div style="text-align:center;border-bottom:2px solid #1a1713;padding-bottom:12px">
+              <div style="font:700 44px/1 'Playfair Display',serif;letter-spacing:.02em;color:#1a1713">The Evening Ledger</div>
+              <div style="margin-top:8px;font:400 11px/1 'IBM Plex Mono',monospace;letter-spacing:.18em;color:#5c554a">WEDNESDAY, MARCH 4, 1931 — THREE CENTS</div>
+            </div>
+            <div style="display:grid;grid-template-columns:2fr 1fr;gap:20px">
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <div style="font:700 26px/1.15 'Playfair Display',serif;color:#1a1713">Body Found On Canal Street; Police Name No Suspect</div>
+                <div style="font:400 14px/1.5 'Crimson Pro',serif;color:#2b261f">A woman was found dead before dawn near the corner of Canal and Fourth, the second such discovery in the district this month. Detectives would say only that the matter is under inquiry.</div>
+                <div style="height:1px;background:#c2bbab"></div>
+                <div style="font:600 15px/1.3 'Crimson Pro',serif;color:#1a1713">Dockmen Vote To Stay Out A Third Week</div>
+                <div style="font:400 14px/1.5 'Crimson Pro',serif;color:#2b261f">Union halls remained full last night as the waterfront stoppage entered its third week, with no cargo moving on the north piers.</div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:10px;border-left:1px solid #c2bbab;padding-left:16px">
+                <div style="font:400 11px/1 'IBM Plex Mono',monospace;letter-spacing:.16em;color:#5c554a">NOTICES</div>
+                <div style="font:400 14px/1.5 'Crimson Pro',serif;color:#2b261f">FUNERAL — M. Falcone, Thursday, ten o'clock, St. Brigid's.</div>
+                <div style="height:1px;background:#c2bbab"></div>
+                <div style="font:400 14px/1.5 'Crimson Pro',serif;color:#2b261f">WANTED — Driver, own vehicle, discreet. Ask at the Canal St. grocery.</div>
+                <div style="height:1px;background:#c2bbab"></div>
+                <div style="font:400 14px/1.5 'Crimson Pro',serif;color:#2b261f">Reward offered for return of a gold watch, no chain, sentimental value.</div>
+              </div>
+            </div>
+          </div>
+          <div style="width:400px;font:400 13px/1.6 Archivo,sans-serif;color:#9A948A">The newspaper is the one place the system inverts — dark ink on #E8E2D4 paper — because it is a physical object the character is holding, not an overlay. It borrows nothing from the HUD except the mono label voice, and it uses a Didone (Playfair Display) plus a book serif (Crimson Pro) as its own two-file pair. Player deaths, family wars and police activity only become public knowledge here, a day late and slightly wrong, which is the defensible period device: not a typewriter, an editorial desk.</div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ══════════════════════ 1b VELLUM ══════════════════════ -->
+    <div id="1b" style="display:flex;flex-direction:column;gap:32px;flex:0 0 1280px;min-width:1280px">
+      <div style="display:flex;align-items:baseline;gap:16px;border-bottom:1px solid #34322d;padding-bottom:14px">
+        <span style="font:500 12px/1 'IBM Plex Mono',monospace;letter-spacing:.18em;color:#0A0A0B;background:#9A948A;padding:6px 9px">1b</span>
+        <span style="font:400 34px/1 'Playfair Display',serif;letter-spacing:.02em;color:#EEEAE1">Vellum</span>
+        <span style="font:400 14px/1.4 Archivo,sans-serif;color:#8b857a">Paper handed to you. The UI is documents — warm light plates, dark ink, Didone and book serif. Riskiest and most distinctive.</span>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:32px">
+        <div style="background:#0A0A0B;border:1px solid #34322d;padding:28px;display:flex;flex-direction:column;gap:20px">
+          <div style="font:500 11px/1 'IBM Plex Mono',monospace;letter-spacing:.2em;color:#6f695f">TYPE · PALETTE</div>
+          <div style="background:#E8E2D4;padding:20px">
+            <div style="font:700 40px/1 'Playfair Display',serif;color:#1a1713">Playfair Display</div>
+            <div style="margin-top:6px;font:400 12px/1.4 'IBM Plex Mono',monospace;color:#5c554a">OFL · titles, verbs, numbers</div>
+            <div style="margin-top:16px;font:400 20px/1.45 'Crimson Pro',serif;color:#2b261f">Crimson Pro — 12 ga. shells, $18.40, Anna Vitale, worn</div>
+            <div style="margin-top:6px;font:400 12px/1.4 'IBM Plex Mono',monospace;color:#5c554a">OFL · body, lists, ledgers</div>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px">
+            <div><div style="height:44px;background:#E8E2D4"></div><div style="margin-top:6px;font:400 10px/1.4 'IBM Plex Mono',monospace;color:#8b857a">#E8E2D4</div></div>
+            <div><div style="height:44px;background:#D6CFBD"></div><div style="margin-top:6px;font:400 10px/1.4 'IBM Plex Mono',monospace;color:#8b857a">#D6CFBD</div></div>
+            <div><div style="height:44px;background:#1a1713"></div><div style="margin-top:6px;font:400 10px/1.4 'IBM Plex Mono',monospace;color:#8b857a">#1A1713</div></div>
+            <div><div style="height:44px;background:#5c554a"></div><div style="margin-top:6px;font:400 10px/1.4 'IBM Plex Mono',monospace;color:#8b857a">#5C554A</div></div>
+            <div><div style="height:44px;background:#7A2018"></div><div style="margin-top:6px;font:400 10px/1.4 'IBM Plex Mono',monospace;color:#8b857a">#7A2018</div></div>
+          </div>
+          <div style="font:400 13px/1.6 Archivo,sans-serif;color:#9A948A">Rules: 1px #1a1713 at 24% for internal divisions, 2px solid for document headers — the one place the system allows a doubled line, because printed matter has a masthead rule. Radius 0. Grid 4px. Icons tinted #1a1713, or #7A2018 when irreversible.</div>
+        </div>
+        <div style="background:#0A0A0B;border:1px solid #34322d;padding:28px;display:flex;flex-direction:column;gap:20px">
+          <div style="font:500 11px/1 'IBM Plex Mono',monospace;letter-spacing:.2em;color:#6f695f">LEGIBILITY — INVERTED</div>
+          <div style="font:400 14px/1.6 Archivo,sans-serif;color:#EEEAE1">Focus windows are opaque paper at 96%, so contrast is a solved problem — the risk moves to the <b>world layer</b>, where light text on paper cannot exist. World-layer type is therefore #E8E2D4 with the same 1px hard black outline as Carbon, and no plate at all: the contextual HUD reads as chalk, the windows read as paper. Two materials, split by whether the mouse is captured.</div>
+          <div style="display:flex;gap:0">
+            <div style="flex:1;height:96px;display:flex;align-items:center;justify-content:center;background:#C9CCC7;background-image:repeating-linear-gradient(135deg,#C9CCC7 0px,#C9CCC7 12px,#BFC3BE 12px,#BFC3BE 24px)"><span style="font:400 20px/1 'Crimson Pro',serif;color:#E8E2D4;text-shadow:0 1px 0 #000,0 -1px 0 #000,1px 0 0 #000,-1px 0 0 #000">Marco Vitale</span></div>
+            <div style="flex:1;height:96px;display:flex;align-items:center;justify-content:center;background:#0E1012;background-image:repeating-linear-gradient(135deg,#0E1012 0px,#0E1012 12px,#141719 12px,#141719 24px)"><span style="font:400 20px/1 'Crimson Pro',serif;color:#E8E2D4;text-shadow:0 1px 0 #000,0 -1px 0 #000,1px 0 0 #000,-1px 0 0 #000">Marco Vitale</span></div>
+          </div>
+          <div style="font:400 13px/1.6 Archivo,sans-serif;color:#6f695f">1.5×: serif hairlines are the weak point. Body minimum is 16px at 1×, and Crimson Pro switches to weight 600 below 18px so the thins survive scaling and cheap monitors.</div>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:16px;flex-wrap:wrap">
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <div style="font:500 11px/1 'IBM Plex Mono',monospace;letter-spacing:.2em;color:#6f695f">HUD + VERB MENU</div>
+          <div style="width:632px;height:356px;position:relative;overflow:hidden;background:#0E1012;background-image:repeating-linear-gradient(135deg,#0E1012 0px,#0E1012 14px,#141719 14px,#141719 28px)">
+            <div style="position:absolute;left:50%;top:50%;width:3px;height:3px;margin:-1.5px 0 0 -1.5px;background:#E8E2D4;box-shadow:0 0 0 1px rgba(0,0,0,.9)"></div>
+            <div style="position:absolute;left:0;right:0;top:50%;margin-top:24px;text-align:center;font:400 21px/1 'Crimson Pro',serif;color:#E8E2D4;text-shadow:0 1px 0 #000,0 -1px 0 #000,1px 0 0 #000,-1px 0 0 #000">Marco Vitale</div>
+            <div style="position:absolute;left:50%;top:50%;margin:60px 0 0 -90px;width:180px;background:#E8E2D4;padding:6px 0">
+              <div style="padding:5px 14px;font:400 16px/1.2 'Crimson Pro',serif;color:#2b261f">Search</div>
+              <div style="padding:5px 14px;font:600 16px/1.2 'Crimson Pro',serif;color:#E8E2D4;background:#1a1713">Drag</div>
+              <div style="padding:5px 14px;font:400 16px/1.2 'Crimson Pro',serif;color:#2b261f">Check pulse</div>
+            </div>
+            <div style="position:absolute;left:16px;top:16px;background:#E8E2D4;padding:10px 14px;max-width:280px;font:400 15px/1.45 'Crimson Pro',serif;color:#2b261f">You hear a car door, two streets over.</div>
+            <div style="position:absolute;left:16px;bottom:20px;display:flex;flex-direction:column;gap:3px">
+              <div style="width:48px;height:48px;background:#E8E2D4;display:flex;align-items:center;justify-content:center"><div style="width:20px;height:20px;border:1.5px solid #1a1713;transform:rotate(45deg)"></div></div>
+              <div style="width:48px;height:48px;background:rgba(232,226,212,.35)"></div>
+              <div style="width:48px;height:48px;background:rgba(232,226,212,.35)"></div>
+              <div style="width:48px;height:48px;background:rgba(232,226,212,.35)"></div>
+            </div>
+            <span style="position:absolute;right:16px;bottom:16px;font:400 10px/1 'IBM Plex Mono',monospace;letter-spacing:.14em;color:#4A4F56">PAPER CHIPS INSTEAD OF SCRIMS</span>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <div style="font:500 11px/1 'IBM Plex Mono',monospace;letter-spacing:.2em;color:#6f695f">INVENTORY AS A MANIFEST</div>
+          <div style="width:632px;height:356px;position:relative;overflow:hidden;background:#0E1012;background-image:repeating-linear-gradient(135deg,#0E1012 0px,#0E1012 30px,#131619 30px,#131619 60px)">
+            <div style="position:absolute;inset:0;background:rgba(6,6,7,.4)"></div>
+            <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:520px;background:#E8E2D4;padding:22px 24px">
+              <div style="display:flex;justify-content:space-between;align-items:baseline;border-bottom:2px solid #1a1713;padding-bottom:10px">
+                <span style="font:700 26px/1 'Playfair Display',serif;color:#1a1713">Pockets</span>
+                <span style="font:400 11px/1 'IBM Plex Mono',monospace;letter-spacing:.14em;color:#5c554a">9 OF 14 · $4.15 · HUNGRY</span>
+              </div>
+              <div style="display:flex;flex-direction:column">
+                <div style="display:grid;grid-template-columns:1fr 40px 80px;padding:8px 0;border-bottom:1px solid rgba(26,23,19,.24);font:400 16px/1.2 'Crimson Pro',serif;color:#1a1713"><span>Folding knife</span><span style="text-align:right">1</span><span style="text-align:right;font:400 11px 'IBM Plex Mono',monospace;color:#5c554a">IN HANDS</span></div>
+                <div style="display:grid;grid-template-columns:1fr 40px 80px;padding:8px 0;border-bottom:1px solid rgba(26,23,19,.24);font:400 16px/1.2 'Crimson Pro',serif;color:#1a1713"><span>Wool overcoat</span><span style="text-align:right">1</span><span style="text-align:right;font:400 11px 'IBM Plex Mono',monospace;color:#5c554a">WORN</span></div>
+                <div style="display:grid;grid-template-columns:1fr 40px 80px;padding:8px 0;border-bottom:1px solid rgba(26,23,19,.24);font:400 16px/1.2 'Crimson Pro',serif;color:#1a1713"><span>.38 cartridges</span><span style="text-align:right">12</span><span></span></div>
+                <div style="display:grid;grid-template-columns:1fr 40px 80px;padding:8px 0;border-bottom:1px solid rgba(26,23,19,.24);font:400 16px/1.2 'Crimson Pro',serif;color:#1a1713"><span>Pocket watch, no chain</span><span style="text-align:right">1</span><span></span></div>
+                <div style="display:grid;grid-template-columns:1fr 40px 80px;padding:8px 0;font:400 16px/1.2 'Crimson Pro',serif;color:#1a1713"><span>Letter, unopened</span><span style="text-align:right">1</span><span></span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="font:500 11px/1 'IBM Plex Mono',monospace;letter-spacing:.2em;color:#6f695f">DEATH — A DEATH NOTICE</div>
+        <div style="width:632px;height:356px;background:#050506;display:flex;align-items:center;justify-content:center">
+          <div style="width:400px;background:#E8E2D4;padding:32px;text-align:center">
+            <div style="font:400 11px/1 'IBM Plex Mono',monospace;letter-spacing:.2em;color:#5c554a">DEATHS</div>
+            <div style="margin-top:16px;font:700 34px/1.1 'Playfair Display',serif;color:#1a1713">Anna Vitale</div>
+            <div style="margin-top:12px;font:400 16px/1.5 'Crimson Pro',serif;color:#2b261f">Canal Street, the fourth of March, 1931. Nobody was with her.</div>
+            <div style="margin-top:20px;height:1px;background:rgba(26,23,19,.3)"></div>
+            <div style="margin-top:16px;font:400 11px/1 'IBM Plex Mono',monospace;letter-spacing:.2em;color:#5c554a;animation:omBreath 3s infinite">PRESS ANY KEY</div>
+          </div>
+        </div>
+        <div style="font:400 13px/1.6 Archivo,sans-serif;color:#9A948A;max-width:900px">Why it's second: it is the most memorable and the most period-true — everything the player touches is a document the character could plausibly hold — but large light plates over a dark world cost more of the screen, and a paper chip appearing mid-firefight is a bright flash where Carbon's scrim is a shadow. Choose Vellum if the game wants to feel bureaucratic and slow; Carbon if it wants to feel cold.</div>
+      </div>
+    </div>
+
+    <!-- ══════════════════════ 1c HAIRLINE ══════════════════════ -->
+    <div id="1c" style="display:flex;flex-direction:column;gap:32px;flex:0 0 1280px;min-width:1280px">
+      <div style="display:flex;align-items:baseline;gap:16px;border-bottom:1px solid #34322d;padding-bottom:14px">
+        <span style="font:500 12px/1 'IBM Plex Mono',monospace;letter-spacing:.18em;color:#0A0A0B;background:#9A948A;padding:6px 9px">1c</span>
+        <span style="font:400 34px/1 'Barlow Condensed',sans-serif;letter-spacing:.14em;color:#EEEAE1;text-transform:uppercase">Hairline</span>
+        <span style="font:400 14px/1.4 Archivo,sans-serif;color:#8b857a">Almost no chrome. No plates anywhere; structure comes from blur, whitespace and 1px ticks. The most invisible, the least forgiving.</span>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:32px">
+        <div style="background:#0A0A0B;border:1px solid #34322d;padding:28px;display:flex;flex-direction:column;gap:18px">
+          <div style="font:500 11px/1 'IBM Plex Mono',monospace;letter-spacing:.2em;color:#6f695f">TYPE · PALETTE · RULES</div>
+          <div style="font:300 44px/1 'Barlow Condensed',sans-serif;letter-spacing:.16em;color:#F2F0EC;text-transform:uppercase">Barlow Condensed 300</div>
+          <div style="font:400 12px/1.4 'IBM Plex Mono',monospace;color:#8b857a">OFL · everything structural, always caps, always tracked .14em</div>
+          <div style="font:400 22px/1.4 'IBM Plex Mono',monospace;color:#F2F0EC">$18.40 · 12 · 06:41</div>
+          <div style="font:400 12px/1.4 'IBM Plex Mono',monospace;color:#8b857a">IBM Plex Mono 400 · OFL · every number and every name, so nothing ever reflows</div>
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">
+            <div><div style="height:44px;background:#F2F0EC"></div><div style="margin-top:6px;font:400 10px/1.4 'IBM Plex Mono',monospace;color:#8b857a">#F2F0EC</div></div>
+            <div><div style="height:44px;background:#8C8F92"></div><div style="margin-top:6px;font:400 10px/1.4 'IBM Plex Mono',monospace;color:#8b857a">#8C8F92</div></div>
+            <div><div style="height:44px;background:#4A4D50"></div><div style="margin-top:6px;font:400 10px/1.4 'IBM Plex Mono',monospace;color:#8b857a">#4A4D50</div></div>
+            <div><div style="height:44px;background:#B4443A"></div><div style="margin-top:6px;font:400 10px/1.4 'IBM Plex Mono',monospace;color:#8b857a">#B4443A</div></div>
+          </div>
+          <div style="font:400 13px/1.6 Archivo,sans-serif;color:#9A948A">No brass, no warmth: this direction is neutral-cold, and its only accent is a slightly brighter red for the irreversible. Selection is a 1px underline plus full-white text; unavailable is 35% alpha. Spacing is 8px base with generous 48px screen margins, because emptiness is doing the work a border would.</div>
+        </div>
+        <div style="background:#0A0A0B;border:1px solid #34322d;padding:28px;display:flex;flex-direction:column;gap:18px">
+          <div style="font:500 11px/1 'IBM Plex Mono',monospace;letter-spacing:.2em;color:#6f695f">LEGIBILITY — BLUR, NOT INK</div>
+          <div style="font:400 14px/1.6 Archivo,sans-serif;color:#EEEAE1">World layer: <b>1px hard outline plus a 6px local blur disc</b> behind text only (blur the world under the glyph box, don't darken it). The world stays fully visible; the letters get a soft, unstructured backing that no scene can defeat. Focus windows: full-screen 14px blur + 20% ink, no panel edges at all — the window <i>is</i> the blur.</div>
+          <div style="display:flex;gap:0">
+            <div style="flex:1;height:96px;display:flex;align-items:center;justify-content:center;background:#C9CCC7;background-image:repeating-linear-gradient(135deg,#C9CCC7 0px,#C9CCC7 12px,#BFC3BE 12px,#BFC3BE 24px)"><span style="font:400 20px/1 'IBM Plex Mono',monospace;color:#F2F0EC;padding:8px 12px;backdrop-filter:blur(6px);text-shadow:0 1px 0 #000,0 -1px 0 #000,1px 0 0 #000,-1px 0 0 #000">MARCO VITALE</span></div>
+            <div style="flex:1;height:96px;display:flex;align-items:center;justify-content:center;background:#0E1012;background-image:repeating-linear-gradient(135deg,#0E1012 0px,#0E1012 12px,#141719 12px,#141719 24px)"><span style="font:400 20px/1 'IBM Plex Mono',monospace;color:#F2F0EC;padding:8px 12px;backdrop-filter:blur(6px);text-shadow:0 1px 0 #000,0 -1px 0 #000,1px 0 0 #000,-1px 0 0 #000">MARCO VITALE</span></div>
+          </div>
+          <div style="font:400 13px/1.6 Archivo,sans-serif;color:#6f695f">Cost: per-text blur is the most expensive thing here and needs a render target per cluster — the reason this is third despite being the best fit for "the screen is empty by default".</div>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:16px;flex-wrap:wrap">
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <div style="font:500 11px/1 'IBM Plex Mono',monospace;letter-spacing:.2em;color:#6f695f">HUD — NO PLATES AT ALL</div>
+          <div style="width:632px;height:356px;position:relative;overflow:hidden;background:#0E1012;background-image:repeating-linear-gradient(135deg,#0E1012 0px,#0E1012 14px,#141719 14px,#141719 28px)">
+            <div style="position:absolute;left:50%;top:50%;width:1px;height:9px;margin:-4.5px 0 0 -.5px;background:#F2F0EC;opacity:.7"></div>
+            <div style="position:absolute;left:0;right:0;top:50%;margin-top:26px;text-align:center;font:400 15px/1 'IBM Plex Mono',monospace;letter-spacing:.1em;color:#F2F0EC;text-shadow:0 1px 0 #000,0 -1px 0 #000,1px 0 0 #000,-1px 0 0 #000">MARCO VITALE</div>
+            <div style="position:absolute;left:0;right:0;top:50%;margin-top:50px;text-align:center;font:300 14px/1 'Barlow Condensed',sans-serif;letter-spacing:.16em;color:#8C8F92;text-transform:uppercase;text-shadow:0 1px 0 #000,1px 0 0 #000,-1px 0 0 #000">E to drag — hold E for more</div>
+            <div style="position:absolute;left:24px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:14px">
+              <div style="display:flex;align-items:center;gap:10px"><span style="width:16px;height:1px;background:#F2F0EC"></span><span style="font:300 15px/1 'Barlow Condensed',sans-serif;letter-spacing:.16em;color:#F2F0EC;text-transform:uppercase;text-shadow:0 1px 0 #000,1px 0 0 #000,-1px 0 0 #000">Knife</span></div>
+              <div style="display:flex;align-items:center;gap:10px"><span style="width:8px;height:1px;background:#8C8F92"></span><span style="font:300 15px/1 'Barlow Condensed',sans-serif;letter-spacing:.16em;color:#8C8F92;text-transform:uppercase;opacity:.7">Revolver</span></div>
+              <div style="display:flex;align-items:center;gap:10px"><span style="width:8px;height:1px;background:#8C8F92"></span><span style="font:300 15px/1 'Barlow Condensed',sans-serif;letter-spacing:.16em;color:#8C8F92;text-transform:uppercase;opacity:.7">Bread</span></div>
+              <div style="display:flex;align-items:center;gap:10px"><span style="width:8px;height:1px;background:#8C8F92"></span><span style="font:300 15px/1 'Barlow Condensed',sans-serif;letter-spacing:.16em;color:#8C8F92;text-transform:uppercase;opacity:.7">Watch</span></div>
+            </div>
+            <div style="position:absolute;right:24px;bottom:22px;font:400 24px/1 'IBM Plex Mono',monospace;color:#F2F0EC;text-shadow:0 1px 0 #000,0 -1px 0 #000,1px 0 0 #000,-1px 0 0 #000">6<span style="font-size:13px;color:#8C8F92"> / 12</span></div>
+            <span style="position:absolute;left:24px;bottom:16px;font:400 10px/1 'IBM Plex Mono',monospace;letter-spacing:.14em;color:#4A4F56">HOTBAR IS FOUR WORDS AND FOUR TICKS — NO BOXES</span>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <div style="font:500 11px/1 'IBM Plex Mono',monospace;letter-spacing:.2em;color:#6f695f">INVENTORY — THE WINDOW IS THE BLUR</div>
+          <div style="width:632px;height:356px;position:relative;overflow:hidden;background:#0E1012;background-image:repeating-linear-gradient(135deg,#0E1012 0px,#0E1012 30px,#131619 30px,#131619 60px)">
+            <div style="position:absolute;inset:0;background:rgba(6,6,7,.2);backdrop-filter:blur(6px)"></div>
+            <div style="position:absolute;left:56px;top:44px;right:56px;display:flex;flex-direction:column;gap:16px">
+              <div style="display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px solid rgba(242,240,236,.28);padding-bottom:10px">
+                <span style="font:300 24px/1 'Barlow Condensed',sans-serif;letter-spacing:.2em;color:#F2F0EC;text-transform:uppercase">Pockets</span>
+                <span style="font:400 12px/1 'IBM Plex Mono',monospace;color:#8C8F92">09/14 · $4.15 · HUNGRY</span>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:11px;font:400 14px/1 'IBM Plex Mono',monospace">
+                <div style="display:grid;grid-template-columns:1fr 40px 90px;color:#F2F0EC;border-bottom:1px solid rgba(242,240,236,.5);padding-bottom:5px"><span>FOLDING KNIFE</span><span style="text-align:right">1</span><span style="text-align:right;color:#8C8F92">IN HANDS</span></div>
+                <div style="display:grid;grid-template-columns:1fr 40px 90px;color:#F2F0EC"><span>WOOL OVERCOAT</span><span style="text-align:right">1</span><span style="text-align:right;color:#8C8F92">WORN</span></div>
+                <div style="display:grid;grid-template-columns:1fr 40px 90px;color:#F2F0EC"><span>.38 CARTRIDGES</span><span style="text-align:right">12</span><span></span></div>
+                <div style="display:grid;grid-template-columns:1fr 40px 90px;color:#F2F0EC"><span>POCKET WATCH</span><span style="text-align:right">1</span><span></span></div>
+                <div style="display:grid;grid-template-columns:1fr 40px 90px;color:#F2F0EC"><span>LETTER, UNOPENED</span><span style="text-align:right">1</span><span></span></div>
+                <div style="display:grid;grid-template-columns:1fr 40px 90px;color:#B4443A"><span>DROP</span><span></span><span></span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div style="font:400 13px/1.6 Archivo,sans-serif;color:#9A948A;max-width:1000px">Why it's third: it best obeys "the screen is empty by default", and all-caps mono makes long item names and Italian surnames wide and shouty, which fights the quiet tone. It is also the hardest to keep legible when the world behind is busy rather than merely bright. Keep it in reserve as the accessibility/low-clutter option rather than the default.</div>
+    </div>
+
+  </div>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{}"></script>
+</body>
+</html>

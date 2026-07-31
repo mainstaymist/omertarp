@@ -232,12 +232,15 @@ function MODULE:OnEnable()
     -- resource/fonts automatically once it is on disk, and AddFile is what
     -- puts it there. Owned by this module because the fonts are (cl_hud).
     --
-    -- IBM Plex Sans is the Carbon standard's own face and carries the whole
-    -- interface; Germania One is the expressive layer, and appears only on the
-    -- wordmark and the death title.
-    resource.AddFile("resource/fonts/IBMPlexSans-Regular.ttf")
-    resource.AddFile("resource/fonts/IBMPlexSans-SemiBold.ttf")
-    resource.AddFile("resource/fonts/GermaniaOne-Regular.ttf")
+    -- The style guide's three voices: Oswald for display caps, Archivo for
+    -- text and numbers, IBM Plex Mono for the system voice. Weights are
+    -- separate files because the engine cannot synthesise them honestly.
+    resource.AddFile("resource/fonts/Oswald-Light.ttf")
+    resource.AddFile("resource/fonts/Oswald-Regular.ttf")
+    resource.AddFile("resource/fonts/Archivo-Regular.ttf")
+    resource.AddFile("resource/fonts/Archivo-Medium.ttf")
+    resource.AddFile("resource/fonts/IBMPlexMono-Regular.ttf")
+    resource.AddFile("resource/fonts/IBMPlexMono-Medium.ttf")
 
     -- The interface's own click. Owned here rather than by whichever module
     -- happened to need it first: it is a UI sound, and the hotbar, the menu

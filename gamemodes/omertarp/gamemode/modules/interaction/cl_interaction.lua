@@ -115,27 +115,50 @@ end)
 
 -- Registered with the HUD controller (M8): the menu is contextual by nature,
 -- so it belongs to the same list as every other conditional element.
+--
+-- The guide's §06: the menu grows out of the same centred column the hint
+-- line used — the hint WAS the promise of this list, so it becomes it rather
+-- than sitting beside it. A 200px scrim plate below the dot; the selected row
+-- is a filled brass row with ink type, "the only inversion in the game,
+-- unmistakable in peripheral vision at speed."
 Omerta.HUD.Register("interaction.menu", {
     order = 60,
     fade = 0.12,
     visible = function() return menu.held end,
     draw = function(alpha)
         local scale = Omerta.HUD.Scale()
-        local x, y = ScrW() * 0.5 + 24 * scale, ScrH() * 0.5 - 12 * scale
+        local width = 200 * scale
+        local rowH = 27 * scale
+        local padY = 10 * scale
+        local x = ScrW() * 0.5 - width * 0.5
+        local y = ScrH() * 0.5 + 22 * scale
 
         if #menu.options == 0 then
-            Omerta.HUD.Text("nothing to do", "label", x, y,
-                Color(190, 190, 190, 150 * alpha), TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
+            Omerta.HUD.Scrim(x, y, width, rowH + padY * 2, "top", alpha)
+            draw.SimpleText("nothing to do", Omerta.HUD.Font("label"),
+                x + 14 * scale, y + padY + rowH * 0.5,
+                Omerta.HUD.Colour("secondary", 200 * alpha),
+                TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
             return
         end
 
+        local tall = #menu.options * rowH + padY * 2
+        Omerta.HUD.Scrim(x, y, width, tall, "top", alpha)
+
         for i, opt in ipairs(menu.options) do
             local selected = (i == menu.hovered)
-            local text = (selected and "> " or "  ") .. opt.label
-            Omerta.HUD.Text(text, "label", x, y + (i - 1) * 26 * scale,
-                selected and Color(240, 235, 220, 255 * alpha)
-                    or Color(170, 170, 170, 200 * alpha),
-                TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
+            local rowY = y + padY + (i - 1) * rowH
+            local colour
+            if selected then
+                surface.SetDrawColor(Omerta.HUD.Colour("brass", 255 * alpha))
+                surface.DrawRect(x, rowY, width, rowH)
+                colour = Omerta.HUD.Colour("ink", 255 * alpha)
+            else
+                colour = Omerta.HUD.Colour("secondary", 220 * alpha)
+            end
+            draw.SimpleText(opt.label, Omerta.HUD.Font("label"),
+                x + 14 * scale, rowY + rowH * 0.5, colour,
+                TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
         end
     end,
 })

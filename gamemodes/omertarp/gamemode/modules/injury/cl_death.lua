@@ -114,13 +114,7 @@ hook.Add("PostRenderVGUI", "omerta.injury.death_screen", function()
 
         local fading = Omerta.Injury.ExitTextAlpha(elapsed)
         if fading > 0 then
-            local scale = Omerta.HUD.Scale()
-            draw.SimpleText(Omerta.Injury.DEATH_TITLE, Omerta.HUD.Font("headline"),
-                ScrW() * 0.5, ScrH() * 0.5,
-                Color(226, 214, 198, 255 * fading), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
-            draw.SimpleText(Omerta.Injury.DEATH_PROMPT, Omerta.HUD.Font("small"),
-                ScrW() * 0.5, ScrH() * 0.5 + 30 * scale,
-                Color(168, 152, 144, 235 * fading), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+            Omerta.Injury.DrawDeathCard(fading)
         end
         return
     end
@@ -137,19 +131,39 @@ hook.Add("PostRenderVGUI", "omerta.injury.death_screen", function()
     local alpha = Omerta.Injury.DeathTextAlpha(elapsed)
     if alpha <= 0 then return end
 
-    local scale = Omerta.HUD.Scale()
-    draw.SimpleText(Omerta.Injury.DEATH_TITLE, Omerta.HUD.Font("headline"),
-        ScrW() * 0.5, ScrH() * 0.5,
-        Color(226, 214, 198, 255 * alpha), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+    Omerta.Injury.DrawDeathCard(alpha)
+end)
 
-    -- The prompt lags the title slightly, so the words land in order.
+-- The guide's §15 death card: a 520px hairline rule above and below, the
+-- title in the light display face — the only type this large in the game —
+-- and the prompt in the breathing mono voice, deliberately quiet. One
+-- function, because the death screen and the exit both draw it and the two
+-- must not drift.
+function Omerta.Injury.DrawDeathCard(alpha)
+    local scale = Omerta.HUD.Scale()
+    local x, y = ScrW() * 0.5, ScrH() * 0.5
+    local ruleW = 520 * scale
+
+    surface.SetDrawColor(Omerta.HUD.Colour("rule", 255 * alpha))
+    surface.DrawRect(x - ruleW * 0.5, y - 80 * scale, ruleW, 1)
+    surface.DrawRect(x - ruleW * 0.5, y + 64 * scale, ruleW, 1)
+
+    draw.SimpleText(string.upper(Omerta.Injury.DEATH_TITLE),
+        Omerta.HUD.Font("headline"), x, y - 8 * scale,
+        Omerta.HUD.Colour("text", 255 * alpha),
+        TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+
+    -- The prompt lags the title slightly, so the words land in order — and
+    -- breathes once it is there, in the system voice.
     local promptAlpha = math.Clamp((alpha - 0.45) / 0.55, 0, 1)
     if promptAlpha > 0 then
-        draw.SimpleText(Omerta.Injury.DEATH_PROMPT, Omerta.HUD.Font("small"),
-            ScrW() * 0.5, ScrH() * 0.5 + 30 * scale,
-            Color(168, 152, 144, 235 * promptAlpha), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+        local breath = 0.6 + 0.4 * (1 - math.cos(CurTime() * 2.1)) * 0.5
+        draw.SimpleText(string.upper(Omerta.Injury.DEATH_PROMPT),
+            Omerta.HUD.Font("mono"), x, y + 100 * scale,
+            Omerta.HUD.Colour("dim", 255 * promptAlpha * breath),
+            TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
     end
-end)
+end
 
 --------------------------------------------------------------------------------
 -- The trombone

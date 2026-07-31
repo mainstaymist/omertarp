@@ -1,8 +1,14 @@
 -- Character creation UI and the D-011 portrait booth.
 --
--- Deliberately plain: functional layout, no art pass. D-005 puts gameplay
--- before art, and the whole screen will be revisited when M8's UI framework
--- and the period art direction (D-002) land.
+-- The form is a COMPONENT, not a window: Omerta.Characters.BuildCreationForm
+-- builds the fields into whatever parent it is given, and the front-end menu
+-- is where they normally live — creation is a screen OF the menu, over the
+-- same drifting camera, in the same standard, rather than a floating box on
+-- top of it. The full-screen fallback below exists only for a build without
+-- the menu module, so M4 still works alone.
+--
+-- Everything visual comes from the design standard (sh_theme via cl_widgets):
+-- Carbon text inputs, cyclers instead of stock dropdowns, one primary button.
 --
 -- The booth capture is the one genuinely fiddly part. A dedicated server has
 -- no renderer, so the mugshot must be produced here and uploaded (D-011):
@@ -11,7 +17,7 @@
 
 local STATE = Omerta.Characters.STATE
 
-local frame            -- creation window
+local frame            -- the fallback window, when no menu owns the form
 local pendingCapture   -- booth rectangle queued for capture on the next frame
 local capturedPortrait -- base64 JPEG held until the character actually exists
 
@@ -58,64 +64,63 @@ hook.Add("PostRender", "omerta.characters.portrait_capture", function()
     -- the character exists to attach it to. Held until the server confirms.
     capturedPortrait = util.Base64Encode(jpeg, true)
     -- Info, not debug: this fires exactly once per character, and it is the
-    -- only client-side evidence that the booth produced an image at all. The
-    -- client's log level cannot currently be raised in-game, so a debug line
-    -- here would be invisible precisely when it is needed.
+    -- only client-side evidence that the booth produced an image at all.
     Omerta.Log.Info("characters", "portrait captured (%d bytes base64), awaiting character",
         #capturedPortrait)
 end)
 
 --------------------------------------------------------------------------------
--- Creation window
+-- The form
 --------------------------------------------------------------------------------
 
-local function buildFrame()
-    if IsValid(frame) then frame:Remove() end
+-- Builds the creation form into `formParent` and the portrait booth into
+-- `boothParent`, both supplied by whoever owns the screen. Laid out to the
+-- guide's §11: mono field labels, the two names side by side over bare rules,
+-- the life paths as PROSE (not stat blocks), one bone commit button, and the
+-- permadeath warning as a plain sentence — the game does not raise its voice.
+-- Returns { Focus = fn } so the owner can put the cursor in the first field.
+function Omerta.Characters.BuildCreationForm(formParent, boothParent)
+    local scale = Omerta.HUD.Scale()
+    local H = Omerta.HUD
+    local fieldH, gap = 40 * scale, H.Space(4)
 
-    frame = vgui.Create("DFrame")
-    frame:SetSize(720, 460)
-    frame:Center()
-    frame:SetTitle("Omertà RP — Who are you?")
-    frame:SetDraggable(false)
-    frame:ShowCloseButton(false)
-    frame:MakePopup()
-
-    -- Left: the booth. This panel is also the portrait framing (D-011).
-    local booth = vgui.Create("DModelPanel", frame)
-    booth:SetPos(12, 34)
-    booth:SetSize(PORTRAIT_SIZE * 2, PORTRAIT_SIZE * 2)
+    -- The booth. This panel is also the portrait framing (D-011).
+    local booth = vgui.Create("DModelPanel", boothParent)
+    booth:Dock(FILL)
     booth:SetModel(Omerta.Characters.MODELS[1])
     booth:SetFOV(28)
     booth:SetCamPos(Vector(42, 0, 62))
     booth:SetLookAt(Vector(0, 0, 62)) -- head height: a mugshot, not a full body
     function booth:LayoutEntity() end -- no idle spin: the photo must be still
 
-    local right, y = 280, 40
-    local function label(text)
-        local l = vgui.Create("DLabel", frame)
-        l:SetPos(right, y)
-        l:SetSize(400, 18)
-        l:SetText(text)
-        y = y + 20
-        return l
-    end
-    local function entry()
-        local e = vgui.Create("DTextEntry", frame)
-        e:SetPos(right, y)
-        e:SetSize(400, 24)
-        y = y + 30
-        return e
-    end
+    -- GIVEN NAME · FAMILY NAME, side by side.
+    local names = vgui.Create("DPanel", formParent)
+    names:Dock(TOP)
+    names:SetTall(fieldH + 26 * scale)
+    names:DockMargin(0, gap, 0, 0)
+    names.Paint = nil
 
-    label("First name")
-    local firstEntry = entry()
-    label("Last name")
-    local lastEntry = entry()
+    local function nameField(side, caption)
+        local half = vgui.Create("DPanel", names)
+        half:Dock(side)
+        half.Paint = nil
+        half.PerformLayout = function(self)
+            self:SetWide((names:GetWide() - H.Space(4)) * 0.5)
+        end
+        local label = H.FieldLabel(half, caption)
+        label:Dock(TOP)
+        label:SetTall(22 * scale)
+        local entry = H.TextEntry(half)
+        entry:Dock(TOP)
+        entry:SetTall(fieldH)
+        entry:DockMargin(0, 4 * scale, 0, 0)
+        return entry
+    end
+    local firstEntry = nameField(LEFT, "Given name")
+    local lastEntry = nameField(RIGHT, "Family name")
 
-    -- The form is typeable end to end: Tab hops between the name boxes (and
-    -- wraps), and the first is focused the moment the window opens, below.
-    -- Explicit rather than the panel system's tab ordering, which does not
-    -- survive MakePopup reliably.
+    -- Tab hops between the name boxes and wraps; the whole form is typeable
+    -- end to end without touching the mouse.
     local fields = { firstEntry, lastEntry }
     for i, field in ipairs(fields) do
         local base = field.OnKeyCodeTyped
@@ -128,38 +133,68 @@ local function buildFrame()
         end
     end
 
-    label("Appearance")
-    local modelChoice = vgui.Create("DComboBox", frame)
-    modelChoice:SetPos(right, y)
-    modelChoice:SetSize(400, 24)
+    local function fieldLabel(text)
+        local label = H.FieldLabel(formParent, text)
+        label:Dock(TOP)
+        label:SetTall(26 * scale)
+        label:DockMargin(0, gap, 0, 4 * scale)
+    end
+
+    fieldLabel("Appearance")
+    local models = {}
     for i, mdl in ipairs(Omerta.Characters.MODELS) do
-        modelChoice:AddChoice(mdl:match("([^/]+)%.mdl$") or mdl, i, i == 1)
+        models[i] = { label = mdl:match("([^/]+)%.mdl$") or mdl, value = i }
     end
-    modelChoice.OnSelect = function(_, _, _, data)
-        booth:SetModel(Omerta.Characters.MODELS[data] or Omerta.Characters.MODELS[1])
+    local modelChoice = H.Cycler(formParent, models, 1, function(item)
+        booth:SetModel(Omerta.Characters.MODELS[item.value]
+            or Omerta.Characters.MODELS[1])
+    end)
+    modelChoice:Dock(TOP)
+    modelChoice:SetTall(fieldH)
+
+    fieldLabel("Path for this season")
+    local pathChoice = H.ProseList(formParent, {
+        { label = "Criminal", detail = "Eligible for family life. You cannot switch freely.", value = 1 },
+        { label = "Police",   detail = "The department.", value = 2 },
+        { label = "Independent", detail = "Civilian, business, trade.", value = 3 },
+    }, 1)
+    pathChoice:Dock(TOP)
+
+    -- Server rejections and live validation both land here. The guide keeps
+    -- red for marks, not sentences: refusals are bone text behind a 2px
+    -- danger rule, acceptances are the name in brass.
+    local status = vgui.Create("DPanel", formParent)
+    status:Dock(TOP)
+    status:SetTall(40 * scale)
+    status:DockMargin(0, gap, 0, 0)
+    status.OmertaText, status.OmertaBad = "", false
+    status.Paint = function(self, w, h)
+        if self.OmertaText == "" then return end
+        local x = 0
+        if self.OmertaBad then
+            surface.SetDrawColor(H.Colour("danger"))
+            surface.DrawRect(0, 4 * scale, 2, h - 8 * scale)
+            x = 10 * scale
+        end
+        draw.SimpleText(self.OmertaText, H.Font("label"), x, h * 0.5,
+            self.OmertaBad and H.Colour("text") or H.Colour("brass"),
+            TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
     end
-    y = y + 32
 
-    label("Path for this season (you cannot switch freely)")
-    local pathChoice = vgui.Create("DComboBox", frame)
-    pathChoice:SetPos(right, y)
-    pathChoice:SetSize(400, 24)
-    pathChoice:AddChoice("Criminal — eligible for family life", 1, true)
-    pathChoice:AddChoice("Police — the department", 2)
-    pathChoice:AddChoice("Independent — civilian, business, trade", 3)
-    y = y + 36
+    -- The commit, in the guide's words, with the plain sentence beside it.
+    local warning = vgui.Create("DPanel", formParent)
+    warning:Dock(TOP)
+    warning:SetTall(24 * scale)
+    warning:DockMargin(0, gap, 0, 4 * scale)
+    warning.Paint = function(_, w, h)
+        draw.SimpleText("This character can die. There is no second copy.",
+            H.Font("small"), 0, h * 0.5, H.Colour("dim"),
+            TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
+    end
 
-    local status = vgui.Create("DLabel", frame)
-    status:SetPos(right, y)
-    status:SetSize(400, 40)
-    status:SetWrap(true)
-    status:SetText("")
-    y = y + 46
-
-    local submit = vgui.Create("DButton", frame)
-    submit:SetPos(right, y)
-    submit:SetSize(400, 32)
-    submit:SetText("Enter the city")
+    local submit = H.Button(formParent, "Step into the city", "commit")
+    submit:Dock(TOP)
+    submit:SetTall(48 * scale)
 
     -- Live feedback using the same validator the server enforces. This is a
     -- courtesy only: the server revalidates everything on arrival.
@@ -167,12 +202,12 @@ local function buildFrame()
         local first, last = Omerta.Characters.ValidateName(
             firstEntry:GetValue(), lastEntry:GetValue())
         if not first then
-            status:SetTextColor(Color(200, 120, 120))
-            status:SetText(last or "")
+            status.OmertaBad = true
+            status.OmertaText = last or ""
             return nil
         end
-        status:SetTextColor(Color(140, 170, 140))
-        status:SetText(first .. " " .. last)
+        status.OmertaBad = false
+        status.OmertaText = first .. " " .. last
         return first, last
     end
     firstEntry.OnChange = validate
@@ -181,25 +216,26 @@ local function buildFrame()
     local function reenable()
         if IsValid(submit) then
             submit:SetEnabled(true)
-            submit:SetText("Enter the city")
+            submit:SetLabel("Step into the city")
         end
     end
 
     submit.DoClick = function()
         if not validate() then return end
-        local _, modelIndex = modelChoice:GetSelected()
-        local _, pathIndex = pathChoice:GetSelected()
+        surface.PlaySound("omertarp/ui/inventory-click.wav")
+        local model = modelChoice:GetSelected()
+        local path = pathChoice:GetSelected()
         submit:SetEnabled(false)
-        submit:SetText("Creating…")
+        submit:SetLabel("Creating…")
         -- The booth is still on screen; take the mugshot now, at creation,
         -- exactly once (D-011).
         requestCapture(booth)
         Omerta.Net.Request("characters.create", {
             first = firstEntry:GetValue(),
             last = lastEntry:GetValue(),
-            model = modelIndex or 1,
+            model = model and model.value or 1,
             skin = 0,
-            path = pathIndex or 1,
+            path = path and path.value or 1,
         })
         timer.Simple(5, reenable)
     end
@@ -207,29 +243,92 @@ local function buildFrame()
     -- Server rejections (name taken, bad path, no season) land here.
     hook.Add("Omerta.CharacterCreateFailed", "omerta.characters.ui_failed", function(reason)
         if not IsValid(status) then return end
-        status:SetTextColor(Color(200, 120, 120))
-        status:SetText(reason)
+        status.OmertaBad = true
+        status.OmertaText = reason
         reenable()
     end)
 
-    -- Last, so nothing built after it steals the focus back.
-    firstEntry:RequestFocus()
+    return {
+        Focus = function()
+            if IsValid(firstEntry) then firstEntry:RequestFocus() end
+        end,
+    }
+end
+
+--------------------------------------------------------------------------------
+-- The fallback window
+--------------------------------------------------------------------------------
+-- Only for a build without the menu module: same standard, same layout idea —
+-- a full-screen scrim, the form in a left column, the booth on the right.
+
+local function buildFrame()
+    if IsValid(frame) then frame:Remove() end
+
+    local scale = Omerta.HUD.Scale()
+    local H = Omerta.HUD
+    local columnW = 470 * scale
+
+    frame = vgui.Create("DFrame")
+    frame:SetSize(ScrW(), ScrH())
+    frame:SetTitle("")
+    frame:ShowCloseButton(false)
+    frame:SetDraggable(false)
+    frame:MakePopup()
+    frame.Paint = function(_, w, h)
+        surface.SetDrawColor(0, 0, 0, 170)
+        surface.DrawRect(0, 0, w, h)
+        surface.SetDrawColor(H.Colour("plate", 0.94))
+        surface.DrawRect(0, 0, columnW + H.Space(7) * 2, h)
+        draw.SimpleText("NEW ARRIVAL", H.Font("mono"),
+            H.Space(7), h * 0.2 - 58 * Omerta.HUD.Scale(), H.Colour("dim"),
+            TEXT_ALIGN_LEFT, TEXT_ALIGN_BOTTOM)
+        draw.SimpleText("WHO ARE YOU", H.Font("headline"),
+            H.Space(7), h * 0.2 - H.Space(3), H.Colour("text"),
+            TEXT_ALIGN_LEFT, TEXT_ALIGN_BOTTOM)
+    end
+
+    local column = vgui.Create("DPanel", frame)
+    column:SetPos(H.Space(7), ScrH() * 0.2)
+    column:SetSize(columnW, ScrH() * 0.7)
+    column.Paint = nil
+
+    local boothPanel = vgui.Create("DPanel", frame)
+    local boothSize = math.min(420 * scale, ScrH() * 0.5)
+    boothPanel:SetSize(boothSize, boothSize)
+    boothPanel:SetPos(ScrW() - boothSize - H.Space(5), (ScrH() - boothSize) * 0.5)
+    boothPanel.Paint = function(_, w, h)
+        surface.SetDrawColor(H.Colour("plate", 235))
+        surface.DrawRect(0, 0, w, h)
+        surface.SetDrawColor(H.Colour("rule"))
+        surface.DrawOutlinedRect(0, 0, w, h, 1)
+    end
+
+    local form = Omerta.Characters.BuildCreationForm(column, boothPanel)
+    form.Focus()
 end
 
 local function showMessage(text)
     if IsValid(frame) then frame:Remove() end
     frame = vgui.Create("DFrame")
-    frame:SetSize(420, 120)
+    frame:SetSize(460, 130)
     frame:Center()
-    frame:SetTitle("Omertà RP")
+    frame:SetTitle("")
     frame:SetDraggable(false)
     frame:ShowCloseButton(false)
     frame:MakePopup()
-    local l = vgui.Create("DLabel", frame)
-    l:SetPos(16, 40)
-    l:SetSize(388, 60)
-    l:SetWrap(true)
-    l:SetText(text)
+    frame.Paint = function(_, w, h)
+        surface.SetDrawColor(Omerta.HUD.Colour("plate", 245))
+        surface.DrawRect(0, 0, w, h)
+        surface.SetDrawColor(Omerta.HUD.Colour("rule"))
+        surface.DrawOutlinedRect(0, 0, w, h, 1)
+    end
+    local label = vgui.Create("DLabel", frame)
+    label:SetPos(16, 30)
+    label:SetSize(428, 80)
+    label:SetFont(Omerta.HUD.Font("label"))
+    label:SetTextColor(Omerta.HUD.Colour("secondary"))
+    label:SetWrap(true)
+    label:SetText(text)
 end
 
 --------------------------------------------------------------------------------
@@ -238,7 +337,7 @@ end
 
 -- Something may want to hold the creation window back for a moment.
 --
--- M19 is the first: a character who has just died is routed here immediately,
+-- M19 was the first: a character who has just died is routed here immediately,
 -- and a "make a new person" form appearing over the body of the old one is the
 -- wrong beat entirely. A gate returns true while it wants to wait, and calls
 -- the release function when it is done.
@@ -279,6 +378,10 @@ end
 
 hook.Add("Omerta.CharactersState", "omerta.characters.ui", function(state)
     if state == STATE.NEEDS_CREATION then
+        -- The front end owns the flow when it exists: the menu appears (after
+        -- whatever the death sequence is still doing), and creation is one of
+        -- ITS screens. The fallback window is for a build without it.
+        if Omerta.Menu ~= nil then return end
         if creationHeld() then creationPending = true return end
         creationPending = false
         buildFrame()

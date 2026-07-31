@@ -74,11 +74,12 @@ local function buildFonts()
         -- The engine loads any TTF under resource/fonts by itself; the family
         -- name here only has to match the one inside the file. A client that
         -- somehow lacks it falls back to the engine default — legible, if
-        -- charmless.
+        -- charmless. Weights live in the FACE (Oswald Light, Archivo Medium),
+        -- so no weight parameter: asking the rasteriser to synthesise one
+        -- fakes exactly what the guide picked real files for.
         surface.CreateFont("Omerta.HUD." .. role, {
-            font = THEME.FACE[def.face] or THEME.FACE.sans,
+            font = THEME.FACE[def.face] or THEME.FACE.text,
             size = math.Round(THEME.TypeSize(role) * scale),
-            weight = def.weight,
             antialias = true,
         })
     end
@@ -91,10 +92,10 @@ function Omerta.HUD.Font(role)
 end
 
 -- A themed colour as a drawable Color, with optional alpha (0..1 or 0..255).
--- Every call site names a ROLE — "borderSubtle" — so a re-theme is this file
--- and sh_theme, never a search for hex values.
+-- Every call site names a ROLE — "brass", "rule" — so a re-theme is sh_theme,
+-- never a search for hex values.
 function Omerta.HUD.Colour(token, alpha)
-    local rgb = THEME.COLOUR[token] or THEME.COLOUR.textPrimary
+    local rgb = THEME.COLOUR[token] or THEME.COLOUR.text
     alpha = alpha or 255
     if alpha <= 1 then alpha = alpha * 255 end
     return Color(rgb[1], rgb[2], rgb[3], alpha)
@@ -106,16 +107,35 @@ function Omerta.HUD.Space(step)
     return THEME.Step(step) * Omerta.HUD.Scale()
 end
 
--- Every piece of text drawn over the WORLD goes through this: the same text
--- with a soft dark shadow one step down-right, so it stays legible against a
--- bright sky or a busy wall without boxing everything in panels. Menus and
--- panels that paint their own dark background can keep using draw.SimpleText.
+-- Every piece of text drawn over the WORLD goes through this. The guide's
+-- world-layer rule: a 1px HARD outline — four black offsets at full alpha, no
+-- blur — because a soft shadow disappears against mid-grey and an outline is
+-- a shape and cannot. The 1px stays 1px at every scale; a 1.5px hairline is a
+-- grey smear. Panels that paint their own plate keep using draw.SimpleText.
 function Omerta.HUD.Text(text, role, x, y, colour, alignX, alignY)
     local font = Omerta.HUD.Font(role)
-    local offset = math.max(1, math.Round(Omerta.HUD.Scale()))
-    draw.SimpleText(text, font, x + offset, y + offset,
-        Color(10, 8, 6, (colour.a or 255) * 0.65), alignX, alignY)
+    local outline = Color(0, 0, 0, colour.a or 255)
+    draw.SimpleText(text, font, x + 1, y, outline, alignX, alignY)
+    draw.SimpleText(text, font, x - 1, y, outline, alignX, alignY)
+    draw.SimpleText(text, font, x, y + 1, outline, alignX, alignY)
+    draw.SimpleText(text, font, x, y - 1, outline, alignX, alignY)
     draw.SimpleText(text, font, x, y, colour, alignX, alignY)
+end
+
+-- A cluster plate: the guide's scrim for anything over three lines — ink at
+-- 62%, one 1px rule on the side facing the screen edge. `edge` is "top",
+-- "bottom", "left" or "right"; alpha multiplies the element's own fade.
+function Omerta.HUD.Scrim(x, y, w, h, edge, alpha)
+    alpha = alpha or 1
+    local theme = Omerta.HUD.Theme
+    surface.SetDrawColor(Omerta.HUD.Colour("plate", theme.ALPHA.scrim * 255 * alpha))
+    surface.DrawRect(x, y, w, h)
+    surface.SetDrawColor(Omerta.HUD.Colour("rule", 255 * alpha))
+    if edge == "top" then surface.DrawRect(x, y, w, 1)
+    elseif edge == "bottom" then surface.DrawRect(x, y + h - 1, w, 1)
+    elseif edge == "left" then surface.DrawRect(x, y, 1, h)
+    elseif edge == "right" then surface.DrawRect(x + w - 1, y, 1, h)
+    end
 end
 
 --------------------------------------------------------------------------------
@@ -202,11 +222,29 @@ Omerta.HUD.Register("cues", {
         return #cues > 0
     end,
     draw = function(alpha)
-        local y = ScrH() * 0.30
-        for _, cue in ipairs(cues) do
-            Omerta.HUD.Text(cue.text, "body", ScrW() * 0.5, y,
-                Color(235, 225, 205, 255 * alpha), TEXT_ALIGN_CENTER, TEXT_ALIGN_TOP)
-            y = y + 30 * Omerta.HUD.Scale()
+        -- The guide's transient notices: plates stacking down from the
+        -- top-left at the screen margin, newest first and loudest, older ones
+        -- dropping to half presence — no counters, no queue indicator.
+        local scale = Omerta.HUD.Scale()
+        local margin = Omerta.HUD.Space(5)
+        local width = 380 * scale
+        local pad = Omerta.HUD.Space(3)
+        local y = margin
+
+        surface.SetFont(Omerta.HUD.Font("body"))
+        for index = #cues, 1, -1 do
+            local cue = cues[index]
+            local age = #cues - index -- 0 = newest
+            local presence = (age == 0 and 1 or 0.5) * alpha
+            local _, textTall = surface.GetTextSize(cue.text)
+            local tall = textTall + pad * 2
+
+            Omerta.HUD.Scrim(margin, y, width, tall, "top", presence)
+            draw.SimpleText(cue.text, Omerta.HUD.Font("body"),
+                margin + pad, y + pad,
+                Omerta.HUD.Colour("text", 255 * presence),
+                TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
+            y = y + tall + Omerta.HUD.Space(3)
         end
     end,
 })
@@ -217,20 +255,17 @@ Omerta.HUD.Register("cues", {
 
 local stamina, staminaChangedAt = 1, 0
 
--- What the bar draws. The server sends the value four times a second, which
--- is honest and looks like a bar climbing a staircase — so the display eases
--- toward the truth every frame and only the truth decides visibility.
-local staminaShown = 1
-
 hook.Add("Omerta.StaminaUpdated", "omerta.hud.stamina", function(value)
     if value < stamina then staminaChangedAt = CurTime() end
     stamina = value
 end)
 
-hook.Add("Think", "omerta.hud.stamina_smooth", function()
-    staminaShown = staminaShown + (stamina - staminaShown)
-        * math.min(1, FrameTime() * 9)
-end)
+-- The guide's stamina: twelve discrete 9×3 ticks at the bottom-left margin,
+-- spent ones dropping to 18% — they STAY, they don't slide. A bar invites
+-- reading a percentage; ticks read as "a few breaths left". Quantising also
+-- retires the smoothing problem: a tick either exists or it does not, so the
+-- four-per-second server updates never look like a staircase.
+local STAMINA_TICKS = 12
 
 Omerta.HUD.Register("stamina", {
     order = 20,
@@ -241,16 +276,18 @@ Omerta.HUD.Register("stamina", {
     end,
     draw = function(alpha)
         local scale = Omerta.HUD.Scale()
-        local w, h = 160 * scale, 3 * scale
-        local x, y = (ScrW() - w) * 0.5, ScrH() * 0.78
-        surface.SetDrawColor(20, 20, 20, 140 * alpha)
-        surface.DrawRect(x, y, w, h)
-        -- Reddens as it empties: readable without relying on colour alone,
-        -- since the bar also shortens.
-        local warn = stamina < 0.35
-        surface.SetDrawColor(warn and 190 or 210, warn and 120 or 205, warn and 110 or 185,
-            230 * alpha)
-        surface.DrawRect(x, y, w * math.max(0, math.min(1, staminaShown)), h)
+        local margin = Omerta.HUD.Space(5)
+        local w, h, gap = 9 * scale, 3 * scale, 2 * scale
+        local x = margin
+        local y = ScrH() - margin - h
+        local filled = math.floor(math.Clamp(stamina, 0, 1) * STAMINA_TICKS + 0.5)
+
+        for i = 1, STAMINA_TICKS do
+            surface.SetDrawColor(Omerta.HUD.Colour("text",
+                (i <= filled and 235 or 235 * 0.18) * alpha))
+            surface.DrawRect(x, y, w, h)
+            x = x + w + gap
+        end
     end,
 })
 
@@ -275,8 +312,11 @@ Omerta.HUD.Register("injury", {
     draw = function(alpha)
         local state = injuryProvider and injuryProvider()
         if not state then return end
+        -- Bone, not red: the guide colours nothing but the selected and the
+        -- irreversible, and being hurt is a sentence, not an alarm.
         Omerta.HUD.Text(state, "body", ScrW() * 0.5, ScrH() * 0.72,
-            Color(200, 110, 100, 255 * alpha), TEXT_ALIGN_CENTER, TEXT_ALIGN_TOP)
+            Omerta.HUD.Colour("text", 255 * alpha),
+            TEXT_ALIGN_CENTER, TEXT_ALIGN_TOP)
     end,
 })
 
@@ -361,28 +401,33 @@ Omerta.HUD.Register("interactable", {
     draw = function(alpha)
         local scale = Omerta.HUD.Scale()
         local size = 3 * scale
-        surface.SetDrawColor(235, 230, 215, 170 * alpha)
+        -- The dot carries its own 1px ring of ink, same rule as world text.
+        surface.SetDrawColor(0, 0, 0, 230 * alpha)
+        surface.DrawOutlinedRect(ScrW() * 0.5 - size * 0.5 - 1,
+            ScrH() * 0.5 - size * 0.5 - 1, size + 2, size + 2, 1)
+        surface.SetDrawColor(Omerta.HUD.Colour("text", 235 * alpha))
         surface.DrawRect(ScrW() * 0.5 - size * 0.5, ScrH() * 0.5 - size * 0.5, size, size)
 
-        -- Under the dot rather than over it: the thing you are looking at stays
-        -- unobstructed, and the eye is already there.
+        -- The guide's ladder: ONE centred column with FIXED anchors — subject
+        -- at +24, hint at +48, further hints a step apart. Fixed rather than
+        -- measured, so the subject's baseline never moves; the hint is the
+        -- only thing that appears and disappears.
         local target = interactableTarget()
-        local x, y = ScrW() * 0.5, ScrH() * 0.5 + 14 * scale
-        local gap = 4 * scale
-
-        local function line(text, role, colour)
-            Omerta.HUD.Text(text, role, x, y, colour, TEXT_ALIGN_CENTER, TEXT_ALIGN_TOP)
-            surface.SetFont(Omerta.HUD.Font(role))
-            local _, tall = surface.GetTextSize(text)
-            y = y + tall + gap
-        end
+        local x = ScrW() * 0.5
+        local subjectY = ScrH() * 0.5 + 24 * scale
+        local hintY = ScrH() * 0.5 + 48 * scale
 
         local title, subtitle = Omerta.HUD.LabelFor(target)
         if title then
-            line(title, "label", Color(235, 230, 215, 235 * alpha))
+            Omerta.HUD.Text(title, "subject", x, subjectY,
+                Omerta.HUD.Colour("text", 235 * alpha),
+                TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
         end
         if subtitle then
-            line(subtitle, "small", Color(190, 184, 170, 205 * alpha))
+            Omerta.HUD.Text(subtitle, "small", x, hintY,
+                Omerta.HUD.Colour("secondary", 220 * alpha),
+                TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+            hintY = hintY + 24 * scale
         end
 
         -- Deterministic order, so two hints never trade places frame to frame.
@@ -392,7 +437,10 @@ Omerta.HUD.Register("interactable", {
         for _, id in ipairs(ids) do
             local ok, text = pcall(targetHints[id], target)
             if ok and type(text) == "string" and text ~= "" then
-                line(text, "small", Color(178, 172, 160, 200 * alpha))
+                Omerta.HUD.Text(text, "small", x, hintY,
+                    Omerta.HUD.Colour("secondary", 220 * alpha),
+                    TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+                hintY = hintY + 24 * scale
             end
         end
     end,

@@ -37,7 +37,7 @@ hook.Add("Think", "omerta.weapons.readout", function()
 end)
 
 Omerta.HUD.Register("weapons.rounds", {
-    order = 21, -- beside stamina, in the band the eye already checks
+    order = 21,
     fade = 0.3,
     visible = function()
         return activeOmertaWeapon() ~= nil and CurTime() < shownUntil
@@ -47,22 +47,27 @@ Omerta.HUD.Register("weapons.rounds", {
         if not wep then return end
         local def = wep:Def()
         local clip = wep:Clip1()
+        local scale = Omerta.HUD.Scale()
+        local margin = Omerta.HUD.Space(5)
+        local x = ScrW() - margin
+        local y = ScrH() - margin
 
-        local text
+        -- The guide's ammunition block, bottom-right: the count as the big
+        -- tabular number, the context under it in the system voice. No low
+        -- colour — the words carry it, and the guide colours nothing but the
+        -- selected and the irreversible.
+        local context
         if clip <= 0 then
-            text = "Empty — press R"
-        elseif clip == 1 then
-            text = "1 round"
+            context = "EMPTY · PRESS R"
         else
-            text = clip .. " rounds"
+            context = "IN THE " .. string.upper(def and def.chamber or "magazine")
         end
 
-        -- Reddens as it runs dry, same convention as the stamina bar: readable
-        -- without relying on colour alone, since the number is right there.
-        local low = def and clip <= math.max(1, math.floor(def.clip * 0.25))
-        Omerta.HUD.Text(text, "small",
-            ScrW() * 0.5, ScrH() * 0.815,
-            Color(low and 205 or 210, low and 120 or 205, low and 110 or 185, 220 * alpha),
-            TEXT_ALIGN_CENTER, TEXT_ALIGN_TOP)
+        Omerta.HUD.Text(context, "mono", x, y,
+            Omerta.HUD.Colour("secondary", 235 * alpha),
+            TEXT_ALIGN_RIGHT, TEXT_ALIGN_BOTTOM)
+        Omerta.HUD.Text(clip, "count", x, y - 20 * scale,
+            Omerta.HUD.Colour("text", 245 * alpha),
+            TEXT_ALIGN_RIGHT, TEXT_ALIGN_BOTTOM)
     end,
 })

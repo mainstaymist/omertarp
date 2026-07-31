@@ -151,22 +151,51 @@ check("the design standard defines every role the interface asks for", function(
     local T = Omerta.HUD.Theme
     -- Every role named anywhere in the UI. A missing one silently falls back
     -- to body text, which looks like a design decision rather than a bug.
-    for _, role in ipairs({ "small", "label", "body", "heading", "headline", "title" }) do
+    for _, role in ipairs({ "mono", "small", "label", "body", "subject", "prose",
+            "heading", "verb", "count", "headline", "title" }) do
         assert(T.TYPE[role], "no type role '" .. role .. "'")
         assert(T.TypeSize(role) > 0, role .. " has no size")
         assert(T.FACE[T.TYPE[role].face], role .. " names a face that does not exist")
     end
-    -- Carbon's scale, read at game distance rather than browser distance.
-    assert(T.TypeSize("body") > T.TypeSize("label"), "body is larger than a label")
-    assert(T.TypeSize("title") > T.TypeSize("headline"), "the wordmark is the largest")
+    -- The guide's ladder: 13 mono, 15 body, 20 subject, 26 title, 46 death.
+    assert(T.TypeSize("mono") == 13 and T.TypeSize("body") == 15
+        and T.TypeSize("subject") == 20 and T.TypeSize("heading") == 26
+        and T.TypeSize("headline") == 46, "the type scale is the guide's")
+    assert(T.TypeSize("title") > T.TypeSize("headline"),
+        "the wordmark and the dead's name are the largest type in the game")
 end)
 
-check("spacing comes from the scale and never from a guess", function()
+check("the palette is the guide's six, and nothing in it is blue", function()
+    loadModules()
+    local C = Omerta.HUD.Theme.COLOUR
+    for _, token in ipairs({ "plate", "rule", "text", "secondary", "brass", "danger" }) do
+        assert(C[token], "missing colour '" .. token .. "'")
+    end
+    -- The exact six hex, pinned, so a re-theme is a decision and not a drift.
+    assert(C.plate[1] == 10 and C.plate[2] == 10 and C.plate[3] == 11, "plate is ink")
+    assert(C.text[1] == 238 and C.text[2] == 234 and C.text[3] == 225,
+        "text is bone-warm, not #FFF")
+    assert(C.brass[1] == 200 and C.brass[2] == 169 and C.brass[3] == 106, "brass is brass")
+    assert(C.danger[1] == 142 and C.danger[2] == 43 and C.danger[3] == 34,
+        "the irreversible red is the guide's")
+    -- The complaint that started this: no token may be blue-dominant.
+    for token, rgb in pairs(C) do
+        assert(rgb[3] <= math.max(rgb[1], rgb[2]) + 2,
+            "'" .. token .. "' is blue, and blue is not in the palette")
+    end
+end)
+
+check("spacing is the 4px grid and never a guess", function()
     loadModules()
     local T = Omerta.HUD.Theme
-    assert(T.Step(1) < T.Step(5) and T.Step(5) < T.Step(10), "the scale ascends")
+    -- Only 4·8·12·16·24·32·48 exist, and 24 is the screen-edge margin.
+    assert(#T.SPACING == 7, "seven steps, no more")
+    assert(T.Step(1) == 4 and T.Step(5) == 24 and T.Step(7) == 48)
+    for _, px in ipairs(T.SPACING) do
+        assert(px % 4 == 0, px .. " is off the 4px grid")
+    end
     -- Out-of-range steps clamp: a layout should never vanish because somebody
-    -- asked for spacing-14.
+    -- asked for spacing-9.
     assert(T.Step(99) == T.Step(#T.SPACING), "clamped at the top")
     assert(T.Step(0) == T.Step(1), "and at the bottom")
 end)

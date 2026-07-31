@@ -2,8 +2,8 @@
 
 **What this is:** everything built but not yet confirmed working in-engine, in the order worth doing it. Kept current as work lands — when you report results, the statuses here get updated and anything that fails becomes a fix before new work starts.
 
-**Last updated:** 2026-07-31, after the front end (intro + main menu) and the Carbon design standard.
-**Headless suite:** 365 checks passing. `luac -p` clean across the tree. 18 modules resolving.
+**Last updated:** 2026-07-31, after the STYLE GUIDE was implemented across every existing surface (the handoff zip worked).
+**Headless suite:** 366 checks passing. `luac -p` clean across the tree. 18 modules resolving.
 
 Status key: **☐ untested** · **☑ passed** · **☒ failed** (details inline) · **◐ partly**
 
@@ -21,15 +21,44 @@ If migrations fail, stop and send me the error — everything below depends on t
 
 ---
 
-## 1. The front end and the design standard (2026-07-31) — newest, test first
+## 1. The style guide, implemented (2026-07-31) — newest, test first
 
-**The interface now has a standard: IBM's Carbon**, dark theme, adapted in two
-declared ways — type scaled up 1.7× because Carbon is drawn for a browser at
-arm's length and this is read across a room, and Germania One kept as the
-*expressive* face for the wordmark and death title only. Everything else is IBM
-Plex Sans. Every colour, size and gap now comes from one file
-(`modules/hud/sh_theme.lua`); the standardization milestone becomes a re-read of
-that table rather than a search for hex codes.
+Your handoff zip read clean, and direction **1a** is now the standard — the
+IBM-Carbon detour (and its blue) is gone. `modules/hud/sh_theme.lua` holds the
+guide's six hex, the 4px grid and the type ladder, all pinned by tests
+(including "nothing in the palette may be blue"); the guide itself is
+versioned at `docs/design/style-guide/`. Oswald/Archivo/Plex Mono replace the
+old faces; Germania One and Plex Sans are retired.
+
+| | Check | How | Expect |
+|---|---|---|---|
+| ☐ | **Hold C = pockets, absolutely** | Hold C, click rows, release mid-click | Open exactly while held, gone the instant it is not — polling the real key now, so no interaction can wedge it. No X button anywhere |
+| ☐ | **The menu error is gone** | Sit on the main menu | No `attempt to index field 'Seasons'` spam; the season line reads "THE CITY" until the client knows better |
+| ☐ | **Creation lives IN the menu** | Enter the city | The rail widens into §11: NEW ARRIVAL kicker, GIVEN/FAMILY NAME side by side over bare rules, prose life paths (chosen one brass-inverted), the portrait tile on the city side, "STEP INTO THE CITY" in bone, the permadeath sentence beside it. Esc or BACK returns |
+| ☐ | **Inventory is the ledger (§09)** | Hold C | One ink plate: ITEM/QTY/BULK/STATE mono captions, the in-hands item as the full brass-inverted row, WORN/CARRIED in brass, the bulk tick meter, ON HAND and APPETITE bottom-right |
+| ☐ | **Loot is one plate, two columns (§10)** | Search a body | Identical columns, one vertical rule, hover = brass wash + 1px brass edge on the travel side. C dismisses |
+| ☐ | **Item menu (§10)** | Right-click a row | Mono header naming the item; verbs; hovered verb brass-inverted; **Drop alone at the bottom, under a rule, in the red** |
+| ☐ | **Verb menu (§06)** | Hold E on a body | A 200px scrim plate under the dot; selected verb is the brass-filled row with ink type |
+| ☐ | **Hotbar (§07)** | Scroll / press 1–4 | Column of 52px slot squares, left-centre; only the held slot gets the brass border and the name caption under the column |
+| ☐ | **Stamina is ticks (§07)** | Sprint | Twelve 9×3 ticks bottom-left; spent ones dim to 18% and STAY — no sliding bar |
+| ☐ | **Ammunition block (§07)** | Draw, fire, reload | Bottom-right: big tabular count over "IN THE CYLINDER" (revolver) / "IN THE MAGAZINE" (Thompson); "EMPTY · PRESS R" when dry; gone 2s later |
+| ☐ | **Timed action (§08)** | Search a stranger | Bottom-centre 320px plate: "SEARCHING…" in Oswald caps, bare 2px progress line, no number; vanishes instantly on cancel |
+| ☐ | **Notices** | Trigger two notices quickly | Top-left scrim plates stacking down, newest loud, older at 50% |
+| ☐ | **Bleeding out (§14)** | `omerta_injury_state incapacitated` | Four nested ink rectangles closing in (no red gradient); the clock is a 2px red line at the bottom BREATHING at your pulse rate, shortening — no bar, no track |
+| ☐ | **Death card (§15)** | Die | Hairline rules above and below, the title in light Oswald caps, "PRESS ANY KEY" breathing in the mono voice |
+| ☐ | **World text outline** | Look at names/hints against sky and alley | Hard 1px black outline (not a soft shadow) — same weight everywhere |
+| ☐ | **The dot ladder (§05)** | Look at a body | Dot, subject at a fixed +24, hint at +48 — the subject's baseline never moves |
+
+**Known deviations from the guide, deliberate, say if you want them changed:**
+the dot only appears when something is in reach (the guide keeps a dimmed
+always-on dot; GDD §8's empty screen won that argument for now); the death
+card still says "YOU HAVE DIED…" rather than the character's name + epitaph
+(needs the name plumbed to the death screen — small follow-up); double-click
+/ shift-click / drag-to-split in loot are not wired (right-click menu does
+those jobs); treasury and payphone windows are still on stock Derma — they
+are the next restyle targets now the kit exists.
+
+## 1b. The front end (intro + main menu) — from the previous pass
 
 The intro and menu are **placeholder sets for M27/M28**, built as systems so
 those milestones fill in data. Three of their open rulings I had to assume an
@@ -42,10 +71,9 @@ the real shots are per-map authoring work that lands with the map (Q-9).
 
 | | Check | How | Expect |
 |---|---|---|---|
-| ☐ | **C toggles the inventory** | Press C, release; press again | Opens on press and STAYS open; closes on the next press. (It was riding a bind that re-fires every frame while held — hence hold-to-view) |
 | ☐ | **The intro plays** | Join with no character | Black → "OMERTÀ" and the line under it → words fade → the city fades up under a slow orbiting camera → menu. ~9.6 s |
 | ☐ | **The intro is skippable — but not by accident** | Hammer a key from the loading screen; then press one once the words are up | Early presses do nothing; a press after the title is legible jumps straight to the menu |
-| ☐ | **The menu works on the keyboard** | Arrows/W/S, Enter | Highlight moves and wraps, click sound per move, Enter chooses. A blue bar marks the selection — Carbon marks with a bar, not a glow |
+| ☐ | **The menu works on the keyboard** | Arrows/W/S, Enter | Highlight moves and wraps, click sound per move, Enter chooses. The selected entry is the brass-inverted row |
 | ☐ | **The menu works on the mouse** | Hover and click | Hover moves the highlight; click chooses |
 | ☐ | **Enter the city** | Choose it | Menu goes, character creation appears, music fades out |
 | ☐ | **Death lands on the menu, not the creator** | Die | Death screen → the black lifts to reveal the **menu**, with its camera already orbiting behind it (not a cut after the fade) |
@@ -53,7 +81,7 @@ the real shots are per-map authoring work that lands with the map (Q-9).
 | ☐ | **Leave** | Menu → Leave | Disconnects |
 | ☐ | **Intro can be turned off** | `omerta_intro 0`, then rejoin | Straight to the menu, no intro. (Client convar — the player's call) |
 | ☐ | **Music** | Join | "Cry Me a River" fades in under the intro and continues under the menu; fades out entering the city. Silent for a client without the file — that is expected until it is compressed |
-| ☐ | **The typeface changed everywhere** | Look at any HUD text, the inventory, the menu | IBM Plex Sans throughout; Germania One only on the intro/menu wordmark and the death title. Nothing should still be in the old face |
+| ☐ | **The typefaces are the guide's** | Look anywhere | Oswald caps for titles and verbs, Archivo for names and numbers, Plex Mono for the small caps annotations |
 | ☐ | **Nothing is rounded any more** | Inventory, menu, loot windows | Square corners everywhere — a Carbon signature and the quickest way to spot a panel that has not been converted |
 | ☐ | **Scale still holds** | `omerta_ui_scale 0.75` then `1.5`, walk around | Menu, inventory, hotbar and HUD all stay laid out; nothing overlaps or leaves the screen |
 

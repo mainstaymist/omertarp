@@ -210,10 +210,6 @@ Omerta.HUD.Register("injury.blur", {
     end,
 })
 
-local GRADIENT_LEFT  = Material("gui/gradient")
-local GRADIENT_UP    = Material("gui/gradient_up")
-local GRADIENT_DOWN  = Material("gui/gradient_down")
-
 local pulsePhase = 0
 
 hook.Add("Think", "omerta.injury.pulse", function()
@@ -221,32 +217,37 @@ hook.Add("Think", "omerta.injury.pulse", function()
     pulsePhase = pulsePhase + FrameTime() * math.pi * 2 * Omerta.Injury.PulseRate(C.Progress())
 end)
 
+-- The guide's §14: the world closing in is FOUR NESTED TRANSLUCENT INK
+-- RECTANGLES thickening as you go — cheap, immediate-mode, no gradient asset,
+-- and it reads as the edges of vision going rather than a colour filter. The
+-- same VignetteReach curve drives the total thickness (with its one-sided
+-- heartbeat), split across the four frames from the outside in.
+local FRAMES = { 0.55, 0.50, 0.45, 0.40 } -- each layer's ink, outermost first
+
+local function drawFrame(inset, thick, a)
+    local w, h = ScrW(), ScrH()
+    surface.DrawRect(inset, inset, w - inset * 2, thick)                       -- top
+    surface.DrawRect(inset, h - inset - thick, w - inset * 2, thick)           -- bottom
+    surface.DrawRect(inset, inset + thick, thick, h - (inset + thick) * 2)     -- left
+    surface.DrawRect(w - inset - thick, inset + thick, thick,
+        h - (inset + thick) * 2)                                               -- right
+end
+
 Omerta.HUD.Register("injury.vignette", {
     order = 5,
     fade = 1.2,
     visible = function() return C.IsDying() end,
     draw = function(alpha)
-        local w, h = ScrW(), ScrH()
         local reach = Omerta.Injury.VignetteReach(C.Progress(), pulsePhase)
-        local thickX, thickY = w * 0.5 * reach, h * 0.5 * reach
+        local total = math.min(ScrW(), ScrH()) * 0.5 * reach
+        local layer = total / #FRAMES
 
-        -- Deep red rather than black: this is blood loss, not a fade to menu.
-        local a = 255 * alpha
-        surface.SetDrawColor(120, 10, 10, a)
-
-        surface.SetMaterial(GRADIENT_DOWN)
-        surface.DrawTexturedRect(0, 0, w, thickY)
-        surface.SetMaterial(GRADIENT_UP)
-        surface.DrawTexturedRect(0, h - thickY, w, thickY)
-
-        surface.SetMaterial(GRADIENT_LEFT)
-        surface.DrawTexturedRect(0, 0, thickX, h)
-        -- Mirrored U, so the same material serves the right-hand edge.
-        surface.DrawTexturedRectUV(w - thickX, 0, thickX, h, 1, 0, 0, 1)
-
-        -- A flat wash underneath, so the very last seconds genuinely dim.
-        surface.SetDrawColor(60, 0, 0, math.min(140, 160 * C.Progress()) * alpha)
-        surface.DrawRect(0, 0, w, h)
+        local inset = 0
+        for _, ink in ipairs(FRAMES) do
+            surface.SetDrawColor(4, 4, 5, 255 * ink * alpha)
+            drawFrame(inset, layer, alpha)
+            inset = inset + layer
+        end
     end,
 })
 
@@ -257,26 +258,24 @@ Omerta.HUD.Register("injury.vignette", {
 -- The first version was a radial ring, which read as a loading spinner sitting
 -- over a dying man; a line is quieter and says the same thing.
 
+-- The guide's clock: TIME IS A PULSE, NOT A BAR. One 2px #8E2B22 line at the
+-- bottom edge that breathes at the same heart rate as the vignette, slowing
+-- and shortening as you fade — you feel how long you have without being able
+-- to read it, and you can't strategise off it. No track, no ticks, no number.
 Omerta.HUD.Register("injury.clock", {
     order = 12,
     fade = 0.8,
     visible = function() return C.IsDying() end,
     draw = function(alpha)
         local scale = Omerta.HUD.Scale()
-        local full, height = 260 * scale, 2 * scale
-        local x, y = ScrW() * 0.5, ScrH() * 0.5 - 34 * scale
-        local left = 1 - C.Progress()
+        local progress = C.Progress()
+        local width = 220 * scale * (1 - 0.72 * progress)
+        local beat = (1 - math.cos(pulsePhase)) * 0.5
+        local presence = (0.35 + 0.65 * beat) * alpha
 
-        -- The track it is emptying along, so the line reads as a measure
-        -- rather than an arbitrary mark.
-        surface.SetDrawColor(70, 22, 20, 110 * alpha)
-        surface.DrawRect(x - full * 0.5, y, full, height)
-
-        -- Closes from both ends toward the middle, which is the same gesture
-        -- the vignette is making and reads as the same thing running out.
-        local width = full * left
-        surface.SetDrawColor(198, 68, 58, 240 * alpha)
-        surface.DrawRect(x - width * 0.5, y, width, height)
+        surface.SetDrawColor(Omerta.HUD.Colour("danger", 255 * presence))
+        surface.DrawRect(ScrW() * 0.5 - width * 0.5,
+            ScrH() - 64 * scale, width, 2)
     end,
 })
 
@@ -300,15 +299,20 @@ Omerta.HUD.Register("injury.down", {
         local title = C.state == Omerta.Injury.STATE.INCAPACITATED
             and "You are bleeding out" or "You cannot move"
 
-        Omerta.HUD.Text(title, "headline",
+        -- The guide writes this moment as PROSE, not a headline: a sentence in
+        -- text type, outlined over the world. The game does not raise its
+        -- voice even here.
+        Omerta.HUD.Text(title, "prose",
             ScrW() * 0.5, ScrH() * 0.5,
-            Color(226, 214, 198, 255 * alpha), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+            Omerta.HUD.Colour("text", 255 * alpha),
+            TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
 
         local subtitle = DOWN_SUBTITLES[C.state]
         if subtitle then
             Omerta.HUD.Text(subtitle, "small",
                 ScrW() * 0.5, ScrH() * 0.5 + 34 * scale,
-                Color(188, 168, 160, 220 * alpha), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+                Omerta.HUD.Colour("secondary", 220 * alpha),
+                TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
         end
     end,
 })
@@ -323,21 +327,36 @@ Omerta.HUD.Register("injury.prompt", {
     visible = function() return prompt ~= nil and CurTime() < promptUntil end,
     draw = function(alpha)
         local scale = Omerta.HUD.Scale()
-        local x, y = ScrW() * 0.5, ScrH() * 0.64
-        Omerta.HUD.Text(prompt, "label", x, y,
-            Color(225, 218, 200, 255 * alpha), TEXT_ALIGN_CENTER, TEXT_ALIGN_TOP)
 
-        -- The clock made visible: how much longer this is going to take.
-        -- Neutral, in the stamina bar's shape — nothing is wrong here,
-        -- something is merely taking its time.
-        if promptTotal > 0 then
+        -- The guide's §08 timed-action plate: a 320px scrim above the bottom
+        -- edge, the verb in Oswald caps, and a bare 2px progress line — no
+        -- ticks, no number. A prompt with no clock (a sentence like "Somebody
+        -- is working on you.") gets the plate and the words, nothing else.
+        local width = 320 * scale
+        local pad = 16 * scale
+        local timed = promptTotal > 0
+        local tall = timed and 62 * scale or 48 * scale
+        local x = ScrW() * 0.5 - width * 0.5
+        local y = ScrH() - 120 * scale - tall
+
+        Omerta.HUD.Scrim(x, y, width, tall, "top", alpha)
+
+        if timed then
+            draw.SimpleText(string.upper(prompt), Omerta.HUD.Font("verb"),
+                x + pad, y + 14 * scale,
+                Omerta.HUD.Colour("text", 255 * alpha),
+                TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
             local progress = math.Clamp((CurTime() - promptStart) / promptTotal, 0, 1)
-            local w, h = 160 * scale, 3 * scale
-            local bx, by = x - w * 0.5, y + 30 * scale
-            surface.SetDrawColor(20, 20, 20, 140 * alpha)
-            surface.DrawRect(bx, by, w, h)
-            surface.SetDrawColor(210, 200, 180, 230 * alpha)
-            surface.DrawRect(bx, by, w * progress, h)
+            local by = y + tall - 16 * scale
+            surface.SetDrawColor(Omerta.HUD.Colour("text", 0.18 * 255 * alpha))
+            surface.DrawRect(x + pad, by, width - pad * 2, 2)
+            surface.SetDrawColor(Omerta.HUD.Colour("text", 255 * alpha))
+            surface.DrawRect(x + pad, by, (width - pad * 2) * progress, 2)
+        else
+            draw.SimpleText(prompt, Omerta.HUD.Font("label"),
+                x + pad, y + tall * 0.5,
+                Omerta.HUD.Colour("text", 255 * alpha),
+                TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
         end
     end,
 })
@@ -390,7 +409,7 @@ Omerta.HUD.Register("injury.drag", {
             or tension > 0.05 and "Hauling" or "You have hold of them"
         Omerta.HUD.Text(label, "small",
             ScrW() * 0.5, ScrH() * 0.62,
-            Color(206, 182 - 60 * tension, 172 - 60 * tension, 220 * alpha),
+            Omerta.HUD.Colour(tension >= 0.98 and "danger" or "secondary", 235 * alpha),
             TEXT_ALIGN_CENTER, TEXT_ALIGN_TOP)
     end,
 })
