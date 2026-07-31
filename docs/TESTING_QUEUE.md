@@ -2,8 +2,8 @@
 
 **What this is:** everything built but not yet confirmed working in-engine, in the order worth doing it. Kept current as work lands — when you report results, the statuses here get updated and anything that fails becomes a fix before new work starts.
 
-**Last updated:** 2026-07-31, after the STYLE GUIDE was implemented across every existing surface (the handoff zip worked).
-**Headless suite:** 366 checks passing. `luac -p` clean across the tree. 18 modules resolving.
+**Last updated:** 2026-07-31, after the twenty-four-item field report.
+**Headless suite:** 367 checks passing. `luac -p` clean across the tree. 18 modules resolving.
 
 Status key: **☐ untested** · **☑ passed** · **☒ failed** (details inline) · **◐ partly**
 
@@ -21,14 +21,65 @@ If migrations fail, stop and send me the error — everything below depends on t
 
 ---
 
-## 1. The style guide, implemented (2026-07-31) — newest, test first
+## 1. The twenty-four-item field report (2026-07-31) — newest, test first
+
+**Start here: `omerta_help`.** Every console command in the game, grouped by
+area, with arguments and which ones need a *client* console. `omerta_help
+giving` narrows it. A lint test fails the suite if anyone adds a command
+without describing it, so the list cannot quietly go stale.
+
+**Controls changed again:** **E** now does one thing per target, on press —
+no hold, no wheel. **Dragging bodies is shelved** (E on a body = search); the
+maths and the server machinery are untouched behind an unregistered seam, so
+bringing it back is a re-registration, not a rebuild. **F1** is the pause menu.
+**C** still holds the pockets open.
+
+| | Check | How | Expect |
+|---|---|---|---|
+| ☐ | **Germania One is back** | Look anywhere | The old face, everywhere except the small mono captions (IBM Plex Mono keeps those — Germania has no such register) |
+| ☐ | **Everything is bigger** | Play at default scale | ~30% larger than the last build. If anything is *still* small, name it — the multiplier is one number in `sh_theme.lua` |
+| ☐ | **Body tooltip no longer overlaps** | Look at a body, then at 1.5× scale | Name and hint stack with measured spacing at every scale (they were on fixed pixel offsets the type outgrew) |
+| ☐ | **The crosshair is a circle** | Look at anything | A small ringed dot, not a square |
+| ☐ | **E is not finnicky** | Tap E once at a phone, a speakeasy counter, a dropped item, a body | Registers on the PRESS, first time — the old release path re-checked your aim and silently dropped it if you'd drifted a pixel |
+| ☐ | **E on a body searches** | Tap E on a body | Straight into the search; no drag, no menu |
+| ☐ | **No held-E menu anywhere** | Hold E on anything | Nothing appears. Stabilize / Treat / Finish now live as buttons in the loot window |
+| ☐ | **You can see your feet** | Look down | Your own body is there, below a steep enough angle |
+| ☐ | **Black and white** | Menu → Settings → Black and white | The whole game desaturates; off by default, and it persists |
+| ☐ | **Multi-core rendering** | Menu → Settings | On by default (applied on join, no menu visit needed). Toggle it and watch for instability — it is the engine's experimental path, which is exactly why it is a toggle |
+| ☐ | **F1 pauses** | Press F1 in play, then again | The rail appears over your CURRENT view, blurred — not the orbit camera, not the spawn. "Resume" is the top entry. F1 closes it |
+| ☐ | **Death → menu is smooth** | Die, press a key | No black flash: the intro is skipped on the death handover, so the death fade lifts straight onto the menu |
+| ☐ | **The vignette is a vignette again** | `omerta_injury_state incapacitated` | Soft red gradients closing in from the edges — the nested rectangles are gone |
+| ☐ | **Hotbar fades cleanly** | Let the hotbar time out; get put down while armed | No flicker or re-flash on the way out |
+| ☐ | **Creation: nothing is cut off** | Enter the city, at 1× and 1.5× | Back (a third) and Confirm (the rest) share one row pinned to the bottom of the panel, always on screen |
+| ☐ | **"Last name"** | Look at the form | Not "Family name" |
+| ☐ | **The permadeath warning** | Press Confirm | A modal naming the character: they cannot be remade, and the name is never used again. Back returns to the form; Confirm commits |
+| ☐ | **The fade into the city** | Confirm the modal | Screen fades to black, holds through the server round-trip, lifts as you spawn. (That held black is where the intro cinematic will go.) A rejected name cancels the fade instead of stranding you in it |
+
+### The inventory and looting rebuild — same pass
+
+| | Check | How | Expect |
+|---|---|---|---|
+| ☐ | **Searching a body no longer flashes** | Search a body with items | The body's contents open and STAY. The wire tagged body-loot as a plain pockets refresh (a body has no container id), so the client showed your own inventory and closed it |
+| ☐ | **Picking up doesn't flash either** | Walk over an item and take it | The refresh updates silently; no window appears |
+| ☐ | **The character panel** | Hold C | The plate sits right of centre with your live player model (idle only — it must NOT run when you run) beside the ledger, plus STAMINA and APPETITE notch rows |
+| ☐ | **The model follows your gear** | Equip an overcoat (when models exist), or change model | The preview reflects it |
+| ☐ | **Right-click has no title** | Right-click an item | Straight to the verbs — no repeated item name — with room above and below each |
+| ☐ | **Drag between loot columns** | Search a body, drag rows across | Items move both ways without right-clicking |
+| ☐ | **Loot all** | Search a body, press LOOT ALL | Top to bottom, ~half a second each: the row greys, a progress bar sweeps its full width, the rustle plays, the item moves. Stops when empty or when something will not fit |
+| ☐ | **Body actions are buttons now** | Search a downed character | Stabilize / Treat (and Finish on a body you can finish) as buttons at the foot of their column |
+
+## 2. The style guide, implemented (2026-07-31)
 
 Your handoff zip read clean, and direction **1a** is now the standard — the
 IBM-Carbon detour (and its blue) is gone. `modules/hud/sh_theme.lua` holds the
 guide's six hex, the 4px grid and the type ladder, all pinned by tests
 (including "nothing in the palette may be blue"); the guide itself is
-versioned at `docs/design/style-guide/`. Oswald/Archivo/Plex Mono replace the
-old faces; Germania One and Plex Sans are retired.
+versioned at `docs/design/style-guide/`.
+
+**Superseded in places by §1** — the guide's Oswald/Archivo pairing was tried
+and rejected in the field, so Germania One carries every role again except the
+mono captions; the creation screen's wording and buttons changed too. The
+palette, the 4px grid and the plate/rule/selection grammar all still stand.
 
 | | Check | How | Expect |
 |---|---|---|---|
@@ -58,7 +109,7 @@ card still says "YOU HAVE DIED…" rather than the character's name + epitaph
 those jobs); treasury and payphone windows are still on stock Derma — they
 are the next restyle targets now the kit exists.
 
-## 1b. The front end (intro + main menu) — from the previous pass
+## 3. The front end (intro + main menu) — from an earlier pass
 
 The intro and menu are **placeholder sets for M27/M28**, built as systems so
 those milestones fill in data. Three of their open rulings I had to assume an
@@ -85,7 +136,7 @@ the real shots are per-map authoring work that lands with the map (Q-9).
 | ☐ | **Nothing is rounded any more** | Inventory, menu, loot windows | Square corners everywhere — a Carbon signature and the quickest way to spot a panel that has not been converted |
 | ☐ | **Scale still holds** | `omerta_ui_scale 0.75` then `1.5`, walk around | Menu, inventory, hotbar and HUD all stay laid out; nothing overlaps or leaves the screen |
 
-## 2. The UI and interaction pass (2026-07-30)
+## 4. The UI and interaction pass (2026-07-30)
 
 **Controls changed:** **C** now opens the inventory — as a toggle; the
 hold-to-view behaviour you found is fixed in §1. The old hold-C menu is now on
@@ -127,7 +178,7 @@ the word and it flips.
 | ☐ | Stamina lasts (~8 s sprint) | Sprint from full | Was ~5.5 s |
 | ☐ | Creation form keyboard flow | New character | First box focused, Tab cycles the name fields |
 
-## 3. W0 — the weapon foundation
+## 5. W0 — the weapon foundation
 
 | | Check | How | Expect |
 |---|---|---|---|
@@ -145,7 +196,7 @@ the word and it flips.
 | ☐ | Disconnect refund | Load a clip, disconnect, rejoin | Rounds in inventory, clip empty |
 | ☐ | Procurement | `omerta_procure` as a family with funds | Revolver $85, Thompson $340 (second approver), ammo boxes |
 
-## 4. M20 — confirmed death and succession (nothing verified yet)
+## 6. M20 — confirmed death and succession (nothing verified yet)
 
 | | Check | How | Expect |
 |---|---|---|---|
@@ -160,7 +211,7 @@ the word and it flips.
 
 ---
 
-## 5. M19 — earlier fixes, still unverified
+## 7. M19 — earlier fixes, still unverified
 
 | | Check | How | Expect |
 |---|---|---|---|
@@ -179,7 +230,7 @@ the word and it flips.
 
 ---
 
-## 6. Older, still unconfirmed
+## 8. Older, still unconfirmed
 
 | | Check | How |
 |---|---|---|
@@ -188,7 +239,7 @@ the word and it flips.
 
 ---
 
-## 7. Known gaps — not bugs, just not built
+## 9. Known gaps — not bugs, just not built
 
 - **Audio is ~46 MB uncompressed** (four originals + the new rustle). MP3 conversion is a local ffmpeg step; no encoder in my environment.
 - **Sound licensing** — the Freesound files and "Cry Me a River" are a pre-release gate. The two new UI sounds and icons came from you; tell me if they carry terms. Germania One is OFL, licence ships next to the TTF.
