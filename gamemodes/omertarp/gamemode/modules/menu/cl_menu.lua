@@ -218,6 +218,11 @@ hook.Add("Omerta.CharactersState", "omerta.menu.state", function(state)
 end)
 
 hook.Add("Think", "omerta.menu.think", function()
+    -- Shot while paused. The death sequence owns the screen from the moment it
+    -- starts, and a pause rail sitting over it would be the player reading a
+    -- menu through their own death — so the pause gets out of the way.
+    if Omerta.Menu.IsPaused() and afterDeath() then closePause() end
+
     -- Waiting to appear.
     if M.wanted and not M.phase and not Omerta.Characters.CreationHeld("menu") then
         beginFrontEnd()
