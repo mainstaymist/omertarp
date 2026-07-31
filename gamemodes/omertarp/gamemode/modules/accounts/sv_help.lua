@@ -88,6 +88,7 @@ local COMMANDS = {
 
     -- Diagnostics
     ["omerta_help"] = { usage = "[area]", what = "This list, or one area of it.", area = "Diagnostics" },
+    ["omerta_env"] = { usage = "", what = "The world outside: which weather/time provider was detected, the time, whether it is night, the weather, and the map name. Runs from either console — the server's answer and a client's may differ, which is itself the useful part.", area = "Diagnostics" },
     ["omerta_leak_audit"] = { usage = "", what = "Scan networked state for identity leaks (M6).", area = "Diagnostics" },
     ["omerta_leak_audit_client"] = { usage = "", what = "The client half of the leak audit (client console).", area = "Diagnostics", client = true },
     ["omerta_demo_ping"] = { usage = "", what = "M0's loopback proof.", area = "Diagnostics" },
