@@ -953,8 +953,10 @@ function Omerta.Inventory.Show()
         self.OmertaLootColumn = nil
 
         local looting = state.container and state.container > 0
-        local width = (looting and 960 or 980) * scale
-        local height = 560 * scale
+        -- Wants the design size; takes the screen's answer. Two columns of
+        -- loot at 1x come to more than a 1366-wide laptop has.
+        local width, height = Omerta.HUD.Fit((looting and 960 or 980) * scale,
+            560 * scale)
         self:SetSize(width, height)
 
         if looting then
@@ -1082,8 +1084,13 @@ hook.Add("Think", "omerta.inventory.hold", function()
 
     -- Not while typing, in the menu, or in the console: a key that opens a
     -- window mid-sentence is worse than no key at all.
-    local down = input.IsKeyDown(KEY_C)
-        and not (ply.IsTyping and ply:IsTyping())
+    --
+    -- Player:IsTyping is not enough on its own any more. M7 draws its own chat
+    -- box and suppresses the engine's, so the engine believes nobody is ever
+    -- typing — and the letter C is in a great many sentences.
+    local chatting = (ply.IsTyping and ply:IsTyping())
+        or (Omerta.Chat and Omerta.Chat.IsTyping and Omerta.Chat.IsTyping())
+    local down = input.IsKeyDown(KEY_C) and not chatting
         and not gui.IsGameUIVisible() and not gui.IsConsoleVisible()
     local pressed = down and not wasDown
     wasDown = down

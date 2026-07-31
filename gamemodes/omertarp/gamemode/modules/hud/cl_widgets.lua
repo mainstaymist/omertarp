@@ -156,7 +156,7 @@ end
 function Omerta.HUD.ProseList(parent, items, index, onChange)
     local scale = Omerta.HUD.Scale()
     local panel = vgui.Create("DPanel", parent)
-    panel.Paint = nil
+    panel:SetPaintBackground(false)
     index = math.Clamp(index or 1, 1, math.max(1, #items))
 
     for i, item in ipairs(items) do
@@ -292,31 +292,67 @@ function Omerta.HUD.MenuDivider(menu)
     return divider
 end
 
+-- The height of one verb, before scale. Generous on purpose: this is a menu
+-- opened with the mouse already moving, over a row the player is aiming at,
+-- and every pixel of it is a pixel they do not have to be precise about.
+Omerta.HUD.MENU_OPTION_H = 42
+
 -- opts.danger marks the irreversible: #8E2B22 text, never inverted.
+--
+-- Built with AddPanel over a plain DButton rather than with menu:AddOption,
+-- and that is the fix for a bug that survived two attempts to solve it by
+-- raising a number. DMenuOption lays ITSELF out — it re-derives its height
+-- from its font every time the menu invalidates, which is immediately after
+-- construction — so SetTall on one is a value that gets thrown away before
+-- anything is drawn. The options were reported as cramped, the number went
+-- from stock to 36 to 42, and nothing changed on screen, because none of the
+-- three was ever the height being used.
+--
+-- A panel added with AddPanel is not laid out by anything but us. It keeps the
+-- height it is given, which is the only reason this control can be made to
+-- match the standard at all.
 function Omerta.HUD.MenuOption(menu, label, onSelect, opts)
     opts = opts or {}
-    local option = menu:AddOption(label, onSelect)
-    option:SetFont(Omerta.HUD.Font("label"))
-    -- Room above and below the words: the stock option height crops the
-    -- type and makes the list read as cramped.
-    option:SetTall(42 * Omerta.HUD.Scale())
-    option:SetTextInset(18 * Omerta.HUD.Scale(), 0)
+    local scale = Omerta.HUD.Scale()
+    local option = vgui.Create("DButton", menu)
+    option:SetText("")
+    option:SetTall(Omerta.HUD.MENU_OPTION_H * scale)
+    option.OmertaLabel = label or ""
+    -- DMenu sizes itself to the widest thing in it, so a long verb has to
+    -- declare its own width or the minimum silently becomes a maximum and the
+    -- word is cut off at the plate edge.
+    surface.SetFont(Omerta.HUD.Font("label"))
+    option:SetWide(surface.GetTextSize(option.OmertaLabel) + 36 * scale)
+    option.DoClick = function()
+        -- Closed BEFORE the verb runs. Several of these open another window
+        -- (split, examine) and a menu still standing over it is a menu the
+        -- player has to dismiss before they can use what they asked for.
+        CloseDermaMenus()
+        surface.PlaySound("omertarp/ui/inventory-click.wav")
+        if onSelect then onSelect() end
+    end
     option.Paint = function(self, w, h)
         local hovered = self:IsHovered()
-        if hovered and not opts.danger then
-            surface.SetDrawColor(Omerta.HUD.Colour("brass"))
-            surface.DrawRect(0, 0, w, h)
-            self:SetTextColor(Omerta.HUD.Colour("ink"))
-        elseif opts.danger then
+        local colour
+        if opts.danger then
+            -- Never inverted. Selection is brass fill with ink type, and
+            -- lighting up the one verb that cannot be undone in the same
+            -- language as "examine" is how it gets clicked by accident.
             if hovered then
                 surface.SetDrawColor(Omerta.HUD.Colour("danger", 40))
                 surface.DrawRect(0, 0, w, h)
             end
-            self:SetTextColor(Omerta.HUD.Colour("danger",
-                hovered and 255 or 220))
+            colour = Omerta.HUD.Colour("danger", hovered and 255 or 220)
+        elseif hovered then
+            surface.SetDrawColor(Omerta.HUD.Colour("brass"))
+            surface.DrawRect(0, 0, w, h)
+            colour = Omerta.HUD.Colour("ink")
         else
-            self:SetTextColor(Omerta.HUD.Colour("text"))
+            colour = Omerta.HUD.Colour("text")
         end
+        draw.SimpleText(self.OmertaLabel, Omerta.HUD.Font("label"),
+            18 * scale, h * 0.5, colour, TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
     end
+    menu:AddPanel(option)
     return option
 end

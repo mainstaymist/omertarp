@@ -97,6 +97,38 @@ check("scale is clamped and garbage-proof", function()
     assert(C(0 / 0) == 1, "NaN falls back to 1")
 end)
 
+check("1x is the size that was signed off, not the engine's 1", function()
+    loadModules()
+    -- The setting is a MULTIPLE of a base, and the base is the number the
+    -- project lead reached by typing into the console. If this ever drifts
+    -- back to 1, every pixel constant in the interface quietly shrinks by a
+    -- third and the size that was approved stops being reachable at all.
+    assert(Omerta.HUD.SCALE_BASE == 1.75,
+        "1x must stay the size the interface was tuned at")
+    assert(Omerta.HUD.SCALE_BASE * 1 == 1.75, "1x IS the base")
+end)
+
+check("a pre-rebase scale is corrected rather than reinterpreted", function()
+    loadModules()
+    local M = Omerta.HUD.MigrateScale
+
+    -- The value in the field. Read as a multiple it would clamp to 1.4 and
+    -- serve an interface 2.45x the base — bigger than anything the control
+    -- can reach, from a config the player never edited again.
+    assert(M(1.75) == 1, "the old absolute default becomes the new 1x")
+    assert(M(1.5) == 1, "so does anything else above the multiplier ceiling")
+
+    -- Everything inside the range is already a multiple and is left alone,
+    -- so a player who picks 0.8x keeps 0.8x across restarts.
+    for _, value in ipairs(Omerta.HUD.SCALE_STEPS) do
+        assert(M(value) == value, value .. "x must survive a restart")
+    end
+    assert(M(0.1) == Omerta.HUD.SCALE_MIN, "below the floor still clamps up")
+    assert(M(nil) == 1)
+    assert(M("nonsense") == 1)
+    assert(M(0 / 0) == 1)
+end)
+
 --------------------------------------------------------------------------------
 suite("hud.stamina")
 --------------------------------------------------------------------------------

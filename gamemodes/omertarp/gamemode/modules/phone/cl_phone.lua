@@ -98,7 +98,7 @@ function Omerta.Phone.Show()
     local body = vgui.Create("DPanel", frame)
     body:Dock(FILL)
     body:DockMargin(14 * scale, 4 * scale, 14 * scale, 10 * scale)
-    body.Paint = nil
+    body:SetPaintBackground(false)
 
     local function button(parent, label, fn, dock)
         local btn = vgui.Create("DButton", parent)

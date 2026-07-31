@@ -57,10 +57,26 @@ end
 -- Scale and fonts (accessibility)
 --------------------------------------------------------------------------------
 
+-- A MULTIPLE of Omerta.HUD.SCALE_BASE, not an absolute size. 1 is the
+-- interface as signed off; see sh_hud.lua for why the base exists.
 CreateClientConVar("omerta_ui_scale", "1", true, false)
 
+-- Anyone who tuned this before the rebase has an absolute scale stored in
+-- their config, and read as a multiple it would hand them an interface half
+-- again too big. Corrected once, here, at the moment the file loads — writing
+-- the convar back so it is corrected in their config too rather than
+-- reinterpreted on every read.
+do
+    local stored = GetConVar("omerta_ui_scale"):GetFloat()
+    local migrated = Omerta.HUD.MigrateScale(stored)
+    if math.abs(migrated - stored) > 0.001 then
+        RunConsoleCommand("omerta_ui_scale", tostring(migrated))
+    end
+end
+
 function Omerta.HUD.Scale()
-    return Omerta.HUD.ClampScale(GetConVar("omerta_ui_scale"):GetFloat())
+    return Omerta.HUD.SCALE_BASE
+        * Omerta.HUD.ClampScale(GetConVar("omerta_ui_scale"):GetFloat())
 end
 
 -- Sizes, faces and weights all come from the Carbon token table (sh_theme).
@@ -105,6 +121,21 @@ end
 -- Space(5), not for 16.
 function Omerta.HUD.Space(step)
     return THEME.Step(step) * Omerta.HUD.Scale()
+end
+
+-- A window size, scaled, but never larger than the screen it has to sit on.
+--
+-- A design px constant times the scale is a promise about a monitor nobody
+-- has agreed to. At 1x the loot window comes to 1680x980, which is a
+-- comfortable window on the 1920x1080 this was tuned on and a window with its
+-- right-hand column off the edge on a 1366x768 laptop — and the player whose
+-- columns are missing has no way to know a slider would bring them back.
+-- Every scaled window goes through here, so the scale sets the size it WANTS
+-- and the screen keeps the final say.
+function Omerta.HUD.Fit(width, height, margin)
+    margin = margin or Omerta.HUD.Space(5)
+    return math.min(width, ScrW() - margin * 2),
+        math.min(height, ScrH() - margin * 2)
 end
 
 -- Every piece of text drawn over the WORLD goes through this. The guide's

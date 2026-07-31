@@ -2,8 +2,8 @@
 
 **What this is:** everything built but not yet confirmed working in-engine, in the order worth doing it. Kept current as work lands — when you report results, the statuses here get updated and anything that fails becomes a fix before new work starts.
 
-**Last updated:** 2026-07-31, after the nine-item pass.
-**Headless suite:** 380 checks passing. `luac -p` clean across the tree. 18 modules resolving.
+**Last updated:** 2026-07-31, after the four-item follow-up.
+**Headless suite:** 382 checks passing. `luac -p` clean across the tree. 18 modules resolving.
 
 Status key: **☐ untested** · **☑ passed** · **☒ failed** (details inline) · **◐ partly**
 
@@ -21,7 +21,55 @@ If migrations fail, stop and send me the error — everything below depends on t
 
 ---
 
-## 1. The nine-item pass (2026-07-31)
+## 1. The four-item follow-up (2026-07-31)
+
+All four were real, and two of them were bugs I had already "fixed" twice by
+changing a number that was never being used.
+
+**1x is now the size you approved.** The setting was an absolute scale; it is
+now a multiple of a base of **1.75**, so 1x is that size and it is the default.
+
+One thing you could not have seen: `omerta_ui_scale 1.75` was being **clamped
+to 1.5** by a ceiling in the code, so what was actually on your screen was 1.5,
+not 1.75. 1x is therefore about 17% larger than what you have been looking at.
+If it is too big, **0.9x** is almost exactly your old size and **0.8x** is what
+you have right now. Your stored 1.75 is rewritten to 1 on first load, so
+nothing has to be typed in the console.
+
+**The right-click options were never getting the height they were told to.**
+`DMenuOption` re-derives its own height from its font immediately after
+construction, so `SetTall` on one is thrown away before anything draws. Stock
+to 36 to 42 — none of the three was ever the number in use. They are plain
+panels now, which keep the height they are given.
+
+**The settings screen was seven buttons in a rail built for four.** They ran
+past the end of the column and through each other. It is one cycler now — the
+same control the character creator uses — and the whole screen is laid out by
+measuring down the column rather than by asking a container to arrange things
+nobody had added up.
+
+**The chat box could not be typed into.** Hiding `CHudChat` hides the engine's
+text entry with it, and a hidden panel cannot take the keyboard: the box opened
+and swallowed every keystroke. The keyboard is ours now — an invisible entry in
+a popup panel, with the line still drawn over the world in our own type.
+
+| | Check | How | Expect |
+|---|---|---|---|
+| ☐ | **Chat accepts letters** | Open chat, type, press enter | The line appears as you type and goes out on enter |
+| ☐ | **Escape closes it** | Open chat, press escape | Box closes, nothing sent, the game menu does **not** open |
+| ☐ | **No leading letter** | Open chat several times | The key that opened it never appears as the first character |
+| ☐ | **C does not open the inventory mid-sentence** | Type "come here" | You get the sentence, not the inventory |
+| ☐ | **F1 does not open the pause menu either** | Type something with F1… you cannot — just confirm chat holds the keyboard | The pause menu stays shut while chat is up |
+| ☐ | **You cannot shoot while typing** | Hold a gun, open chat, click | Nothing fires |
+| ☐ | **Right-click options are properly tall** | Right-click an item | Roughly double what they were. Easy to hit without aiming |
+| ☐ | **Settings does not overlap** | Menu → Settings | Interface scale as a cycler (`< 1x >`), then two toggles and Back, each clear of the next |
+| ☐ | **1x is the default and is set** | Fresh look at Settings | Reads **1x**, and the interface is the size you signed off (see the note above about it being ~17% larger) |
+| ☐ | **The scale still applies** | Step down to 0.8x and back | Everything resizes, including the chat and the right-click menu |
+| ☐ | **Windows fit the screen** | Open the inventory, search a body | At 1x the loot window is large; it must not run off any edge |
+
+---
+
+## 1b. The nine-item pass (2026-07-31)
 
 Your notes after the city let you in. Everything here is new or changed since
 that session, so it is all first-time verification.

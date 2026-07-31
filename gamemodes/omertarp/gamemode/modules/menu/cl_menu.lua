@@ -184,8 +184,11 @@ hook.Add("Think", "omerta.menu.pause_key", function()
     local ply = LocalPlayer()
     if not IsValid(ply) then return end
 
-    local down = input.IsKeyDown(KEY_F1)
-        and not (ply.IsTyping and ply:IsTyping())
+    -- M7's chat box suppresses the engine's, so Player:IsTyping no longer
+    -- knows when somebody is mid-sentence; ask the module that does.
+    local chatting = (ply.IsTyping and ply:IsTyping())
+        or (Omerta.Chat and Omerta.Chat.IsTyping and Omerta.Chat.IsTyping())
+    local down = input.IsKeyDown(KEY_F1) and not chatting
         and not gui.IsGameUIVisible() and not gui.IsConsoleVisible()
     local pressed = down and not f1WasDown
     f1WasDown = down
@@ -483,7 +486,7 @@ function Omerta.Menu.Client.BuildRoot(parent)
     list.OmertaOwned = true
     list:SetPos(margin, ScrH() * 0.5 - rowH)
     list:SetSize(columnW, rowH * 6)
-    list.Paint = nil
+    list:SetPaintBackground(false)
 
     local available = Omerta.Menu.Available()
     M.selection = math.min(math.max(1, M.selection), math.max(1, #available))
@@ -543,7 +546,7 @@ function Omerta.Menu.Client.BuildCreation(parent)
     column.OmertaOwned = true
     column:SetPos(margin, top)
     column:SetSize(columnW, ScrH() - top - margin)
-    column.Paint = nil
+    column:SetPaintBackground(false)
 
     local boothSize = math.min(400 * scale, ScrH() * 0.5)
     local boothPanel = vgui.Create("DPanel", parent)
@@ -579,58 +582,76 @@ end
 -- Minimal on purpose: M26 owns the settings window, and this is the one
 -- control that changes whether the rest of the game is readable at all.
 
+-- Laid out by HAND, top down, rather than by docking.
+--
+-- The docked version put every control in the column and let the layout engine
+-- decide where they landed, and it kept getting it wrong in ways that read as
+-- a broken screen: a panel too short clipped the last two controls off the
+-- end, then seven scale buttons sharing a fixed rail overflowed it and ran
+-- through each other. Both are the same mistake — asking a container to
+-- arrange things whose total size nobody had actually added up.
+--
+-- So this walks a cursor down the column, and every control says how tall it
+-- is on the way past. The panel is then exactly as tall as what is in it,
+-- which is a thing that cannot be off by a row.
 function Omerta.Menu.Client.BuildSettings(parent)
     local scale = Omerta.HUD.Scale()
     local margin = Omerta.HUD.Space(5)
     local rowH = ROW_H * scale
+    local labelH = 24 * scale
+    local gap = Omerta.HUD.Space(1)
+    local block = Omerta.HUD.Space(4) -- between one setting and the next
 
-    -- Tall enough for everything in it, and anchored high enough that it does
-    -- not run off the bottom. The first version was four rows tall while the
-    -- content came to six, and docked children simply clip: the multi-core
-    -- toggle and the Back button were being drawn outside the panel, which
-    -- reads exactly like a screen that failed to build.
     local list = vgui.Create("DPanel", parent)
     list.OmertaOwned = true
-    list:SetPos(margin, math.max(margin, ScrH() * 0.5 - rowH * 3))
-    list:SetSize(COLUMN_W * scale, math.min(rowH * 9, ScrH() - margin * 2))
-    list.Paint = nil
+    -- SetPaintBackground, not `Paint = nil`. Clearing the field only removes
+    -- the instance override — the lookup then finds DPanel's own Paint on the
+    -- class table and draws the stock Derma background underneath everything.
+    list:SetPaintBackground(false)
 
-    local label = Omerta.HUD.FieldLabel(list, "Interface scale")
-    label:Dock(TOP)
-    label:SetTall(24 * scale)
+    local width = COLUMN_W * scale
+    local y = 0
 
-    local row = vgui.Create("DPanel", list)
-    row:Dock(TOP)
-    row:SetTall(rowH)
-    row:DockMargin(0, Omerta.HUD.Space(1), 0, 0)
-    row.Paint = nil
-
-    for _, value in ipairs(Omerta.HUD.SCALE_STEPS) do
-        local current = math.abs(Omerta.HUD.Scale() - value) < 0.01
-        local button = Omerta.HUD.Button(row, value .. "x",
-            current and "commit" or "quiet", function()
-                RunConsoleCommand("omerta_ui_scale", tostring(value))
-                -- Rebuilt on the next frame, once the fonts have been remade.
-                timer.Simple(0.05, function()
-                    if M.phase == "menu" then Omerta.Menu.Client.Build() end
-                end)
-            end)
-        button:Dock(LEFT)
-        -- Seven steps have to share the rail, so they are sized from it
-        -- rather than from a number that happened to fit four.
-        button:SetWide(math.floor((COLUMN_W * scale - Omerta.HUD.Space(1) * 6)
-            / #Omerta.HUD.SCALE_STEPS))
-        button:DockMargin(0, 0, Omerta.HUD.Space(1), 0)
+    local function caption(text)
+        local label = Omerta.HUD.FieldLabel(list, text)
+        label:SetPos(0, y)
+        label:SetSize(width, labelH)
+        y = y + labelH + gap
     end
+
+    -- One cycler rather than a button per step.
+    --
+    -- Seven values do not fit across a column as seven buttons — that is what
+    -- was overlapping — and they will not fit as eight or nine either, so
+    -- widening the rail only moves the failure. The cycler shows the value
+    -- that is set and steps either side of it, which is the same control at
+    -- any number of steps and the one the design system already has for this.
+    caption("Interface scale")
+
+    local steps = Omerta.HUD.SCALE_STEPS
+    local stored = Omerta.HUD.ClampScale(GetConVar("omerta_ui_scale"):GetFloat())
+    local items, chosen = {}, 1
+    for index, value in ipairs(steps) do
+        items[index] = { label = value .. "x", value = value }
+        if math.abs(stored - value) < 0.01 then chosen = index end
+    end
+
+    local cycler = Omerta.HUD.Cycler(list, items, chosen, function(item)
+        RunConsoleCommand("omerta_ui_scale", tostring(item.value))
+        -- Rebuilt a frame later, once the fonts have been remade at the new
+        -- size — rebuilding now would lay the screen out with the old ones.
+        timer.Simple(0.05, function()
+            if M.phase == "menu" then Omerta.Menu.Client.Build() end
+        end)
+    end)
+    cycler:SetPos(0, y)
+    cycler:SetSize(width, rowH)
+    y = y + rowH + block
 
     -- A toggle reads its convar and restyles: lit (commit) when on, quiet when
     -- off, so the state is the button rather than a word beside it.
-    local function toggle(caption, convar, onApply)
-        local label = Omerta.HUD.FieldLabel(list, caption)
-        label:Dock(TOP)
-        label:SetTall(24 * scale)
-        label:DockMargin(0, Omerta.HUD.Space(4), 0, 0)
-
+    local function toggle(text, convar, onApply)
+        caption(text)
         local on = GetConVar(convar):GetBool()
         local button = Omerta.HUD.Button(list, on and "On" or "Off",
             on and "commit" or "quiet", function()
@@ -639,10 +660,9 @@ function Omerta.Menu.Client.BuildSettings(parent)
                 if onApply then onApply(now) end
                 if IsValid(frame) then frame:Rebuild() end
             end)
-        button:Dock(TOP)
-        button:SetTall(rowH * 0.8)
-        button:DockMargin(0, Omerta.HUD.Space(1), 0, 0)
-        button:SetWide(120 * scale)
+        button:SetPos(0, y)
+        button:SetSize(140 * scale, rowH * 0.8)
+        y = y + rowH * 0.8 + block
     end
 
     toggle("Black and white", "omerta_blackwhite")
@@ -652,9 +672,15 @@ function Omerta.Menu.Client.BuildSettings(parent)
         M.screen = "root"
         if IsValid(frame) then frame:Rebuild() end
     end)
-    back:Dock(TOP)
-    back:SetTall(rowH * 0.8)
-    back:DockMargin(0, Omerta.HUD.Space(4), 0, 0)
+    back:SetPos(0, y)
+    back:SetSize(140 * scale, rowH * 0.8)
+    y = y + rowH * 0.8
+
+    -- Sized to what is actually in it, and pulled up off the bottom edge if
+    -- that comes to more than the screen has room for.
+    list:SetSize(width, y)
+    list:SetPos(margin, math.max(margin,
+        math.min(ScrH() * 0.5 - y * 0.5, ScrH() - margin - y)))
 end
 
 --------------------------------------------------------------------------------

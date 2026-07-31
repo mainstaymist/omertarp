@@ -36,6 +36,8 @@
 -- display face is legible and unmistakably not upright, which is the whole
 -- job here.
 
+Omerta.Chat = Omerta.Chat or {}
+
 local EMOTE_FONT = "Omerta.Chat.Emote"
 
 local function buildFonts()
@@ -199,32 +201,107 @@ end)
 --------------------------------------------------------------------------------
 -- Taking the input line
 --------------------------------------------------------------------------------
--- Two ways to own chat entry in GMod, and this is the one that does not fight
--- the engine for it:
+-- The first version of this tried to keep the engine's own entry and read it
+-- through ChatTextChanged, on the belief that hiding CHudChat suppressed the
+-- DRAWING and left the entry working underneath. It does not. Hiding the
+-- element hides the entry with it, and a hidden panel cannot take the
+-- keyboard: the box opened, the channel chip appeared, and not one character
+-- could be typed into it. Reported as "I can start the chat box, but I can't
+-- type into it", which is exactly what that is.
 --
---   * HUDShouldDraw("CHudChat") -> false hides the stock box AND its entry
---     while leaving the entry ALIVE. StartChat/FinishChat say when it opens
---     and closes, ChatTextChanged says what is in it, and the engine keeps
---     doing what it is already good at — grabbing the keyboard, releasing the
---     mouse, honouring every bind, and issuing `say` itself. Nothing about
---     what reaches the server changes, which is the whole requirement.
+-- So the keyboard is ours now. A popup panel holds a DTextEntry that is never
+-- painted; the line on screen is still drawn by drawInput below, over the
+-- world, with the hard outline every other piece of text in this game gets and
+-- a DTextEntry cannot be made to draw. The entry exists to be typed into and
+-- for nothing else.
 --
---   * PlayerBindPress on messagemode plus our own VGUI DTextEntry. It buys a
---     real caret and costs a reimplementation of focus: a panel that must
---     MakePopup, request focus, release the screen clicker and put it all
---     back. If any part of that errors the player is left with a captured
---     cursor and no way to close the box — a worse failure than the one it
---     fixes.
---
--- The one thing the first approach cannot know is where the caret IS: the
--- engine does not report the insertion point, so the mark below sits at the
--- end of the line. Typing and pressing enter is right; arrowing back into the
--- middle of a sentence draws the mark in the wrong place. That is the price,
--- and it is cheaper than the alternative's.
---
--- StartChat is a notification here, not a suppressor. Returning true from it
--- also hides the box, but HUDShouldDraw does that more completely and leaving
--- the engine's entry entirely untouched is precisely the point.
+-- What reaches the server is unchanged: `say` runs the same console command
+-- the engine would have run, PlayerSay fires on the other side, and M7's
+-- parser sees the identical string. Nothing about channels, range or logging
+-- knows this file was rewritten.
+
+-- Named inputPanel rather than input: `input` is the engine's keyboard
+-- library, and a file-local of that name would shadow it for everything below.
+local inputPanel = nil -- the popup panel, while the box is open
+local entry = nil      -- the invisible DTextEntry inside it
+
+-- Read by the inventory's C poll and the menu's F1 poll. Those read the
+-- PHYSICAL key every frame precisely so that nothing can swallow the release
+-- — which also means nothing stops them firing mid-sentence. Player:IsTyping
+-- used to cover it and no longer can: the engine's box never opens now, so as
+-- far as the engine is concerned nobody is ever typing.
+function Omerta.Chat.IsTyping()
+    return typing
+end
+
+local function closeChat()
+    if IsValid(inputPanel) then inputPanel:Remove() end
+    inputPanel, entry = nil, nil
+    if typing then closedAt = CurTime() end
+    typing, typed = false, ""
+end
+
+local function send(text)
+    text = string.Trim(text or "")
+    if text == "" then return end
+    -- The console command, not a net message. `say` is what the engine would
+    -- have issued, and going through it keeps this file out of the path
+    -- between a player and the server: rate limiting, length capping and
+    -- PlayerSay all behave exactly as they did.
+    RunConsoleCommand("say", text)
+end
+
+local function openChat()
+    if IsValid(inputPanel) then return end
+    typing, typed = true, ""
+
+    -- Sized to the screen so a stray click cannot reach the world while the
+    -- keyboard is captured. Squeezing a gun off mid-sentence is a worse
+    -- failure than a dead click.
+    inputPanel = vgui.Create("EditablePanel")
+    inputPanel:SetSize(ScrW(), ScrH())
+    inputPanel:SetPos(0, 0)
+    inputPanel:MakePopup()
+
+    entry = vgui.Create("DTextEntry", inputPanel)
+    entry:SetSize(1, 1)
+    entry:SetPos(-8, -8) -- clipped away; it is typed into, never looked at
+    entry.Paint = function() end
+    entry:RequestFocus()
+
+    entry.OnChange = function(self)
+        typed = self:GetValue() or ""
+    end
+
+    entry.OnEnter = function(self)
+        local text = self:GetValue()
+        closeChat()
+        send(text)
+    end
+
+    -- Escape has to be caught here. A popup panel that ignores it hands the
+    -- key to the engine, which opens the game menu over a chat box that is
+    -- still capturing the keyboard underneath.
+    local baseKeys = entry.OnKeyCodeTyped
+    entry.OnKeyCodeTyped = function(self, code)
+        if code == KEY_ESCAPE then
+            closeChat()
+            return true
+        end
+        if baseKeys then return baseKeys(self, code) end
+    end
+
+    -- The keypress that opened the box belongs to the bind, not to the
+    -- sentence. It is consumed a frame before the entry has focus in every
+    -- case seen so far, but a leaked "y" at the head of every line is a
+    -- cheap thing to make impossible.
+    timer.Simple(0, function()
+        if not IsValid(entry) then return end
+        entry:SetText("")
+        entry:SetCaretPos(0)
+        typed = ""
+    end)
+end
 
 -- Returning false from any listener is enough, and every listener on this hook
 -- only ever returns false or nothing — so injury's death-time suppression and
@@ -233,19 +310,31 @@ hook.Add("HUDShouldDraw", "omerta.chat.hide_engine", function(name)
     if name == "CHudChat" then return false end
 end)
 
+-- StartChat is the ONE place the box opens, and returning true suppresses the
+-- engine's own entirely. Using it rather than PlayerBindPress on messagemode
+-- means this works whatever the player has chat bound to, and whatever else
+-- opens chat — a bind, chat.Open from another addon, the console.
 hook.Add("StartChat", "omerta.chat.open", function()
-    typing = true
-    typed = ""
+    openChat()
+    return true
 end)
 
-hook.Add("FinishChat", "omerta.chat.close", function()
-    typing = false
-    typed = ""
-    closedAt = CurTime()
-end)
+-- The engine's box is suppressed, so this only fires if something closed a
+-- chat we did not open. Keeping ours in step with it costs one line.
+hook.Add("FinishChat", "omerta.chat.close", closeChat)
 
-hook.Add("ChatTextChanged", "omerta.chat.typed", function(text)
-    typed = text or ""
+-- Nobody types through their own death. The screen belongs to the moment, the
+-- chat block hides itself for the same reason, and a captured keyboard behind
+-- a death card is a player who cannot press the any-key it asks for.
+hook.Add("Think", "omerta.chat.guard", function()
+    if not typing then return end
+    if not IsValid(LocalPlayer()) then closeChat() return end
+    local C = Omerta.Injury and Omerta.Injury.Client
+    if C and (C.death or C.leaving) then closeChat() return end
+    -- Focus is the whole point of the panel; if anything takes it, the box is
+    -- a lie. Cheap to check and it cannot loop, because RequestFocus on the
+    -- panel that already has focus does nothing.
+    if IsValid(entry) and not entry:HasFocus() then entry:RequestFocus() end
 end)
 
 --------------------------------------------------------------------------------

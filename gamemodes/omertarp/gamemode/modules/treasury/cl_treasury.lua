@@ -111,7 +111,7 @@ function Omerta.Treasury.Show()
     controls:Dock(TOP)
     controls:SetTall(34 * scale)
     controls:DockMargin(14 * scale, 4 * scale, 14 * scale, 6 * scale)
-    controls.Paint = nil
+    controls:SetPaintBackground(false)
 
     -- Entered in dollars because that is how a human thinks about it; the
     -- server rounds to something the mint can actually produce.

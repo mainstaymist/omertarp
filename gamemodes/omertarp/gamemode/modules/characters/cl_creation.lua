@@ -99,12 +99,12 @@ function Omerta.Characters.BuildCreationForm(formParent, boothParent, opts)
     names:Dock(TOP)
     names:SetTall(fieldH + 26 * scale)
     names:DockMargin(0, gap, 0, 0)
-    names.Paint = nil
+    names:SetPaintBackground(false)
 
     local function nameField(side, caption)
         local half = vgui.Create("DPanel", names)
         half:Dock(side)
-        half.Paint = nil
+        half:SetPaintBackground(false)
         half.PerformLayout = function(self)
             self:SetWide((names:GetWide() - H.Space(4)) * 0.5)
         end
@@ -191,7 +191,7 @@ function Omerta.Characters.BuildCreationForm(formParent, boothParent, opts)
     local buttons = vgui.Create("DPanel", formParent)
     buttons:Dock(BOTTOM)
     buttons:SetTall(48 * scale)
-    buttons.Paint = nil
+    buttons:SetPaintBackground(false)
 
     local submit = H.Button(buttons, "Confirm", "commit")
     submit:Dock(FILL)
@@ -334,7 +334,7 @@ function Omerta.Characters.ConfirmModal(fullName, onConfirm)
     buttons:Dock(BOTTOM)
     buttons:DockMargin(H.Space(5), 0, H.Space(5), H.Space(5))
     buttons:SetTall(44 * scale)
-    buttons.Paint = nil
+    buttons:SetPaintBackground(false)
 
     local confirm = H.Button(buttons, "Confirm", "commit", function()
         modal:Remove()
@@ -387,7 +387,7 @@ local function buildFrame()
     local column = vgui.Create("DPanel", frame)
     column:SetPos(H.Space(7), ScrH() * 0.2)
     column:SetSize(columnW, ScrH() * 0.7)
-    column.Paint = nil
+    column:SetPaintBackground(false)
 
     local boothPanel = vgui.Create("DPanel", frame)
     local boothSize = math.min(420 * scale, ScrH() * 0.5)
@@ -406,8 +406,12 @@ end
 
 local function showMessage(text)
     if IsValid(frame) then frame:Remove() end
+    -- Scaled like everything else. This box was written in raw pixels and got
+    -- away with it while 1x meant 1x; now that the base is 1.75 an unscaled
+    -- 460x130 is a box the type no longer fits inside.
+    local scale = Omerta.HUD.Scale()
     frame = vgui.Create("DFrame")
-    frame:SetSize(460, 130)
+    frame:SetSize(460 * scale, 130 * scale)
     frame:Center()
     frame:SetTitle("")
     frame:SetDraggable(false)
@@ -420,8 +424,8 @@ local function showMessage(text)
         surface.DrawOutlinedRect(0, 0, w, h, 1)
     end
     local label = vgui.Create("DLabel", frame)
-    label:SetPos(16, 30)
-    label:SetSize(428, 80)
+    label:SetPos(16 * scale, 30 * scale)
+    label:SetSize(428 * scale, 80 * scale)
     label:SetFont(Omerta.HUD.Font("label"))
     label:SetTextColor(Omerta.HUD.Colour("secondary"))
     label:SetWrap(true)
