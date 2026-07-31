@@ -775,13 +775,21 @@ local function sendInventory(ply, open)
     local ownerType, ownerId = Omerta.Inventory.OwnerOf(ply)
     if not ownerType then return end
 
-    local containerId = open and open.id or nil
+    -- What travels as `container` is the ENTITY index, not the container id.
+    -- A body has no container id — M19's openable answers 0 — so a stream from
+    -- somebody's pockets was indistinguishable on the wire from a plain refresh
+    -- of your own, and the client dutifully replaced the loot window with your
+    -- pockets and then closed it. `open.id` stays the container id everything
+    -- server-side is written against (MayOpen, capacity, access providers).
+    if open and not IsValid(open.ent) then open = nil end
+    local wire = open and open.ent:EntIndex() or 0
+
     local mine = cachedRows(ownerType, ownerId)
     local theirs = open and cachedRows(open.owner.type, open.owner.id) or {}
     local limit = Omerta.Config.Get("inventory.max_stream")
 
     Omerta.Net.Send("inventory.begin", {
-        container = containerId or 0,
+        container = wire,
         label = open and string.sub(open.label or "Container", 1, 24) or "",
         count = math.min(#mine + #theirs, limit),
         bulk_used = Omerta.Inventory.SumBulk(mine),
@@ -809,7 +817,7 @@ local function sendInventory(ply, open)
     stream(mine, 1)
     stream(theirs, 2)
 
-    Omerta.Net.Send("inventory.end", { container = containerId or 0 }, ply)
+    Omerta.Net.Send("inventory.end", { container = wire }, ply)
 end
 
 Internal.SendInventory = sendInventory

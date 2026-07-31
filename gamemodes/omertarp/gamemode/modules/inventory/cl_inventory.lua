@@ -9,6 +9,11 @@
 -- is the same plate with two identical columns and one vertical rule between
 -- them, because symmetry already says "these two are the same kind of thing".
 --
+-- Your own pockets are two panes of that one plate: the man on the left with
+-- what he is running on written under him, the ledger on the right. The plate
+-- sits right of centre so the left pane's body has somewhere to be without
+-- covering what the player was looking at.
+--
 -- Held open by C (see the bottom of the file), which is why there is no close
 -- button anywhere: chrome for closing would promise a different interaction
 -- model than the one the game has.
@@ -19,6 +24,9 @@
 local Internal = Omerta.Inventory.Internal
 
 local state = {
+    -- The ENTITY index of whatever is open, or 0 for plain pockets. Not the
+    -- container id: a body has no container id, and a body-loot stream that
+    -- looked like a pockets refresh is what this window used to close itself on.
     container = 0,
     label = "",
     mine = {},
@@ -30,6 +38,15 @@ local state = {
 local hunger = Omerta.Hunger.MAX
 local frame = nil
 local incoming = nil
+
+-- Bumped by every stream the client accepts. The loot-all sequence waits on it
+-- rather than on a timer: "did the server answer yet" is a question about the
+-- data arriving, not about how long the wire took.
+local streamSerial = 0
+
+-- What the interaction registry currently offers on the thing being looted.
+local lootActions = {}
+local lootQueriedFor, lootQueriedAt = 0, 0
 
 --------------------------------------------------------------------------------
 -- Receiving
@@ -63,11 +80,40 @@ function Internal.StreamItem(payload)
     list[#list + 1] = entry
 end
 
+-- Two kinds of stream arrive here and they are not interchangeable.
+--
+-- A stream carrying 0 is a REFRESH of your own pockets — the server sends one
+-- after every pick-up, every use, every drop. It may never open the window (a
+-- pick-up that flashes the inventory at you is the bug that started this), and
+-- if a loot plate is up it must not replace it: the pockets half is merged in
+-- and the open container, its label and its contents are left alone.
+--
+-- A stream carrying an entity index is a LOOT PUSH — somebody searched
+-- something — and that one is allowed to open the window if none is up.
+--
+-- Either way, a window that is already up rebuilds: the numbers it is showing
+-- have just changed.
 function Internal.EndStream(payload)
     if not incoming or incoming.container ~= payload.container then return end
-    state = incoming
+    local arrived = incoming
     incoming = nil
+    streamSerial = streamSerial + 1
 
+    local looting = IsValid(frame) and state.container and state.container > 0
+
+    if arrived.container == 0 then
+        if looting then
+            state.mine = arrived.mine
+            state.bulkUsed = arrived.bulkUsed
+            state.bulkLimit = arrived.bulkLimit
+        else
+            state = arrived
+        end
+        if IsValid(frame) then frame:Rebuild() end
+        return
+    end
+
+    state = arrived
     if IsValid(frame) then
         frame:Rebuild()
     else
@@ -81,6 +127,23 @@ end
 
 function Omerta.Inventory.Request(containerEntIndex)
     Omerta.Net.Request("inventory.open", { target = containerEntIndex or 0 })
+end
+
+-- Which verbs a body offers depends on its INJURY state, not on what is left
+-- in its pockets — so the answer does not change because an item moved, and
+-- asking on every rebuild would put Loot All's one-item-per-0.55s rebuild rate
+-- (~1.8/s) up against the query bucket's 2/s refill for no new information.
+-- Asked when the target changes, when an action has just changed the answer,
+-- and otherwise at most every few seconds.
+function Internal.QueryLootActions(force)
+    local target = state.container or 0
+    if target <= 0 then return end
+    if not force and target == lootQueriedFor
+        and CurTime() - lootQueriedAt < 3 then
+        return
+    end
+    lootQueriedFor, lootQueriedAt = target, CurTime()
+    Omerta.Net.Request("interaction.query", { target = target })
 end
 
 local function act(action, entry, quantity)
@@ -153,15 +216,15 @@ end
 --------------------------------------------------------------------------------
 -- What you can do with a thing
 --------------------------------------------------------------------------------
--- Everything hangs off the right mouse button, in the guide's item menu: mono
--- header naming the item, verbs below, the irreversible alone at the bottom
--- under a rule.
+-- Everything hangs off the right mouse button, in the guide's item menu: verbs
+-- in a list, the irreversible alone at the bottom under a rule. No header —
+-- you right-clicked the row, so you already know what it is, and a line of
+-- mono repeating it was one more thing to read past.
 
 local function openRowMenu(entry, mine)
     if not entry then return end
     local A = Omerta.Inventory.ACTION
     local m = Omerta.HUD.Menu()
-    Omerta.HUD.MenuHeader(m, entry.def.name)
 
     if not mine then
         Omerta.HUD.MenuOption(m, "Take", function() act(A.TAKE, entry) end)
@@ -206,6 +269,105 @@ local function openRowMenu(entry, mine)
 end
 
 --------------------------------------------------------------------------------
+-- Taking everything
+--------------------------------------------------------------------------------
+-- LOOT ALL is a CLIENT SEQUENCE over the take that already exists, not a new
+-- server verb: one item every 0.55 seconds, each with the rustle and a sweep
+-- across the row being lifted. Emptying a coat instantly would skip both the
+-- capacity check that makes carrying things a decision and the moment of
+-- standing over somebody, which is the whole point of a body.
+--
+-- Refusals are the interesting case. A stack that does not fit comes back
+-- unmoved, so the sequence would sweep the same row for ever; two goes at one
+-- instance is enough to call it, and it moves on to the next thing rather than
+-- stopping — the coat may still hold something small.
+
+local LOOT_ALL_SECONDS = 0.55
+
+local lootAll = {
+    active = false,
+    instance = nil,  -- the row being lifted right now
+    startedAt = 0,
+    asked = nil,     -- the stream serial at the moment we asked, while waiting
+    askedUntil = 0,
+    attempts = {},   -- instance -> asks that left it where it was
+    skipped = {},    -- instance -> given up on
+}
+
+local function lootAllEntry(instance)
+    for _, entry in ipairs(state.theirs) do
+        if entry.instance == instance then return entry end
+    end
+    return nil
+end
+
+local function lootAllNext()
+    for _, entry in ipairs(state.theirs) do
+        if not lootAll.skipped[entry.instance] then return entry end
+    end
+    return nil
+end
+
+local function stopLootAll()
+    if not lootAll.active then return end
+    lootAll.active = false
+    lootAll.instance = nil
+    Omerta.HUD.StopRustle()
+end
+
+local function startLootAll()
+    lootAll.active = true
+    lootAll.instance = nil
+    lootAll.startedAt = 0
+    lootAll.asked = nil
+    lootAll.askedUntil = 0
+    lootAll.attempts = {}
+    lootAll.skipped = {}
+end
+
+hook.Add("Think", "omerta.inventory.loot_all", function()
+    if not lootAll.active then return end
+    if not (IsValid(frame) and state.container and state.container > 0) then
+        stopLootAll()
+        return
+    end
+
+    -- A row is sweeping. It is asked for when the sweep runs out, never before:
+    -- the bar is the reach, not a decoration over an action already sent.
+    if lootAll.instance then
+        if CurTime() < lootAll.startedAt + LOOT_ALL_SECONDS then return end
+        local entry = lootAllEntry(lootAll.instance)
+        lootAll.instance = nil
+        if not entry then return end -- it left while we were reaching for it
+        act(Omerta.Inventory.ACTION.TAKE, entry)
+        lootAll.asked = streamSerial
+        lootAll.askedUntil = CurTime() + 0.5
+        return
+    end
+
+    -- Waiting on the answer. Judging a refusal before the reply lands would
+    -- skip every item on the first laggy body somebody searches; the server
+    -- answers a take either way, so the wait always ends.
+    if lootAll.asked then
+        if streamSerial == lootAll.asked and CurTime() < lootAll.askedUntil then return end
+        lootAll.asked = nil
+    end
+
+    local entry = lootAllNext()
+    if not entry then stopLootAll() return end
+
+    local attempts = (lootAll.attempts[entry.instance] or 0) + 1
+    if attempts > 2 then
+        lootAll.skipped[entry.instance] = true
+        return
+    end
+    lootAll.attempts[entry.instance] = attempts
+    lootAll.instance = entry.instance
+    lootAll.startedAt = CurTime()
+    Omerta.HUD.Rustle(0.5)
+end)
+
+--------------------------------------------------------------------------------
 -- Rows
 --------------------------------------------------------------------------------
 -- The ledger grid: icon 40 · item 1fr · qty 56 · bulk 72 · state 96 (scaled).
@@ -218,9 +380,19 @@ local function buildRow(parent, entry, mine, wide)
     row:Dock(TOP)
     row:SetCursor("hand")
 
+    -- Dragging between the columns is the direct form of Take and Store — the
+    -- same two requests, sent from where the hand already is. Only in the loot
+    -- plate, because only there is there somewhere to drag to.
+    if state.container and state.container > 0 then
+        row.OmertaEntry = entry
+        row.OmertaMine = mine
+        row:Droppable("omerta_loot")
+    end
+
     row.Paint = function(self, w, h)
         local held = mine and isInHands(entry)
         local hovered = self:IsHovered()
+        local taking = lootAll.instance == entry.instance
 
         if held then
             surface.SetDrawColor(Omerta.HUD.Colour("brass"))
@@ -238,10 +410,27 @@ local function buildRow(parent, entry, mine, wide)
             end
         end
 
+        -- The row LOOT ALL is lifting: the row itself is the progress bar,
+        -- sweeping its full width, and the words grey out while it does —
+        -- something being taken is not something you can still act on.
+        if taking then
+            local progress = math.Clamp(
+                (CurTime() - lootAll.startedAt) / LOOT_ALL_SECONDS, 0, 1)
+            surface.SetDrawColor(Omerta.HUD.Colour("brass",
+                Omerta.HUD.Theme.ALPHA.wash * 255))
+            surface.DrawRect(0, 0, w * progress, h)
+            surface.SetDrawColor(Omerta.HUD.Colour("brass"))
+            surface.DrawRect(w * progress - 1, 0, 1, h)
+        end
+
         local pad = 24 * scale
         local textColour = held and Omerta.HUD.Colour("ink") or Omerta.HUD.Colour("text")
         local faintColour = held and Omerta.HUD.Colour("ink", 175)
             or Omerta.HUD.Colour("secondary")
+        if taking then
+            textColour = Omerta.HUD.Colour("text", 115)
+            faintColour = Omerta.HUD.Colour("secondary", 115)
+        end
 
         -- Icon, tinted to the row's own language.
         local mat = iconFor(entry.def)
@@ -252,8 +441,12 @@ local function buildRow(parent, entry, mine, wide)
             local fit = math.min(cell / mw, cell / mh)
             iw, ih = mw * fit, mh * fit
         end
-        surface.SetDrawColor(held and Omerta.HUD.Colour("ink")
-            or Omerta.HUD.Colour("text", 220))
+        if taking then
+            surface.SetDrawColor(Omerta.HUD.Colour("text", 115))
+        else
+            surface.SetDrawColor(held and Omerta.HUD.Colour("ink")
+                or Omerta.HUD.Colour("text", 220))
+        end
         surface.SetMaterial(mat)
         surface.DrawTexturedRect(pad + (cell - iw) * 0.5, (h - ih) * 0.5, iw, ih)
 
@@ -266,7 +459,8 @@ local function buildRow(parent, entry, mine, wide)
             local stateText, stateToken = stateOf(entry)
             draw.SimpleText(stateText, Omerta.HUD.Font("mono"),
                 w - pad, h * 0.5,
-                held and Omerta.HUD.Colour("ink") or Omerta.HUD.Colour(stateToken),
+                held and Omerta.HUD.Colour("ink")
+                    or Omerta.HUD.Colour(stateToken, taking and 115 or 255),
                 TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
             draw.SimpleText(Omerta.Inventory.FormatBulk(
                     Omerta.Inventory.StackBulk(entry.def, entry.quantity)),
@@ -280,7 +474,8 @@ local function buildRow(parent, entry, mine, wide)
             local stateText, stateToken = stateOf(entry)
             if stateText ~= "—" then
                 draw.SimpleText(stateText, Omerta.HUD.Font("mono"), w - pad, h * 0.5,
-                    held and Omerta.HUD.Colour("ink") or Omerta.HUD.Colour(stateToken),
+                    held and Omerta.HUD.Colour("ink")
+                        or Omerta.HUD.Colour(stateToken, taking and 115 or 255),
                     TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
             else
                 draw.SimpleText(entry.quantity, Omerta.HUD.Font("label"),
@@ -290,8 +485,15 @@ local function buildRow(parent, entry, mine, wide)
         end
     end
 
-    row.OnMousePressed = function(_, code)
-        if code == MOUSE_RIGHT then openRowMenu(entry, mine) end
+    row.OnMousePressed = function(self, code)
+        if code == MOUSE_RIGHT then openRowMenu(entry, mine) return end
+        -- Droppable() hangs the drag off the panel's OWN mouse handling, which
+        -- this override replaces — so the drag has to be started by hand, or
+        -- nothing is ever picked up and the feature looks unimplemented.
+        self:DragMousePress(code)
+    end
+    row.OnMouseReleased = function(self, code)
+        self:DragMouseRelease(code)
     end
     return row
 end
@@ -352,6 +554,26 @@ local function buildColumn(parent, title, note, entries, mine, wide)
     scroll:Dock(FILL)
     scroll:DockMargin(0, (wide and 70 or 52) * scale, 0, 8 * scale)
     styleScrollbar(scroll, scale)
+    column.OmertaScroll = scroll
+
+    -- The CANVAS receives, not the scroll panel: the canvas is what the rows
+    -- actually live in, and a drop on the empty space under the last row has
+    -- to count as a drop on the column.
+    if state.container and state.container > 0 then
+        scroll:GetCanvas():Receiver("omerta_loot", function(_, panels, dropped)
+            if not dropped then return end
+            local A = Omerta.Inventory.ACTION
+            for _, panel in ipairs(panels) do
+                -- A receiver can be handed the same panel more than once in one
+                -- drop; acting twice would take an item and put it straight back.
+                if IsValid(panel) and panel.OmertaEntry and not panel.OmertaDropped
+                        and panel.OmertaMine ~= mine then
+                    panel.OmertaDropped = true
+                    act(mine and A.TAKE or A.STORE, panel.OmertaEntry)
+                end
+            end
+        end)
+    end
 
     for _, entry in ipairs(entries) do
         buildRow(scroll, entry, mine, wide)
@@ -424,6 +646,176 @@ local function buildFooter(parent)
 end
 
 --------------------------------------------------------------------------------
+-- The man himself
+--------------------------------------------------------------------------------
+-- The left pane of the pockets plate: your body, and under it what you are
+-- running on — in the ledger's own idiom rather than in bars, because a bar
+-- invites reading a percentage and notches read as "a few left".
+
+local NOTCHES = 10
+
+-- One reading, drawn exactly as the bulk meter downstairs draws its ticks.
+-- Returns the y the next row starts at, so a second reading is one more line
+-- here and nothing else. (There are no levels or skills to hang on this yet —
+-- when there are, they are a line each.)
+local function notchRow(x, y, caption, fraction)
+    local scale = Omerta.HUD.Scale()
+    draw.SimpleText(caption, Omerta.HUD.Font("mono"), x, y,
+        Omerta.HUD.Colour("dim"), TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
+    local lit = math.floor(math.Clamp(fraction or 0, 0, 1) * NOTCHES + 0.5)
+    for i = 1, NOTCHES do
+        surface.SetDrawColor(Omerta.HUD.Colour("text",
+            i <= lit and 235 or 235 * 0.18))
+        surface.DrawRect(x + (i - 1) * 14 * scale, y + 20 * scale,
+            12 * scale, 4 * scale)
+    end
+    return y + 40 * scale
+end
+
+local function buildCharacterPane(parent, w, h)
+    local scale = Omerta.HUD.Scale()
+    local pane = vgui.Create("DPanel", parent)
+    pane:SetSize(w, h)
+
+    local booth = vgui.Create("DModelPanel", pane)
+    booth:SetPos(0, 24 * scale)
+    booth:SetSize(w, h - 136 * scale)
+    -- Framed to hold a standing man head to foot, from the front: a player
+    -- model faces its own +X, so that is where the camera stands.
+    booth:SetFOV(36)
+    booth:SetCamPos(Vector(105, 0, 36))
+    booth:SetLookAt(Vector(0, 0, 36))
+
+    -- IDLE ONLY, on the lead's instruction. LayoutEntity is where DModelPanel
+    -- advances whatever animation it was given, so the override IS the fix:
+    -- the preview holds one frame of the idle and never mirrors the running,
+    -- crouching or shooting the player is doing behind the window.
+    function booth:LayoutEntity(ent)
+        if not IsValid(ent) then return end
+        local sequence = ent:LookupSequence("idle_all_01")
+        ent:SetSequence(sequence >= 0 and sequence or 0)
+    end
+
+    -- It has to be YOUR body: a model set by clothing or by a new character
+    -- would otherwise leave the pane showing the man you used to be, and a
+    -- model panel is told about neither.
+    function booth:OmertaFollowModel()
+        local ply = LocalPlayer()
+        if not IsValid(ply) then return end
+        local model = ply:GetModel()
+        if model and model ~= "" and model ~= self.OmertaModel then
+            self.OmertaModel = model
+            self:SetModel(model)
+        end
+    end
+    booth:OmertaFollowModel()
+
+    -- Twice a second is enough for something that changes when a coat goes on.
+    booth.OmertaNextCheck = 0
+    function booth:Think()
+        if CurTime() < self.OmertaNextCheck then return end
+        self.OmertaNextCheck = CurTime() + 0.5
+        self:OmertaFollowModel()
+    end
+
+    pane.Paint = function(_, _, ph)
+        local x, y = 24 * scale, ph - 96 * scale
+        y = notchRow(x, y, "STAMINA", Omerta.HUD.Stamina())
+        y = notchRow(x, y, "APPETITE", hunger / Omerta.Hunger.MAX)
+    end
+    return pane
+end
+
+--------------------------------------------------------------------------------
+-- What else you can do to them
+--------------------------------------------------------------------------------
+-- E now runs a target's single default action and nothing else, so the verbs
+-- that are not about moving items — treat, stabilize, finish — are offered
+-- here, at the bottom of THEIR column, because everything in the list is
+-- something done to them. The list is whatever the interaction registry says
+-- right now; this file knows none of those verbs by name.
+
+-- The same height the pockets footer takes, so the two bottoms of the plate
+-- line up when both are showing.
+local LOOT_ACTION_BAR = 64
+
+local function buildLootActions()
+    local column = IsValid(frame) and frame.OmertaLootColumn or nil
+    if not IsValid(column) then return end
+
+    local scale = Omerta.HUD.Scale()
+    if IsValid(column.OmertaActions) then column.OmertaActions:Remove() end
+
+    local bar = nil
+    if #lootActions > 0 then
+        bar = vgui.Create("DPanel", column)
+        bar:SetSize(column:GetWide(), LOOT_ACTION_BAR * scale)
+        bar:SetPos(0, column:GetTall() - LOOT_ACTION_BAR * scale)
+        bar.Paint = function(_, bw)
+            surface.SetDrawColor(Omerta.HUD.Colour("rule"))
+            surface.DrawRect(0, 0, bw, 1)
+        end
+
+        local pad = 24 * scale
+        local gap = 8 * scale
+        local wide = math.floor((bar:GetWide() - pad * 2
+            - gap * (#lootActions - 1)) / #lootActions)
+        for i, option in ipairs(lootActions) do
+            local button = Omerta.HUD.Button(bar, option.label, "quiet", function()
+                Omerta.Net.Request("interaction.execute",
+                    { target = state.container, action = option.index })
+                -- Doing something to somebody changes what else can be done to
+                -- them; ask again rather than leave a row of stale verbs.
+                Internal.QueryLootActions(true)
+            end)
+            button:SetSize(wide, 32 * scale)
+            button:SetPos(pad + (i - 1) * (wide + gap), 16 * scale)
+
+            if option.label == "Finish" then
+                -- Danger is never a fill at this size, and the kit has no
+                -- danger button because nothing else has needed one: the quiet
+                -- box keeps its shape and only the ink changes.
+                button.OmertaLabel = ""
+                button.PaintOver = function(self, bw, bh)
+                    draw.SimpleText(string.upper(option.label),
+                        Omerta.HUD.Font("verb"), bw * 0.5, bh * 0.5,
+                        Omerta.HUD.Colour("danger", self:IsHovered() and 255 or 220),
+                        TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+                end
+            end
+        end
+    end
+
+    column.OmertaActions = bar
+    -- The rows give up the space the bar takes rather than scrolling under it.
+    if IsValid(column.OmertaScroll) then
+        column.OmertaScroll:DockMargin(0, 52 * scale, 0,
+            (bar and LOOT_ACTION_BAR + 8 or 8) * scale)
+        column:InvalidateLayout()
+    end
+end
+
+hook.Add("Omerta.InteractionOptions", "omerta.inventory.loot_actions", function(payload)
+    if not IsValid(frame) then return end
+    if not (state.container and state.container > 0) then return end
+    -- Options for anything else belong to whoever asked for them.
+    if payload.target ~= state.container then return end
+
+    lootActions = {}
+    for n = 1, payload.count do
+        local index, label = payload["i" .. n], payload["l" .. n]
+        -- "Search" is this window. Offering it inside itself would reopen what
+        -- is already open — and "Search (empty)" would report on a list the
+        -- player is looking at.
+        if index and index > 0 and label and label ~= ""
+                and string.sub(label, 1, 6) ~= "Search" then
+            lootActions[#lootActions + 1] = { index = index, label = label }
+        end
+    end
+    buildLootActions()
+end)
+
+--------------------------------------------------------------------------------
 -- The frame
 --------------------------------------------------------------------------------
 
@@ -451,27 +843,40 @@ function Omerta.Inventory.Show()
         surface.DrawOutlinedRect(0, 0, w, h, 1)
     end
 
+    local function rule(parent, x, height)
+        local divider = vgui.Create("DPanel", parent)
+        divider.OmertaOwned = true
+        divider:SetSize(1, height)
+        divider:SetPos(x, 0)
+        divider.Paint = function(_, w, h)
+            surface.SetDrawColor(Omerta.HUD.Colour("rule"))
+            surface.DrawRect(0, 0, w, h)
+        end
+        return divider
+    end
+
     function frame:Rebuild()
         for _, child in ipairs(self:GetChildren()) do
             if child.OmertaOwned then child:Remove() end
         end
+        self.OmertaLootColumn = nil
 
         local looting = state.container and state.container > 0
-        local width = (looting and 960 or 720) * scale
+        local width = (looting and 960 or 980) * scale
         local height = 560 * scale
         self:SetSize(width, height)
-        self:Center()
 
         if looting then
-            -- Two identical columns, one vertical rule between them.
-            local divider = vgui.Create("DPanel", self)
-            divider.OmertaOwned = true
-            divider:SetSize(1, height)
-            divider:SetPos(width * 0.5, 0)
-            divider.Paint = function(_, w, h)
-                surface.SetDrawColor(Omerta.HUD.Colour("rule"))
-                surface.DrawRect(0, 0, w, h)
+            self:Center()
+
+            -- A new subject: the verbs offered on the last one mean nothing here.
+            if self.OmertaTarget ~= state.container then
+                self.OmertaTarget = state.container
+                lootActions = {}
             end
+
+            -- Two identical columns, one vertical rule between them.
+            rule(self, width * 0.5, height)
 
             local usedUnits = math.floor(state.bulkUsed / Omerta.Inventory.BULK_SCALE + 0.5)
             local limitUnits = math.max(1,
@@ -483,18 +888,46 @@ function Omerta.Inventory.Show()
             mine:SetPos(0, 0)
             mine:SetSize(width * 0.5, height)
 
+            local columnWide = width * 0.5 - 1
             local title = state.label ~= "" and state.label or "Container"
             local theirs = buildColumn(self, title, "C TO CLOSE",
                 state.theirs, false, false)
             theirs.OmertaOwned = true
             theirs:SetPos(width * 0.5 + 1, 0)
-            theirs:SetSize(width * 0.5 - 1, height)
+            theirs:SetSize(columnWide, height)
+            self.OmertaLootColumn = theirs
+
+            -- Taking everything is a verb about their column, so it sits in
+            -- their title row. Placed against the MEASURED note beside it: a
+            -- fixed offset overlaps the moment the interface scale changes.
+            surface.SetFont(Omerta.HUD.Font("mono"))
+            local noteWide = surface.GetTextSize("C TO CLOSE")
+            local lootAllButton = Omerta.HUD.Button(theirs, "Loot all", "quiet",
+                startLootAll)
+            lootAllButton:SetSize(104 * scale, 26 * scale)
+            lootAllButton:SetPos(columnWide - 24 * scale - noteWide
+                - 12 * scale - 104 * scale, 10 * scale)
+
+            buildLootActions()
+            Internal.QueryLootActions(false)
         else
+            -- Right of centre: the plate is held up beside the world rather
+            -- than laid over it, and the pane on the left is a whole body.
+            self:SetPos(ScrW() * 0.5 - width * 0.5 + ScrW() * 0.07,
+                ScrH() * 0.5 - height * 0.5)
+
+            local paneWide = math.floor(width * 0.38)
+            local character = buildCharacterPane(self, paneWide, height)
+            character.OmertaOwned = true
+            character:SetPos(0, 0)
+
+            rule(self, paneWide, height)
+
             local column = buildColumn(self, "Pockets", "HOLD C",
                 state.mine, true, true)
             column.OmertaOwned = true
-            column:SetPos(0, 0)
-            column:SetSize(width, height)
+            column:SetPos(paneWide + 1, 0)
+            column:SetSize(width - paneWide - 1, height)
             local footer = buildFooter(column)
             footer.OmertaOwned = true
         end
@@ -505,6 +938,8 @@ function Omerta.Inventory.Show()
     frame.OnRemove = function()
         frame = nil
         state.container = 0
+        lootActions = {}
+        stopLootAll()
     end
 end
 
@@ -523,7 +958,10 @@ end
 -- that cannot miss the release.
 --
 -- LOOT is the exception. A container or body opens from a search (no key
--- held), stays up while you move things, and a press of C dismisses it.
+-- held), stays up while you move things, and a press of C dismisses it. Which
+-- window is which is remembered on the frame itself (OmertaHeld) rather than
+-- inferred: a loot plate that the release of C could close would vanish under
+-- the hand of anyone who had opened it while walking.
 --
 -- `pinned` is the console command's escape hatch: omerta_inventory holds the
 -- window open with no key for staff and debugging, and toggles back off.
@@ -572,8 +1010,9 @@ hook.Add("Think", "omerta.inventory.hold", function()
         -- Shown immediately from the cached state so the window is ON the
         -- key, then refreshed; the stream rebuilds it when it lands.
         Omerta.Inventory.Show()
+        frame.OmertaHeld = true
         Omerta.Inventory.Request(0)
-    elseif not down and open then
+    elseif not down and open and frame.OmertaHeld then
         frame:Close()
     end
 end)
