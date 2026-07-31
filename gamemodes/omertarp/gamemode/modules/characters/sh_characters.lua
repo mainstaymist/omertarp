@@ -151,6 +151,42 @@ Omerta.Net.Register("characters.state", {
     end,
 })
 
+-- The client announcing that its Lua is up and listening, so the server can
+-- repeat a state it may have said into a void. See Internal.OnClientReady in
+-- sv_characters.lua for why that is necessary at all; the short version is
+-- that the join flow begins before the client can receive anything, and the
+-- state is otherwise said once and never again.
+--
+-- No payload: the message IS the fact. The allowance is small because a client
+-- has only two occasions to make the announcement — joining, and being rebuilt
+-- by a Lua refresh — and anything beyond that is somebody prodding the server.
+Omerta.Net.Register("characters.ready", {
+    realm = "client_to_server",
+    schema = {},
+    rate = { burst = 3, per = 10 },
+    handler = function(ply)
+        Omerta.Characters.Internal.OnClientReady(ply)
+    end,
+})
+
+if CLIENT and Omerta.InEngine then
+    local function announce()
+        Omerta.Net.Request("characters.ready", {})
+    end
+
+    -- InitPostEntity is the first moment the client is certainly able to hear
+    -- the server: the gamemode's Lua is loaded, the entities exist and the
+    -- loading screen is done with. Announcing any earlier would announce into
+    -- the same void the server was already shouting into.
+    hook.Add("InitPostEntity", "omerta.characters.ready", announce)
+
+    -- A Lua auto-refresh rebuilds the client's entire gamemode state, the front
+    -- end with it, long after InitPostEntity has been and gone. Without this a
+    -- developer who saves a file mid-session lands in exactly the silence this
+    -- handshake exists to end: gated at spawn, no menu, nothing in the console.
+    hook.Add("OnReloaded", "omerta.characters.ready_reload", announce)
+end
+
 -- A player's own character details. Safe to send: it is their own data, and
 -- D-015 needs it so their own Nick() can return their own name. Never carries
 -- anyone else's character.

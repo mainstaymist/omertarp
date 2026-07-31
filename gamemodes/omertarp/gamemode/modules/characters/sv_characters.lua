@@ -78,9 +78,49 @@ local function applyToPlayer(ply, character)
     ply:Spawn()
 end
 
+-- The last state each connected player was told, by SteamID64. It exists for
+-- the readiness handshake below: the server cannot tell whether a message it
+-- aimed at a still-loading client arrived, so the only honest thing it can do
+-- when that client finally announces itself is say the same thing again.
+local told = {}
+
 local function sendState(ply, state)
     if not (Omerta.InEngine and IsValid(ply)) then return end
+    local sid = ply:SteamID64()
+    if sid then told[sid] = state end
     Omerta.Net.Send("characters.state", { state = state }, ply)
+end
+
+-- Their own name, so D-015's self-case can resolve it client-side.
+local function sendSelf(ply, character)
+    if not (Omerta.InEngine and IsValid(ply)) then return end
+    Omerta.Net.Send("characters.self", {
+        id = character.id,
+        first = character.first_name,
+        last = character.last_name,
+    }, ply)
+end
+
+-- The joining client saying its Lua is up and listening (characters.ready).
+--
+-- This whole flow starts at PlayerInitialSpawn, which the engine fires while
+-- the client is still loading, and a net message aimed at a client that is not
+-- listening yet is simply gone: no queue, no retry, no error in either console.
+-- The state is otherwise said exactly ONCE per session and it is the only
+-- thing that puts the front end on screen — so losing that single message left
+-- a player gated at spawn with no menu, no message and nothing to explain it.
+--
+-- Nothing is invented here. A state that has not been resolved yet is not
+-- guessed at: the load already in flight will say it in a moment, and by then
+-- the client is demonstrably listening.
+function Internal.OnClientReady(ply)
+    if not (Omerta.InEngine and IsValid(ply)) then return end
+    local sid = ply:SteamID64()
+    local state = sid and told[sid]
+    if not state then return end
+    sendState(ply, state)
+    local character = cachedFor(ply)
+    if character then sendSelf(ply, character) end
 end
 
 -- Players without a character do not roam the map. Applied on spawn and on
@@ -104,15 +144,16 @@ local function loadInto(ply, character)
     local sid = ply:SteamID64()
     cache[sid] = character
     applyToPlayer(ply, character)
+    -- Lifting the gate is this module's own invariant, so it happens here
+    -- rather than on a listener of this module's own hook. A shared dispatch is
+    -- ordered by pairs() and any listener that errors takes the remainder of it
+    -- with them — and the one thing that must never be lost is a player's
+    -- ability to move. Doing it BEFORE the hook also settles the order against
+    -- modules that apply holds of their own: somebody reconnecting onto the
+    -- floor is put back down by M19 after this, not released by it.
+    ungate(ply)
     sendState(ply, STATE.ACTIVE)
-    if Omerta.InEngine then
-        -- Their own name, so D-015's self-case can resolve it client-side.
-        Omerta.Net.Send("characters.self", {
-            id = character.id,
-            first = character.first_name,
-            last = character.last_name,
-        }, ply)
-    end
+    sendSelf(ply, character)
     Omerta.Log.Info("characters", "character #%d (%s %s) loaded for %s",
         character.id, character.first_name, character.last_name, sid)
     if Omerta.InEngine then hook.Run("Omerta.CharacterLoaded", ply, character) end
@@ -332,21 +373,42 @@ function MODULE:OnEnable()
 
     -- Load the player's living character once their account is available.
     hook.Add("Omerta.AccountLoaded", "omerta.characters.load", function(ply, account)
-        local season = Omerta.Seasons.GetActive()
-        if not season then sendState(ply, STATE.NO_SEASON) return end
-        Internal.Repo.GetActiveFor(account.id, season.id, function(character, err)
-            if err or not IsValid(ply) then return end
-            if character then
-                loadInto(ply, character)
-            else
-                sendState(ply, STATE.NEEDS_CREATION)
-            end
+        -- Seasons.WhenReady rather than GetActive(): at boot the active season
+        -- is itself the answer to a query, so a player who connects before it
+        -- lands — which the listen-server host always does — would be told the
+        -- city is closed and never told otherwise. M3 documents that trap for
+        -- its own consumers; this is the same one, on the join path.
+        Omerta.Seasons.WhenReady(function()
+            if not IsValid(ply) then return end
+            local season = Omerta.Seasons.GetActive()
+            if not season then sendState(ply, STATE.NO_SEASON) return end
+            Internal.Repo.GetActiveFor(account.id, season.id, function(character, err)
+                if not IsValid(ply) then return end
+                if err then
+                    -- Saying nothing is the worst outcome available: the gate
+                    -- has them frozen and a state message is the only way out
+                    -- of it. Creation re-reads this same row before it writes
+                    -- and loads whatever it finds, so pointing a player who may
+                    -- well have a character at the creation screen recovers
+                    -- into their own character rather than duplicating it.
+                    Omerta.Log.Error("characters",
+                        "could not read the living character for account %d: %s",
+                        account.id, tostring(err))
+                    sendState(ply, STATE.NEEDS_CREATION)
+                    return
+                end
+                if character then
+                    loadInto(ply, character)
+                else
+                    sendState(ply, STATE.NEEDS_CREATION)
+                end
+            end)
         end)
     end)
 
     hook.Add("PlayerDisconnected", "omerta.characters.unload", function(ply)
         local sid = ply:SteamID64()
-        if sid then cache[sid] = nil end
+        if sid then cache[sid], told[sid] = nil, nil end
     end)
 
     -- D-010: ending a season retires every living character in it.
@@ -359,7 +421,15 @@ function MODULE:OnEnable()
             cache = {}
             Omerta.Log.Info("characters", "all living characters retired for season #%d", season.id)
             Omerta.Log.Audit("character.season_retirement", { season_id = season.id })
-            for _, p in ipairs(player.GetAll()) do sendState(p, STATE.NEEDS_CREATION) end
+            -- Gated as well as told. Everyone in the city just stopped having
+            -- a character, and SetStatus gates for exactly this reason on the
+            -- single-player version of it (retirement, death) — without it a
+            -- server full of people keeps walking around as nobody until each
+            -- of them happens to respawn.
+            for _, p in ipairs(player.GetAll()) do
+                gate(p)
+                sendState(p, STATE.NEEDS_CREATION)
+            end
         end)
     end)
 
@@ -368,9 +438,6 @@ function MODULE:OnEnable()
             if not IsValid(ply) then return end
             if not Omerta.Characters.IsLoaded(ply) then gate(ply) end
         end)
-    end)
-    hook.Add("Omerta.CharacterLoaded", "omerta.characters.ungate", function(ply)
-        ungate(ply)
     end)
 
     -- Staff: retire a character. Real moderation tool, and it saves editing

@@ -291,7 +291,13 @@ end
 -- them into the new-character flow.
 function Internal.AcknowledgeDeath(ply)
     if not IsValid(ply) then return end
-    Internal.ReleaseView(ply)
+    -- The hold is NOT lifted here, and that is the whole subtlety: the death
+    -- already retired the character, and M4 gates a player who has nobody to
+    -- be. Releasing them would hand control of a body back to somebody who is
+    -- about to sit on the creation screen — walking, visible, playing as
+    -- nobody. M4 lifts its own gate when a character loads; this only lets go
+    -- of the camera.
+    if Omerta.Characters.IsLoaded(ply) then Internal.ReleaseView(ply) end
     Omerta.Net.Send("injury.body", { body = 0 }, ply)
 end
 
