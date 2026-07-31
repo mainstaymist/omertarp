@@ -157,10 +157,16 @@ check("the design standard defines every role the interface asks for", function(
         assert(T.TypeSize(role) > 0, role .. " has no size")
         assert(T.FACE[T.TYPE[role].face], role .. " names a face that does not exist")
     end
-    -- The guide's ladder: 13 mono, 15 body, 20 subject, 26 title, 46 death.
-    assert(T.TypeSize("mono") == 13 and T.TypeSize("body") == 15
-        and T.TypeSize("subject") == 20 and T.TypeSize("heading") == 26
-        and T.TypeSize("headline") == 46, "the type scale is the guide's")
+    -- The guide's ladder: 13 mono, 15 body, 20 subject, 26 title, 46 death —
+    -- the RATIOS. The absolute sizes carry the readability multiplier, because
+    -- the guide's px are browser-distance and the screen is across a room
+    -- (field-tested as too small twice before this was pinned).
+    assert(T.TYPE.mono.size == 13 and T.TYPE.body.size == 15
+        and T.TYPE.subject.size == 20 and T.TYPE.heading.size == 26
+        and T.TYPE.headline.size == 46, "the base ladder is the guide's")
+    assert(T.READABILITY >= 1.25, "game distance needs at least a quarter over print size")
+    local tolerance = math.abs(T.TypeSize("body") - 15 * T.READABILITY)
+    assert(tolerance < 0.001, "TypeSize applies the readability multiplier")
     assert(T.TypeSize("title") > T.TypeSize("headline"),
         "the wordmark and the dead's name are the largest type in the game")
 end)

@@ -232,13 +232,10 @@ function MODULE:OnEnable()
     -- resource/fonts automatically once it is on disk, and AddFile is what
     -- puts it there. Owned by this module because the fonts are (cl_hud).
     --
-    -- The style guide's three voices: Oswald for display caps, Archivo for
-    -- text and numbers, IBM Plex Mono for the system voice. Weights are
-    -- separate files because the engine cannot synthesise them honestly.
-    resource.AddFile("resource/fonts/Oswald-Light.ttf")
-    resource.AddFile("resource/fonts/Oswald-Regular.ttf")
-    resource.AddFile("resource/fonts/Archivo-Regular.ttf")
-    resource.AddFile("resource/fonts/Archivo-Medium.ttf")
+    -- Two voices: Germania One is the game's face (the guide's Oswald/Archivo
+    -- pairing was tried and rejected in the field), IBM Plex Mono is the small
+    -- caps system voice.
+    resource.AddFile("resource/fonts/GermaniaOne-Regular.ttf")
     resource.AddFile("resource/fonts/IBMPlexMono-Regular.ttf")
     resource.AddFile("resource/fonts/IBMPlexMono-Medium.ttf")
 

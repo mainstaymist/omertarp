@@ -38,8 +38,7 @@ base for something that does nothing.
 | `sound/omertarp/ui/inventory-click.wav` | 16-bit stereo PCM, 44.1 kHz, 0.16 s | 27 KB | Hotbar switch click (`modules/weapons`) |
 | `sound/omertarp/ui/searching-rustle.wav` | 16-bit mono PCM, 44.1 kHz, 0:30 | 2.7 MB | Timed searches — a random stretch is played per search (`modules/injury`) |
 | `materials/omertarp/icons/icon_*.png` | PNG line art, ~150–250 KB each | 1.6 MB (9 files) | Inventory category icons (`modules/inventory`) |
-| `resource/fonts/Oswald-Light.ttf` + `Oswald-Regular.ttf` | TrueType | 86 KB each | The display voice: titles, verbs, all caps (style guide 1a; `modules/hud`) |
-| `resource/fonts/Archivo-Regular.ttf` + `Archivo-Medium.ttf` | TrueType | ~110 KB each | The text voice: names, body, quantities (`modules/hud`) |
+| `resource/fonts/GermaniaOne-Regular.ttf` | TrueType | 33 KB | The game's face — every non-mono role (`modules/hud`) |
 | `resource/fonts/IBMPlexMono-Regular.ttf` + `IBMPlexMono-Medium.ttf` | TrueType | ~129 KB each | The system voice: mono caps annotations (`modules/hud`) |
 
 The three M19 sounds **are** registered (`modules/injury/sv_injury.lua`), because
@@ -54,10 +53,11 @@ which format clients receive is an open M28 ruling. So it sits behind
 and any client with the gamemode mounted) hears it, and nobody else waits for
 it. Turning it on before compressing it is the thing not to do.
 
-All three typefaces are OFL; their licence files ship beside them. Germania One
-and IBM Plex Sans were retired with the adoption of the style guide (2026-07-31)
-— the guide's faces are Oswald, Archivo and IBM Plex Mono, and shipping unused
-fonts charges every player's first join for nothing.
+Both typefaces are OFL; their licence files ship beside them. The style guide's
+Oswald/Archivo pairing was tried in the field and rejected the same day —
+Germania One is the game's face and returned, carrying all the guide's roles
+except the mono system voice. Shipping unused fonts charges every player's
+first join for nothing, so the rejected pair is gone rather than parked.
 
 Open items for all three:
 

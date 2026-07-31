@@ -255,6 +255,41 @@ check("no entity networks a private identifier", function()
         table.concat(offenders, ", "))
 end)
 
+suite("lint.help_coverage")
+
+-- omerta_help exists so staff can find commands without grepping the source.
+-- A directory that misses entries is worse than none — it teaches people it
+-- is complete. So the machine checks it: every concommand.Add("omerta_…") in
+-- the tree must be described in accounts/sv_help.lua.
+check("every console command is described in omerta_help", function()
+    local registered = {}
+    local pipe = io.popen("grep -rhoP 'concommand\\.Add\\(\"omerta_[a-z_]+' " ..
+        "gamemodes/*/gamemode gamemodes/*/entities 2>/dev/null")
+    assert(pipe, "linter could not scan for commands")
+    for line in pipe:lines() do
+        local name = line:match("(omerta_[a-z_]+)")
+        if name then registered[name] = true end
+    end
+    pipe:close()
+    assert(next(registered), "linter found no commands to check")
+
+    local handle = io.open("gamemodes/omertarp/gamemode/modules/accounts/sv_help.lua", "r")
+    assert(handle, "sv_help.lua is missing")
+    local source = handle:read("*a")
+    handle:close()
+
+    local missing = {}
+    for name in pairs(registered) do
+        if not source:find('%["' .. name .. '"%]') then
+            missing[#missing + 1] = name
+        end
+    end
+    table.sort(missing)
+    assert(#missing == 0,
+        "commands missing from omerta_help (describe them in sv_help.lua): " ..
+        table.concat(missing, ", "))
+end)
+
 suite("lint.include_order")
 
 -- The fifth load-order bug on this project, made into something a machine

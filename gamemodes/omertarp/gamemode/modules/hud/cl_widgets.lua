@@ -201,6 +201,47 @@ function Omerta.HUD.ProseList(parent, items, index, onChange)
 end
 
 --------------------------------------------------------------------------------
+-- The rustle
+--------------------------------------------------------------------------------
+-- Going through pockets, cloth over cloth. One BASS channel, seeked to a
+-- random stretch of the 30-second bed so no two rummages sound identical,
+-- stopped the instant whatever needed it ends. Owned here because searching
+-- bodies (injury) and looting (inventory) both play it, and two copies of a
+-- sound player is how one of them keeps playing.
+
+local rustle = { channel = nil, stopAt = 0 }
+
+function Omerta.HUD.StopRustle()
+    if rustle.channel and rustle.channel:IsValid() then
+        rustle.channel:Stop()
+    end
+    rustle.channel = nil
+end
+
+function Omerta.HUD.Rustle(duration)
+    Omerta.HUD.StopRustle()
+    duration = duration or 4
+    rustle.stopAt = CurTime() + duration
+    -- "noplay": opened paused so it can be seeked before it makes a sound.
+    -- (NOT "noblock" — that flag silently fails for disk files.)
+    sound.PlayFile("sound/omertarp/ui/searching-rustle.wav", "noplay", function(channel)
+        if not (channel and channel:IsValid()) then return end
+        if CurTime() > rustle.stopAt then channel:Stop() return end
+        local length = channel:GetLength() or 0
+        if length > duration + 1 then
+            channel:SetTime(math.Rand(0, length - duration - 0.5))
+        end
+        channel:SetVolume(0.6)
+        channel:Play()
+        rustle.channel = channel
+    end)
+end
+
+hook.Add("Think", "omerta.hud.rustle", function()
+    if rustle.channel and CurTime() > rustle.stopAt then Omerta.HUD.StopRustle() end
+end)
+
+--------------------------------------------------------------------------------
 -- Context menus
 --------------------------------------------------------------------------------
 -- The guide's item menu (§10): near-opaque ink plate, mono header naming the
@@ -254,6 +295,10 @@ function Omerta.HUD.MenuOption(menu, label, onSelect, opts)
     opts = opts or {}
     local option = menu:AddOption(label, onSelect)
     option:SetFont(Omerta.HUD.Font("label"))
+    -- Room above and below the words: the stock option height crops the
+    -- type and makes the list read as cramped.
+    option:SetTall(36 * Omerta.HUD.Scale())
+    option:SetTextInset(14 * Omerta.HUD.Scale(), 0)
     option.Paint = function(self, w, h)
         local hovered = self:IsHovered()
         if hovered and not opts.danger then

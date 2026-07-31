@@ -165,6 +165,41 @@ end)
 hook.Add("HUDDrawTargetID", "omerta.hud.no_targetid", function() return false end)
 
 --------------------------------------------------------------------------------
+-- The body below the eyes
+--------------------------------------------------------------------------------
+-- Look down far enough and your own feet are there. The engine's first person
+-- draws no body at all; rendering the local player once the pitch is steep
+-- keeps the camera out of the head geometry while giving the downward glance
+-- something to land on.
+
+hook.Add("ShouldDrawLocalPlayer", "omerta.hud.feet", function()
+    if Omerta.Menu and Omerta.Menu.IsShowing and Omerta.Menu.IsShowing() then return end
+    local C = Omerta.Injury and Omerta.Injury.Client
+    if C and (C.death or C.leaving or Omerta.Injury.IsDown(C.state)) then return end
+    local ply = LocalPlayer()
+    if IsValid(ply) and ply:EyeAngles().p > 42 then return true end
+end)
+
+--------------------------------------------------------------------------------
+-- Black and white (a settings option, default off)
+--------------------------------------------------------------------------------
+-- Full desaturation with a touch more contrast, so the period look is a
+-- choice a player can make rather than a filter imposed on everybody.
+
+CreateClientConVar("omerta_blackwhite", "0", true, false)
+
+hook.Add("RenderScreenspaceEffects", "omerta.hud.blackwhite", function()
+    if not GetConVar("omerta_blackwhite"):GetBool() then return end
+    DrawColorModify({
+        ["$pp_colour_addr"] = 0, ["$pp_colour_addg"] = 0, ["$pp_colour_addb"] = 0,
+        ["$pp_colour_mulr"] = 0, ["$pp_colour_mulg"] = 0, ["$pp_colour_mulb"] = 0,
+        ["$pp_colour_brightness"] = 0,
+        ["$pp_colour_contrast"] = 1.05,
+        ["$pp_colour_colour"] = 0,
+    })
+end)
+
+--------------------------------------------------------------------------------
 -- The draw loop
 --------------------------------------------------------------------------------
 
@@ -259,6 +294,12 @@ hook.Add("Omerta.StaminaUpdated", "omerta.hud.stamina", function(value)
     if value < stamina then staminaChangedAt = CurTime() end
     stamina = value
 end)
+
+-- The character panel in the inventory draws the same value as notches; one
+-- accessor, so the number has one home.
+function Omerta.HUD.Stamina()
+    return stamina
+end
 
 -- The guide's stamina: twelve discrete 9×3 ticks at the bottom-left margin,
 -- spent ones dropping to 18% — they STAY, they don't slide. A bar invites
@@ -400,34 +441,36 @@ Omerta.HUD.Register("interactable", {
     visible = function() return interactableTarget() ~= nil end,
     draw = function(alpha)
         local scale = Omerta.HUD.Scale()
-        local size = 3 * scale
-        -- The dot carries its own 1px ring of ink, same rule as world text.
-        surface.SetDrawColor(0, 0, 0, 230 * alpha)
-        surface.DrawOutlinedRect(ScrW() * 0.5 - size * 0.5 - 1,
-            ScrH() * 0.5 - size * 0.5 - 1, size + 2, size + 2, 1)
-        surface.SetDrawColor(Omerta.HUD.Colour("text", 235 * alpha))
-        surface.DrawRect(ScrW() * 0.5 - size * 0.5, ScrH() * 0.5 - size * 0.5, size, size)
+        -- A CIRCLE, with its own ring of ink — a square this small read as a
+        -- pixel error, and anything bigger as an aiming reticle.
+        local radius = 3 * scale
+        local cx, cy = ScrW() * 0.5, ScrH() * 0.5
+        draw.RoundedBox(radius + 1, cx - radius - 1, cy - radius - 1,
+            (radius + 1) * 2, (radius + 1) * 2, Color(0, 0, 0, 230 * alpha))
+        draw.RoundedBox(radius, cx - radius, cy - radius,
+            radius * 2, radius * 2, Omerta.HUD.Colour("text", 235 * alpha))
 
-        -- The guide's ladder: ONE centred column with FIXED anchors — subject
-        -- at +24, hint at +48, further hints a step apart. Fixed rather than
-        -- measured, so the subject's baseline never moves; the hint is the
-        -- only thing that appears and disappears.
+        -- The ladder: one centred column under the dot. The SUBJECT anchor is
+        -- fixed so its baseline never moves; everything below advances by the
+        -- MEASURED height of the line above plus a grid step — fixed pixel
+        -- offsets were the overlap bug at 1.5x, where the type outgrew them.
         local target = interactableTarget()
         local x = ScrW() * 0.5
-        local subjectY = ScrH() * 0.5 + 24 * scale
-        local hintY = ScrH() * 0.5 + 48 * scale
+        local y = cy + 22 * scale
+
+        local function line(text, role, colour)
+            Omerta.HUD.Text(text, role, x, y, colour, TEXT_ALIGN_CENTER, TEXT_ALIGN_TOP)
+            surface.SetFont(Omerta.HUD.Font(role))
+            local _, tall = surface.GetTextSize(text)
+            y = y + tall + Omerta.HUD.Space(1)
+        end
 
         local title, subtitle = Omerta.HUD.LabelFor(target)
         if title then
-            Omerta.HUD.Text(title, "subject", x, subjectY,
-                Omerta.HUD.Colour("text", 235 * alpha),
-                TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+            line(title, "subject", Omerta.HUD.Colour("text", 235 * alpha))
         end
         if subtitle then
-            Omerta.HUD.Text(subtitle, "small", x, hintY,
-                Omerta.HUD.Colour("secondary", 220 * alpha),
-                TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
-            hintY = hintY + 24 * scale
+            line(subtitle, "small", Omerta.HUD.Colour("secondary", 220 * alpha))
         end
 
         -- Deterministic order, so two hints never trade places frame to frame.
@@ -437,10 +480,7 @@ Omerta.HUD.Register("interactable", {
         for _, id in ipairs(ids) do
             local ok, text = pcall(targetHints[id], target)
             if ok and type(text) == "string" and text ~= "" then
-                Omerta.HUD.Text(text, "small", x, hintY,
-                    Omerta.HUD.Colour("secondary", 220 * alpha),
-                    TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
-                hintY = hintY + 24 * scale
+                line(text, "small", Omerta.HUD.Colour("secondary", 220 * alpha))
             end
         end
     end,

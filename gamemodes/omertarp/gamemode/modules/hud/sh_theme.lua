@@ -82,18 +82,29 @@ T.SPACING = { 4, 8, 12, 16, 24, 32, 48 }
 -- Family names as the TTFs declare them (content/resource/fonts). A name that
 -- does not match what is inside the file silently falls back to the engine
 -- default, which is how a font ships broken and nobody notices for a week.
+--
+-- The guide's Oswald/Archivo pairing was tried in-engine and rejected by the
+-- project lead (2026-07-31): Germania One is the game's face and it returned,
+-- carrying every role the guide gave the other two. The mono system voice
+-- stays IBM Plex Mono — tiny caps annotations want a mono, and Germania has
+-- no such register.
 T.FACE = {
-    display      = "Oswald",
-    displayLight = "Oswald Light",
-    text         = "Archivo",
-    textMedium   = "Archivo Medium",
+    display      = "Germania One",
+    displayLight = "Germania One",
+    text         = "Germania One",
+    textMedium   = "Germania One",
     mono         = "IBM Plex Mono",
     monoMedium   = "IBM Plex Mono Medium",
 }
 
--- role -> { px, face }. Oswald roles are drawn ALL CAPS at the call site (the
--- engine cannot track letters, so the guide's tracking is approximated by the
--- face itself being condensed).
+-- The guide's px values are authored for a browser at reading distance; on a
+-- live screen at a couch's distance they field-tested as "way too small"
+-- (project lead, twice). The RATIOS are the guide's; the absolute sizes are
+-- the guide's times this. The 1px rules and outlines are untouched by it.
+T.READABILITY = 1.3
+
+-- role -> { px, face }. Display roles are drawn ALL CAPS at the call site
+-- (the engine cannot track letters, so the guide's tracking is approximated).
 T.TYPE = {
     mono     = { size = 13, face = "monoMedium" },   -- the system voice, caps
     small    = { size = 14, face = "text" },         -- hint line
@@ -124,5 +135,5 @@ end
 -- The pixel size of a type role, before the accessibility scale.
 function T.TypeSize(role)
     local def = T.TYPE[role] or T.TYPE.body
-    return def.size
+    return def.size * T.READABILITY
 end
