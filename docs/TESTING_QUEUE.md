@@ -2,8 +2,8 @@
 
 **What this is:** everything built but not yet confirmed working in-engine, in the order worth doing it. Kept current as work lands — when you report results, the statuses here get updated and anything that fails becomes a fix before new work starts.
 
-**Last updated:** 2026-07-31, after the four-item follow-up.
-**Headless suite:** 382 checks passing. `luac -p` clean across the tree. 18 modules resolving.
+**Last updated:** 2026-07-31, after the motion and world pass.
+**Headless suite:** 405 checks passing. `luac -p` clean across the tree. 18 modules resolving.
 
 Status key: **☐ untested** · **☑ passed** · **☒ failed** (details inline) · **◐ partly**
 
@@ -21,7 +21,73 @@ If migrations fail, stop and send me the error — everything below depends on t
 
 ---
 
-## 1. The four-item follow-up (2026-07-31)
+## 1. Motion, and the world outside (2026-07-31)
+
+### Every window now arrives and leaves
+
+One implementation, nine windows, three plates. A window rises 42px as it fades
+in over 120ms and sinks as it fades out over 100ms. `:Close()` is routed
+through it — including a DFrame's own corner close button — so a window gets
+the play-out without its author having thought about it. `:Remove()` stays
+instant, because tearing a window down to rebuild it is a real need that wants
+a word of its own.
+
+**A correction to what I told you.** I said the loot window was missing the
+animation and that this was your bug. It was not — I traced it, and both the
+loot and pockets paths already recorded where the window rests, so searching a
+body always rose. What you were describing is almost certainly the **progress
+plate** — the "SEARCHING" line with the bar that appears *while* you search.
+That faded but never moved. It moves now.
+
+| | Check | How | Expect |
+|---|---|---|---|
+| ☐ | **The searching plate arrives** | Search a body | The bottom-centre plate rises in and sinks out, rather than blinking |
+| ☐ | **So does the drawing plate** | Start a draw with the inventory shut | Same motion, same place — those two are meant to read as one object |
+| ☐ | **And notices** | Trigger any refusal | Rises in, sinks out |
+| ☐ | **Every window** | Open the phone, a treasury, a business, an org window, the loot plate | All of them rise and sink. None blinks |
+| ☐ | **Closing plays out** | Close each of the above, including by its corner X | It sinks away rather than vanishing |
+| ☐ | **The pause menu fades but does not move** | F1 | Fade only. It is the whole screen — moving it would show bare world along the top edge |
+| ☐ | **Instruments never move** | Sprint, draw a gun, look at a body | Crosshair, stamina ticks, hotbar, ammo and the hint ladder stay exactly still. The hint ladder especially — it is anchored to the crosshair |
+| ☐ | **Searching straight after closing your pockets** | Hold C, release, immediately search a body | The loot window appears. It used to show **nothing at all** — a loot push landing during the tenth of a second the window spends leaving rebuilt the leaving window, which then finished leaving |
+
+### The inventory preview
+
+| | Check | How | Expect |
+|---|---|---|---|
+| ☐ | **Framed from the hip up** | Hold C | Waist to head, not head to foot. Wearing a coat and holding a gun should both be obvious |
+| ☐ | **It still follows you** | Put a coat on, draw a gun | The preview updates within half a second, still idle-only, never mirroring your movement |
+
+### The map and the weather
+
+**Read this before testing.** I could not reach Steam from this machine — the
+network policy blocks it — so **I do not know what either Workshop item is.**
+The IDs are used exactly as you gave them and nothing is guessed from them.
+
+`resource.AddWorkshop` only makes **clients** download these. **Your server must
+carry both IDs in its own collection** (`host_workshop_collection`) or have them
+mounted locally, or it will be running a map it does not have and calling into
+an addon that was never loaded.
+
+Weather and time are read through a seam. Providers are detected by whether the
+functions they intend to call actually exist — never by name or version — and
+if nothing matches, the game answers "clear day at noon" forever rather than
+erroring.
+
+| | Check | How | Expect |
+|---|---|---|---|
+| ☐ | **Clients get the content** | Join a fresh client | Both items download |
+| ☐ | **What did it detect** | `omerta_env` | Names the provider it chose, the time, whether it is night, the weather, and the map |
+| ☐ | **It degrades** | `omerta_env` on a server without the weather addon | "clear day", no errors anywhere |
+| ☐ | **The clock is right** | Compare `omerta_env`'s time against the sky | **The most likely thing to be silently wrong.** I assumed the addon reports minutes since midnight; if it reports hours, the time reads wrong while everything else works |
+| ☐ | **Tell me the map's filename** | Read `[environment] map: …` off the boot log, or run `omerta_env` | Send me the name and I will author the front-end camera for it. Nothing guesses it today |
+
+Nothing in the game reads the weather yet, deliberately — D-043 approved the
+seam and nothing else. Six candidate consumers are listed at the end of this
+document for you to rule on.
+
+---
+
+## 1b. The four-item follow-up (2026-07-31)
 
 All four were real, and two of them were bugs I had already "fixed" twice by
 changing a number that was never being used.
@@ -69,7 +135,7 @@ a popup panel, with the line still drawn over the world in our own type.
 
 ---
 
-## 1b. The nine-item pass (2026-07-31)
+## 1c. The nine-item pass (2026-07-31)
 
 Your notes after the city let you in. Everything here is new or changed since
 that session, so it is all first-time verification.
@@ -401,6 +467,48 @@ the word and it flips.
 - **Sound licensing** — the Freesound files and "Cry Me a River" are a pre-release gate. The two new UI sounds and icons came from you; tell me if they carry terms. Germania One is OFL, licence ships next to the TTF.
 - **Corpses accumulate.** M20's stated boundary.
 - **`omerta_ui_scale` at 1.5** unchecked against the new font, hotbar, and inventory windows.
+
+---
+
+## Waiting on a ruling from you
+
+These are not tests — they are decisions that block work. Nothing here has been
+built, and none of it will be until you rule.
+
+### M14 — crime events, store robbery, NPC victims
+
+`docs/design-reviews/M14_crime_events.md` is written and waiting. **Five
+rulings** in §13, each with the options and my recommendation:
+
+1. Does a store's register refill, and from what? *(recommend: capped, unowned premises only, paused around a robbery)*
+2. What is the victim NPC physically? *(recommend: a scripted entity that does not navigate)*
+3. What does an in-flight robbery become across a restart or map change? *(recommend: Failed)*
+4. Does a mask cut both ways? *(recommend: yes — compliance now, an alarm behind your back)*
+5. Can the clerk be killed, and what does it do to the operation? *(recommend: yes, the take continues, and it is the loudest thing in the game)*
+
+Plus **two scope decisions to overrule if you disagree** (§2): M14 promoting
+M19's timed-action machinery into a shared primitive, and M14 shipping one mask
+— because nothing in the game can currently conceal a face, no milestone owns
+disguises, and without it M14's own "masked store robbery" acceptance test
+cannot be run.
+
+### M21 — newspaper
+
+Three rulings outstanding from an earlier pass. `docs/design-reviews/M21_newspaper.md`.
+
+### What weather and darkness should actually DO
+
+The seam reads the world; nothing consumes it, and nothing will without a
+ruling. In rough order of how safe each one looks:
+
+| | Candidate | Why it is a decision, not an implementation detail |
+|---|---|---|
+| ☐ | **NPC population by hour** (M16) | Tech §15 already names time of day as a population input. The least speculative of these |
+| ☐ | **Newspaper flavour** (M21) | Presentation only. The cheapest to approve |
+| ☐ | **Business footfall by hour** (M13) | D-032 ties income to real customers, so this changes what a shop earns |
+| ☐ | **Crime and darkness** (M14) | Whether night affects heat, alarms, or how loud a forced entry is |
+| ☐ | **Witness recall in bad weather** (M15) | Whether rain or darkness reduces what a witness can testify to — and whether it hits accuracy or recall |
+| ☐ | **Recognition at night** (D-014) | **Handle with care.** This touches the core knowledge rule. Concealment already has a seam; darkness would be a second, weaker one, and two ways to become unrecognisable is a design question rather than a feature |
 
 ---
 
