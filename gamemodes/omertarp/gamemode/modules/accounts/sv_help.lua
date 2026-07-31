@@ -12,7 +12,18 @@
 -- Lives in accounts because staffing does (audit, superadmin gates); it is a
 -- directory, not a framework — one table, one command.
 
-local MODULE = Omerta.Module.Get("accounts")
+-- This file deliberately does NOT define a module lifecycle method.
+--
+-- It used to define MODULE:OnEnable, and that one line froze every player on
+-- the server. `MODULE` is the module's shared definition table, files inside a
+-- module are included alphabetically, and sv_help sorts after sv_accounts — so
+-- this file's OnEnable REPLACED the one that registers PlayerInitialSpawn.
+-- Accounts stopped loading, no character state was ever sent, and every player
+-- sat gated at spawn looking at an empty screen with nothing in the log.
+--
+-- A console command needs no lifecycle: registering it at file scope is both
+-- simpler and impossible to get wrong this way. There is now a lint test that
+-- fails the suite if two files in one module define the same lifecycle method.
 
 -- [command] = { usage (arguments only, "" for none), what it does, area }.
 -- `client = true` marks commands that must be run from a CLIENT console.
@@ -107,9 +118,7 @@ local AREA_ORDER = {
     "Diagnostics", "Selftests",
 }
 
-function MODULE:OnEnable()
-    if not Omerta.InEngine then return end
-
+if Omerta.InEngine then
     concommand.Add("omerta_help", function(caller, _, args)
         if IsValid(caller) and not caller:IsSuperAdmin() then return end
 

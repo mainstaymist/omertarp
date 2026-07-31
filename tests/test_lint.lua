@@ -255,6 +255,59 @@ check("no entity networks a private identifier", function()
         table.concat(offenders, ", "))
 end)
 
+suite("lint.module_lifecycle")
+
+-- The seventh load-order incident, and the most expensive so far: two files in
+-- ONE module both defining `function MODULE:OnEnable()`.
+--
+-- `MODULE` is the module's single definition table and files are included
+-- alphabetically, so the later file does not add to the earlier one — it
+-- REPLACES it, silently. When sv_help.lua joined the accounts module it took
+-- out the OnEnable that registers PlayerInitialSpawn, so no account ever
+-- loaded, no character state was ever sent, and every player on the server sat
+-- frozen at spawn looking at an empty screen with nothing in the log to say
+-- why. Nothing errored; the boot looked perfect.
+--
+-- A module may define each lifecycle method exactly once, in one file.
+check("no module defines a lifecycle method twice", function()
+    local dirs = {}
+    local pipe = io.popen("find gamemodes/*/gamemode/modules -mindepth 1 -maxdepth 1 -type d 2>/dev/null")
+    assert(pipe, "linter could not scan for modules")
+    for line in pipe:lines() do dirs[#dirs + 1] = line end
+    pipe:close()
+    assert(#dirs > 0, "linter found no modules to scan")
+
+    local offenders = {}
+    for _, dir in ipairs(dirs) do
+        local seen = {} -- method -> first file that defined it
+        local files = io.popen("ls " .. dir .. "/*.lua 2>/dev/null")
+        if files then
+            for path in files:lines() do
+                for line in io.lines(path) do
+                    local code = line:gsub("%-%-.*$", "")
+                    local method = code:match("^function%s+MODULE:([%w_]+)%s*%(")
+                    if method then
+                        local name = path:match("([^/]+)$")
+                        if seen[method] then
+                            offenders[#offenders + 1] = string.format(
+                                "%s defines MODULE:%s in both %s and %s",
+                                dir:match("([^/]+)$"), method, seen[method], name)
+                        else
+                            seen[method] = name
+                        end
+                    end
+                end
+            end
+            files:close()
+        end
+    end
+
+    assert(#offenders == 0,
+        "a later file silently replaces the earlier one — move the work into " ..
+        "the existing lifecycle, or do it at file scope: " ..
+        table.concat(offenders, "; "))
+end)
+
 suite("lint.help_coverage")
 
 -- omerta_help exists so staff can find commands without grepping the source.

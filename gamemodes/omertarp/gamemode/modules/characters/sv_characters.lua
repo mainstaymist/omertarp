@@ -496,7 +496,7 @@ function MODULE:OnEnable()
             Omerta.Log.Info("characters", "  account   : %s",
                 account and ("#" .. tostring(account.id)) or "NOT LOADED — the join stalled here")
             Omerta.Log.Info("characters", "  season    : %s",
-                season and ("#" .. season.id .. " " .. tostring(season.name))
+                season and ("#" .. season.id .. " " .. tostring(season.label))
                     or "none active")
             Omerta.Log.Info("characters", "  character : %s",
                 character and ("#" .. character.id .. " " ..

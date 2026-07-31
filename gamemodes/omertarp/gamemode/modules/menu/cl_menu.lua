@@ -427,7 +427,9 @@ function Omerta.Menu.Client.Build()
         -- season only if something has told it, and says so plainly if not.
         local seasons = Omerta.Seasons
         local season = seasons and seasons.GetActive and seasons.GetActive() or nil
-        draw.SimpleText(string.upper(season and season.name or "The city"),
+        -- `label`, not `name`: the column is label, and reading the wrong
+        -- field fails as a blank rather than as an error.
+        draw.SimpleText(string.upper(season and season.label or "The city"),
             Omerta.HUD.Font("mono"), margin, h - margin,
             Omerta.HUD.Colour("dim"), TEXT_ALIGN_LEFT, TEXT_ALIGN_BOTTOM)
     end
