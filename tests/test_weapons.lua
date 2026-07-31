@@ -219,6 +219,92 @@ check("serials are unique by construction and absent when meaningless", function
 end)
 
 --------------------------------------------------------------------------------
+suite("weapons.drawing")
+--------------------------------------------------------------------------------
+-- Getting a gun out from under a coat takes time and can be interrupted. The
+-- arithmetic of "how long" and "how far through" is pure on purpose: the
+-- server ticks it and the client draws it, and both would be a screenshot to
+-- test if the numbers lived in either of them.
+
+-- The point of deriving the length from bulk is that the arsenal file inherits
+-- it without an edit — so the pin is on the arsenal's own entries, not on a
+-- fixture invented here.
+check("a draw's length follows bulk, and the arsenal inherits it unedited", function()
+    loadModules()
+    local revolver = Omerta.Weapons.Get("weapon.revolver")
+    local thompson = Omerta.Weapons.Get("weapon.thompson")
+
+    assert(revolver.equipTime and thompson.equipTime,
+        "Register must stamp a draw time so no weapon table has to name one")
+    assert(math.abs(revolver.equipTime - 1.66) < 0.01,
+        "a sidearm clears a coat in about 1.6s, not " .. tostring(revolver.equipTime))
+    assert(math.abs(thompson.equipTime - 2.38) < 0.01,
+        "a Thompson takes about 2.4s, not " .. tostring(thompson.equipTime))
+    assert(thompson.equipTime > revolver.equipTime,
+        "the gun nobody can hide must be the slower one to produce")
+end)
+
+check("either half of a weapon answers with the same draw", function()
+    loadModules()
+    local D = Omerta.Weapons.EquipDuration
+    -- The equip seam holds the ITEM definition, the tick holds the weapon one.
+    assert(D(Omerta.Items.Get("weapon.revolver")) == D(Omerta.Weapons.Get("weapon.revolver")),
+        "the item and the weapon disagree about how long a draw takes")
+    assert(D(nil) == Omerta.Weapons.EQUIP.base, "no definition, the shared fumble")
+    assert(D({}) == Omerta.Weapons.EQUIP.base, "and bulk nobody declared is no bulk")
+end)
+
+check("a weapon may name its own draw, and a typo cannot freeze a character", function()
+    loadModules()
+    local D = Omerta.Weapons.EquipDuration
+    assert(D({ bulk = 4, equipTime = 3 }) == 3, "an explicit draw time is believed")
+    assert(D({ bulk = 4, equipTime = 900 }) == Omerta.Weapons.EQUIP.max,
+        "a typo produces a slow draw, never a minute of paralysis")
+    assert(D({ bulk = 4, equipTime = -2 }) > 0, "and a negative one falls back to the curve")
+    assert(D({ bulk = 10000 }) == Omerta.Weapons.EQUIP.max, "the curve is clamped too")
+end)
+
+check("the draw fraction is 0 at the start, 1 at the end, and clamped outside", function()
+    loadModules()
+    local F = Omerta.Weapons.EquipFraction
+    assert(F(10, 12, 10) == 0, "nothing has happened yet")
+    assert(F(10, 12, 11) == 0.5, "halfway is halfway")
+    assert(F(10, 12, 12) == 1, "and the end is the end")
+    -- A late tick and a clock that jumped backwards are both real; neither may
+    -- produce a bar drawn off the end of its own plate.
+    assert(F(10, 12, 99) == 1, "clamped above")
+    assert(F(10, 12, 0) == 0, "clamped below")
+    assert(F(10, 10, 10) == 1, "a window of nothing has already elapsed")
+    assert(F(12, 10, 11) == 1, "and so has a backwards one")
+    assert(F(nil, nil, nil) == 1, "degenerate inputs stay drawable")
+end)
+
+check("the wire carries the draw once, and nothing that names anybody", function()
+    loadModules()
+    Omerta.Module.FinishLoading()
+
+    local registry = Omerta.Net.GetRegistry()
+    for _, name in ipairs({ "weapons.equipping", "weapons.equip_end", "weapons.reserve" }) do
+        assert(registry[name], "net message '" .. name .. "' is missing")
+        assert(registry[name].realm == "server_to_client",
+            name .. " is the server telling one client about its own hands")
+        for _, field in ipairs(registry[name].schema) do
+            assert(field.type ~= "string", name .. " must not carry text")
+        end
+    end
+
+    -- Milliseconds, not seconds: a 1.66s draw rounded to whole seconds would
+    -- leave the bar filling after the gun was already in the hand.
+    local fields = {}
+    for _, field in ipairs(registry["weapons.equipping"].schema) do
+        fields[field.name] = field
+    end
+    assert(fields.instance and fields.instance.bits == 32, "an instance id is 32 bits")
+    assert(fields.millis, "the client is given the window, not a stream of fractions")
+    assert(fields.millis.bits >= 16, "16 bits carries a full minute of draw")
+end)
+
+--------------------------------------------------------------------------------
 suite("weapons.balance")
 --------------------------------------------------------------------------------
 

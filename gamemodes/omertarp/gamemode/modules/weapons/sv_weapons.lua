@@ -20,6 +20,49 @@ Omerta.Config.Define("weapons.damage_scale", {
 })
 
 --------------------------------------------------------------------------------
+-- Where a gun rides when it is not in a hand
+--------------------------------------------------------------------------------
+-- EVERY NUMBER IN THIS TABLE IS EYEBALLED. They were set by hanging a w_357
+-- off a citizen model and looking at it, not measured against anything, and
+-- Track E's art pass owns them properly. That is exactly why they are one
+-- table with one comment rather than six constants buried in the function that
+-- spawns the props: a pass over the hang of a Thompson should be a pass over
+-- six numbers in one place.
+--
+-- Plain number triples rather than Vector/Angle literals because this file
+-- loads under the headless suite, where neither type exists.
+local HOLSTER = {
+    -- Slung across the back, muzzle down past the left hip. Spine2 is the
+    -- upper back on every ValveBiped rig, which is every player model the
+    -- gamemode ships.
+    primary = {
+        bone = "ValveBiped.Bip01_Spine2",
+        pos  = { -7, 1, 3 },
+        ang  = { 12, 0, 165 },
+    },
+    -- On the right hip, pointing at the ground, where a holster sits.
+    sidearm = {
+        bone = "ValveBiped.Bip01_R_Thigh",
+        pos  = { 2, 4, 1 },
+        ang  = { -80, 8, 0 },
+    },
+    -- No melee entry on purpose: nothing in the arsenal occupies that slot
+    -- yet, and inventing where a knife hangs before there is a knife is
+    -- guessing at an art pass twice over.
+}
+
+-- Mirrors sv_treatment's rule exactly, and deliberately: two systems that both
+-- mean "you walked away from what you were doing" must not disagree about how
+-- far away that is.
+local LEAVE_DISTANCE = 64
+
+-- How often the holster props and the reserve count are reconciled. A quarter
+-- second rather than every frame: both answer questions that change when a
+-- player presses a key, and a frame's lag on a gun appearing on a back is
+-- invisible where a per-frame rebuild across every player is not.
+local RECONCILE_INTERVAL = 0.25
+
+--------------------------------------------------------------------------------
 -- Giving and stripping
 --------------------------------------------------------------------------------
 
@@ -43,6 +86,10 @@ local function giveOne(ply, row, def)
         -- reloading from what the character actually carries.
         wep:SetClip1(0)
     end
+
+    -- The readout is right the moment the gun appears, rather than a quarter
+    -- second later when the reconcile timer next looks.
+    Internal.PushReserve(ply)
 end
 
 -- Rounds in the clip go back into the pocket they came from. `force` skips the
@@ -66,6 +113,9 @@ local function stripOne(ply, def)
     if IsValid(wep) then
         refundClip(ply, wep, def)
         ply:StripWeapon(def.class)
+        -- Empty hands hold no caliber, so the count that was on screen a
+        -- moment ago is now about a gun the character no longer has.
+        Internal.PushReserve(ply)
     end
 end
 
@@ -105,6 +155,10 @@ function Internal.Reconcile(ply)
     for _, want in pairs(desired) do
         giveOne(ply, want.row, want.def)
     end
+
+    -- The holster props are NOT settled here; see their own section for why
+    -- the reconcile timer is their only owner.
+    Internal.PushReserve(ply)
 end
 
 --------------------------------------------------------------------------------
@@ -182,7 +236,363 @@ function Internal.Reload(ply, wep)
             -- now, so they go straight back.
             Omerta.Inventory.Add(ply, def.ammo, take, { force = true })
         end
+        -- Rounds left the pockets either way; the readout has to say so.
+        Internal.PushReserve(ply)
     end)
+end
+
+--------------------------------------------------------------------------------
+-- What is left in the pocket
+--------------------------------------------------------------------------------
+-- The counterpart to the clip: a character can count the rounds they are
+-- carrying for the gun in their hand, which is knowledge the fiction grants,
+-- and cl_weapons decides when that is worth showing. Pushed rather than
+-- polled, because what is in a pocket is M9's truth and the client has nothing
+-- to count it with.
+
+local lastReserve = {} -- SteamID64 -> the number last sent
+
+-- Rounds of the HELD weapon's caliber, on this character. Nothing else is a
+-- reserve: the .45 in a coat is not this revolver's ammunition, and saying
+-- otherwise would make the readout a lie exactly when it matters.
+function Internal.ReserveFor(ply)
+    if not IsValid(ply) then return 0 end
+    local wep = ply:GetActiveWeapon()
+    local def = IsValid(wep) and wep.OmertaId and Omerta.Weapons.Get(wep.OmertaId)
+    if not def then return 0 end
+
+    -- The player goes STRAIGHT into Get, which normalises a Player itself.
+    -- OwnerOf returns a type/id PAIR, not a descriptor — the trap this file
+    -- already documents once above, and the reason reloading read every pocket
+    -- as empty for a week.
+    local total = 0
+    for _, row in ipairs(Omerta.Inventory.Get(ply) or {}) do
+        if row.def_id == def.ammo then total = total + row.quantity end
+    end
+    return total
+end
+
+function Internal.PushReserve(ply)
+    if not (Omerta.InEngine and IsValid(ply)) then return end
+    local key = ply:SteamID64() or ""
+    -- Clamped to what the wire carries. A pocket holding more than 65535
+    -- rounds is a bug somewhere else, and the message must not be the thing
+    -- that errors over it.
+    local count = math.min(65535, Internal.ReserveFor(ply))
+
+    -- Only on a change. A single reload has three honest reasons to ask (the
+    -- consume callback, the give, the reconcile timer) and they mostly agree,
+    -- so without this the cheapest message in the module becomes the loudest.
+    if lastReserve[key] == count then return end
+    lastReserve[key] = count
+    Omerta.Net.Send("weapons.reserve", { count = count }, ply)
+end
+
+function Internal.ForgetReserve(ply)
+    lastReserve[ply:SteamID64() or ""] = nil
+end
+
+--------------------------------------------------------------------------------
+-- Drawing: the equip that takes time
+--------------------------------------------------------------------------------
+-- M9's Equip is instant, and for a coat or a hat that is right — putting a hat
+-- on is not a thing anybody needs to be able to interrupt. A gun is different:
+-- getting one out from under a coat is a commitment the street can watch, and
+-- the second it costs is the whole point.
+--
+-- Nothing here writes a row. Until the timer runs out the character owns an
+-- unequipped item and holds nothing, so every cancel below is free — there is
+-- no half-equipped state to unwind and no way for an interrupted draw to leave
+-- a gun anywhere.
+
+local equipping = {} -- SteamID64 -> { ply, instanceId, weaponId, startedAt, finishAt, startPos, cb }
+
+local function keyFor(ply)
+    return IsValid(ply) and (ply:SteamID64() or "") or ""
+end
+
+-- The row a draw is about, or nil once it stops being theirs to draw.
+local function rowFor(ply, instanceId)
+    for _, row in ipairs(Omerta.Inventory.Get(ply) or {}) do
+        if row.id == instanceId then return row end
+    end
+    return nil
+end
+
+-- Public: everything that ends a draw early ends it here — the tick, the
+-- disconnect, going down, and a second request replacing the first.
+function Internal.CancelEquip(ply, reason)
+    local key = keyFor(ply)
+    local entry = equipping[key]
+    if not entry then return end
+    equipping[key] = nil
+
+    if IsValid(ply) then
+        -- The public half goes down first. A man who has stopped reaching must
+        -- stop looking like he is reaching whatever else fails afterwards.
+        ply:SetNWBool("OmertaDrawing", false)
+        Omerta.Net.Send("weapons.equip_end",
+            { instance = entry.instanceId, completed = false }, ply)
+    end
+    -- The caller is M9's action handler, which turns this into a notice and a
+    -- refresh — the same refusal path a full pocket or a locked crate takes.
+    if entry.cb then entry.cb(false, reason or "you stop") end
+end
+
+function Internal.BeginEquip(ply, instanceId, weapon, cb)
+    -- Draws never stack. A second request — the same gun twice, or the other
+    -- one — REPLACES the first, so leaning on the equip button ends with one
+    -- draw running rather than a queue of them all landing at once. The
+    -- refusal the first request gets says which of the two happened, because
+    -- "you started over" and "you changed your mind" read as different
+    -- mistakes to the person who made one.
+    local running = equipping[keyFor(ply)]
+    Internal.CancelEquip(ply, running and running.instanceId == instanceId
+        and "you start over" or "you reach for something else")
+
+    local duration = Omerta.Weapons.EquipDuration(weapon)
+    local now = CurTime()
+    equipping[keyFor(ply)] = {
+        ply = ply,
+        instanceId = instanceId,
+        weaponId = weapon.id,
+        startedAt = now,
+        finishAt = now + duration,
+        -- Where the commitment was made, so walking out of it is measurable
+        -- against a point rather than against a moving player.
+        startPos = ply:GetPos(),
+        cb = cb,
+    }
+
+    -- Deliberately PUBLIC state, and the only public thing a draw produces: a
+    -- man reaching into his coat is visible from across the street, so the
+    -- fact is already in the world. It says somebody is reaching — never what
+    -- for, never whose gun, never an instance id — so it carries nothing D-033
+    -- keeps server-side, and the hint other clients draw off it is the same
+    -- information a witness would have anyway.
+    ply:SetNWBool("OmertaDrawing", true)
+
+    Omerta.Net.Send("weapons.equipping", {
+        instance = instanceId,
+        millis = math.min(65535, math.floor(duration * 1000 + 0.5)),
+    }, ply)
+end
+
+local function completeEquip(ply, entry)
+    equipping[keyFor(ply)] = nil
+    if IsValid(ply) then
+        ply:SetNWBool("OmertaDrawing", false)
+        Omerta.Net.Send("weapons.equip_end",
+            { instance = entry.instanceId, completed = true }, ply)
+    end
+    -- And now the real thing: M9's own Equip, with its row write, its one-per-
+    -- slot rule and the ItemEquipped seam that puts the SWEP in the hand. The
+    -- delay is a gate in front of that door, never a second version of it.
+    Internal.RealEquip(ply, entry.instanceId, entry.cb or function() end)
+end
+
+-- Called every frame from the module's Think, exactly as sv_treatment's
+-- timed actions are. The four ways a draw dies are the four ways a treatment
+-- does, plus the one a treatment cannot have: the thing being reached for
+-- leaving the character's pockets.
+function Internal.TickEquips()
+    local now = CurTime()
+    for key, entry in pairs(equipping) do
+        local ply = entry.ply
+        if not IsValid(ply) then
+            equipping[key] = nil
+        elseif ply:GetPos():Distance(entry.startPos) > LEAVE_DISTANCE then
+            Internal.CancelEquip(ply, "you moved away")
+        elseif Omerta.Injury.IsIncapable(Omerta.Injury.Get(ply)) then
+            -- IsIncapable, not IsPlayerDown: IsDown is incapacitated-or-
+            -- stabilized only, and a draw that survived its owner dying would
+            -- complete into a row belonging to a character who no longer has
+            -- hands. The state change hook cancels first in practice; this is
+            -- the guarantee, not the mechanism.
+            Internal.CancelEquip(ply, "you went down")
+        elseif not rowFor(ply, entry.instanceId) then
+            -- Dropped, handed over, or taken off them mid-reach. A draw is
+            -- about one particular object and that object has gone.
+            Internal.CancelEquip(ply, "it is not yours to draw")
+        elseif now >= entry.finishAt then
+            completeEquip(ply, entry)
+        end
+    end
+end
+
+-- The interception.
+--
+-- M9's Equip is the ONE door every path to an equipped row goes through — the
+-- inventory action today, a quick-draw bind or a staff tool tomorrow — so
+-- wrapping it is what makes "a weapon takes time" true everywhere rather than
+-- true in the inventory window. Coats, hats and food are handed straight
+-- through untouched: only a definition carrying `weapon` waits.
+--
+-- Rejected: a new hook in M9. The seam would have to mean "something may defer
+-- an equip and finish it later", which is a larger idea than weapons needs and
+-- would leave the inventory module carrying a concept of a pending action it
+-- has no other use for. Wrapping keeps the whole notion of a draw inside the
+-- module that has one.
+function Internal.InstallEquipDelay()
+    -- Once, ever. A Lua auto-refresh re-runs OnEnable, and a wrapper around
+    -- the wrapper would make every draw take two of everything.
+    if Internal.RealEquip then return end
+    Internal.RealEquip = Omerta.Inventory.Equip
+
+    Omerta.Inventory.Equip = function(ply, instanceId, cb)
+        cb = cb or function() end
+        if not IsValid(ply) then return Internal.RealEquip(ply, instanceId, cb) end
+
+        local row = rowFor(ply, instanceId)
+        local def = row and Omerta.Items.Get(row.def_id)
+        local weapon = def and def.weapon and Omerta.Weapons.Get(def.weapon)
+        -- Not a weapon, not theirs, or already worn: the ordinary path answers
+        -- all three better than a guess here would, refusal wording included.
+        if not weapon or row.equipped_slot then
+            return Internal.RealEquip(ply, instanceId, cb)
+        end
+        -- A man on the floor is not reaching for anything, and neither is a
+        -- dead one. Said here rather than left to the tick so the refusal is
+        -- immediate and legible.
+        if Omerta.Injury.IsIncapable(Omerta.Injury.Get(ply)) then
+            cb(false, "you cannot reach it from down here")
+            return
+        end
+
+        Internal.BeginEquip(ply, instanceId, weapon, cb)
+    end
+end
+
+--------------------------------------------------------------------------------
+-- Holstered weapons, on the body
+--------------------------------------------------------------------------------
+-- A gun that is equipped but not in the hands hangs where it would hang: a
+-- Thompson across the back, a revolver on the right hip. This is the other
+-- half of concealment being meaningful — D-014 lets a coat hide a sidearm, and
+-- a slung Thompson is the design's own example of a thing everybody in the
+-- street can read off you before you say a word.
+--
+-- Server-created props, parented to the player, so every client sees the same
+-- thing without being told anything: the props ARE the message, and no net
+-- traffic carries what anybody is carrying.
+--
+-- The reconcile timer is their ONLY owner, deliberately. The equip hook was
+-- the obvious place to hang this and it is the wrong one: `Give` puts a weapon
+-- in the list, and whether it also becomes the ACTIVE weapon is the engine's
+-- decision, taken around the same frame — so refreshing on the event raced it
+-- and flickered a revolver onto a hip that already had it in hand. Asking the
+-- settled answer four times a second is both simpler and correct, and a
+-- quarter second of lag on a gun appearing on a back is not a thing anybody
+-- can see.
+
+local holsters = {}      -- SteamID64 -> array of prop entities
+local holsterState = {}  -- SteamID64 -> the signature those props were built for
+
+local function clearHolsters(ply)
+    local key = keyFor(ply)
+    for _, ent in ipairs(holsters[key] or {}) do
+        if IsValid(ent) then ent:Remove() end
+    end
+    holsters[key] = nil
+    holsterState[key] = nil
+end
+
+local function attachHolster(ply, weapon)
+    local spec = weapon and HOLSTER[weapon.slot or ""]
+    if not spec then return nil end
+
+    -- A model whose skeleton has no such bone gets nothing rather than a prop
+    -- welded to the origin, which is what a bone index of nil produces.
+    local bone = ply:LookupBone(spec.bone)
+    if not bone then return nil end
+
+    -- The world model the arsenal already declares (D-039: adding a weapon is
+    -- data, and that includes what it looks like on a back). A weapon whose
+    -- model does not resolve gets NOTHING: ResolveModel's fallback is a wooden
+    -- crate, and a crate strapped to a man's shoulder is a worse lie than an
+    -- empty shoulder.
+    local model = Omerta.Util.ResolveModel(weapon.worldModel)
+    if not model or model == Omerta.Util.FALLBACK_MODEL then return nil end
+
+    local ent = ents.Create("prop_dynamic")
+    if not IsValid(ent) then return nil end
+    ent:SetModel(model)
+    ent:SetPos(ply:GetPos())
+    ent:Spawn()
+
+    -- Scenery, not an object. It must not stop a bullet meant for the man
+    -- wearing it, block the interaction trace that looks him in the face, or
+    -- be pickable up off his back.
+    ent:SetSolid(SOLID_NONE)
+    ent:SetMoveType(MOVETYPE_NONE)
+    ent:SetCollisionGroup(COLLISION_GROUP_WEAPON)
+    ent:SetOwner(ply)
+
+    -- FollowBone, not SetParent(ply, index).
+    --
+    -- SetParent's second argument is an ATTACHMENT index, and a player model's
+    -- attachments are eyes, anim_attachment_head and forward — there is no
+    -- "back" or "hip" among them, so parenting that way leaves a Thompson
+    -- floating at the model's origin. EF_BONEMERGE was rejected for the
+    -- neighbouring reason: it merges the prop's skeleton INTO the parent's,
+    -- which is right for clothing built on the player rig and nonsense for a
+    -- gun, which shares no bone names with a man. A clientside model was
+    -- rejected too — it would need the carried state networked to every client
+    -- to be built from, which is the exact traffic a server prop avoids by
+    -- simply existing.
+    ent:SetParent(ply)
+    ent:FollowBone(ply, bone)
+    ent:SetLocalPos(Vector(spec.pos[1], spec.pos[2], spec.pos[3]))
+    ent:SetLocalAngles(Angle(spec.ang[1], spec.ang[2], spec.ang[3]))
+    return ent
+end
+
+-- What SHOULD be hanging off this player, as one comparable string.
+--
+-- Derived from the WEAPONS the player holds rather than from the equipped
+-- rows, because those SWEPs are already the reconciled projection of the rows
+-- — so the props cannot disagree with the hands, including while down, when
+-- there are no weapons at all.
+local function holsterSignature(ply)
+    -- Belt and braces with the strip: going down and dying both empty the
+    -- hands through Reconcile, which would empty this by itself, but a gun
+    -- left hanging on a corpse because one strip was missed is the kind of
+    -- thing players screenshot.
+    if Omerta.Injury.IsIncapable(Omerta.Injury.Get(ply)) then return "" end
+
+    local active = ply:GetActiveWeapon()
+    local activeClass = IsValid(active) and active:GetClass() or ""
+    local ids = {}
+    for _, wep in ipairs(ply:GetWeapons()) do
+        -- What is in the hands is not on the hip. Compared by class rather
+        -- than by entity so a weapon re-given mid-frame cannot read as two.
+        if wep.OmertaId and wep:GetClass() ~= activeClass then
+            ids[#ids + 1] = wep.OmertaId
+        end
+    end
+    table.sort(ids) -- deterministic, or an unchanged loadout rebuilds forever
+    return table.concat(ids, ",")
+end
+
+function Internal.RefreshHolsters(ply)
+    if not (Omerta.InEngine and IsValid(ply)) then return end
+    local key = keyFor(ply)
+    local signature = holsterSignature(ply)
+    -- The comparison is the whole optimisation: props are torn down and rebuilt
+    -- only when the answer actually changed, so the timer below costs one
+    -- string per player per quarter second.
+    if holsterState[key] == signature then return end
+
+    clearHolsters(ply)
+    holsterState[key] = signature
+    if signature == "" then return end
+
+    local made = {}
+    for id in string.gmatch(signature, "[^,]+") do
+        local ent = attachHolster(ply, Omerta.Weapons.Get(id))
+        if IsValid(ent) then made[#made + 1] = ent end
+    end
+    holsters[key] = made
 end
 
 --------------------------------------------------------------------------------
@@ -200,6 +610,30 @@ function MODULE:OnEnable()
         end
     end)
 
+    -- Equipping a WEAPON is a timed, interruptible draw; everything else M9
+    -- can equip stays instant. Installed here rather than at file scope
+    -- because it wraps another module's function, and OnEnable is the first
+    -- moment every module is guaranteed to have finished defining its own.
+    Internal.InstallEquipDelay()
+
+    -- Draws are per-frame business, the way M19's timed actions are: a
+    -- once-a-second check would let a man walk two strides out of a
+    -- commitment before anything noticed.
+    hook.Add("Think", "omerta.weapons.drawing", function()
+        Internal.TickEquips()
+    end)
+
+    -- What hangs off a body and what the round readout says both follow from
+    -- state nothing announces — a weapon becoming the active one is a keypress
+    -- the engine handles by itself. So they are reconciled on a timer against
+    -- the answer rather than hung off events that do not exist.
+    timer.Create("omerta.weapons.carried", RECONCILE_INTERVAL, 0, function()
+        for _, ply in ipairs(player.GetAll()) do
+            Internal.RefreshHolsters(ply)
+            Internal.PushReserve(ply)
+        end
+    end)
+
     -- The single-change paths: M9 announces an equip, the weapon appears.
     hook.Add("Omerta.ItemEquipped", "omerta.weapons.equip", function(ply, row, def)
         local weapon = def and def.weapon and Omerta.Weapons.Get(def.weapon)
@@ -214,7 +648,15 @@ function MODULE:OnEnable()
     -- The wholesale paths: a fresh character's hands are rebuilt from their
     -- rows once the rows actually exist.
     hook.Add("Omerta.CharacterInventoryLoaded", "omerta.weapons.restore", function(ply)
+        -- Forgotten first, then pushed: the de-duplication remembers what this
+        -- CONNECTION was last told, and a new character behind the same
+        -- connection is a different set of pockets. Without this a man who
+        -- died holding thirty rounds and came back with thirty of his own
+        -- would be sent nothing at all, and a fresh empty one would keep the
+        -- dead man's number on screen.
+        Internal.ForgetReserve(ply)
         Internal.Reconcile(ply)
+        Internal.PushReserve(ply)
     end)
 
     -- Going down empties the hands — the gun lands in the inventory where a
@@ -224,6 +666,10 @@ function MODULE:OnEnable()
         local ply = Omerta.Injury.Internal.PlayerFor(characterId)
         if not IsValid(ply) then return end
         if Omerta.Injury.IsIncapable(to) then
+            -- Immediately, rather than on the next tick: going down is the one
+            -- interruption that is also somebody else's action, and it should
+            -- land on the same frame the bullet did.
+            Internal.CancelEquip(ply, "you went down")
             Internal.Reconcile(ply) -- desired set is empty while down
         elseif Omerta.Injury.IsDown(from) then
             Internal.Reconcile(ply)
@@ -239,6 +685,15 @@ function MODULE:OnEnable()
                 refundClip(ply, wep, Omerta.Weapons.Get(wep.OmertaId))
             end
         end
+
+        -- A draw interrupted by the front door. Nothing was written, so this
+        -- only drops the entry and lets go of the player it was holding.
+        Internal.CancelEquip(ply, "you left")
+        -- Props parented to a leaving player are the engine's to clean up, but
+        -- the tables that remember them are ours, and a SteamID64 that never
+        -- comes back would keep its entry for the life of the server.
+        clearHolsters(ply)
+        Internal.ForgetReserve(ply)
     end)
 
     concommand.Add("omerta_weapons_list", function(caller)

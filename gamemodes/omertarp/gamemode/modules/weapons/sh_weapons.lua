@@ -110,6 +110,70 @@ function Omerta.Weapons.Validate(id, def)
     return true
 end
 
+--------------------------------------------------------------------------------
+-- Drawing takes time
+--------------------------------------------------------------------------------
+-- A gun does not appear in a hand because a row changed. Getting one out from
+-- under a coat is a visible, interruptible commitment — which is what makes
+-- being armed a decision taken BEFORE an argument starts rather than during
+-- it, and what gives the other man in the room the second he needs to read
+-- what is happening. Track E's feel pass, which W0 §6 deferred along with the
+-- holster models.
+--
+-- The length is DERIVED FROM BULK rather than declared per weapon, so the
+-- arsenal inherits it without a single edit to that file: the revolver at bulk
+-- 4 clears a coat in about 1.7s, the Thompson at 22 takes about 2.4s, and gun
+-- number three is sensible the moment its table exists. A weapon that wants to
+-- argue with the curve says `equipTime` and is believed.
+
+Omerta.Weapons.EQUIP = {
+    base    = 1.5,  -- the fumble every draw shares
+    perBulk = 0.04, -- and what having to clear something bigger costs on top
+    -- Clamped at both ends for the reason CycleDelay is: a typo in a table
+    -- should produce a slow draw or a quick one, never a weapon that appears
+    -- instantly and never a character frozen for a minute.
+    min     = 0.4,
+    max     = 6,
+}
+
+-- Seconds. Accepts either half of a weapon — the weapon definition or the M9
+-- item it exists as — because both call sites are real and they must not be
+-- able to disagree about how long the same gun takes.
+function Omerta.Weapons.EquipDuration(def)
+    local E = Omerta.Weapons.EQUIP
+    if type(def) ~= "table" then return E.base end
+    -- An item definition names its weapon; follow the link rather than reading
+    -- the item's own bulk, so a future coat-sized case with its own bulk still
+    -- reports the gun's draw.
+    if def.weapon and byItem[def.weapon] then def = byItem[def.weapon] end
+
+    local seconds = def.equipTime
+    if type(seconds) ~= "number" or seconds <= 0 then
+        seconds = E.base + (type(def.bulk) == "number" and def.bulk or 0) * E.perBulk
+    end
+    return math.max(E.min, math.min(E.max, seconds))
+end
+
+-- How far through a draw is, 0..1, clamped. Pure: the caller supplies the
+-- clock, so the server's tick and the client's frame ask the same question of
+-- the same numbers and the headless suite can pin the edges.
+--
+-- NOT called EquipProgress. That name belongs to the zero-argument client
+-- accessor in cl_equip.lua, which the inventory window is written against; two
+-- functions of one name would mean the window silently reading a helper that
+-- returns a fraction where it expected an instance id.
+function Omerta.Weapons.EquipFraction(startedAt, finishAt, now)
+    startedAt = tonumber(startedAt) or 0
+    finishAt = tonumber(finishAt) or 0
+    now = tonumber(now) or 0
+
+    local window = finishAt - startedAt
+    -- A window of nothing has already elapsed. Answering 0 here would leave a
+    -- bar empty forever on any degenerate pair rather than reading as done.
+    if window <= 0 then return 1 end
+    return math.max(0, math.min(1, (now - startedAt) / window))
+end
+
 -- ONE call. The item, the SWEP class, and the definition all come from here;
 -- adding a weapon to the game is adding a call to this in sh_arsenal.lua and
 -- nothing else anywhere.
@@ -127,6 +191,10 @@ function Omerta.Weapons.Register(id, def)
     def.holdType = def.holdType or "revolver"
     weapons_[id] = def
     byItem[id] = def
+    -- Resolved once, here, rather than on every draw: the curve is the default
+    -- and the table entry is the exception, and after this line nothing else
+    -- has to know which of the two a given gun used.
+    def.equipTime = Omerta.Weapons.EquipDuration(def)
 
     -- The M9 item: how the weapon is carried, hidden, bought, dropped,
     -- searched off a body, and equipped. `weapon = id` is the link the equip
@@ -218,3 +286,59 @@ function Omerta.Weapons.Serial(instanceId)
     if not instanceId or instanceId <= 0 then return nil end
     return string.format("S%06d", instanceId)
 end
+
+--------------------------------------------------------------------------------
+-- Networking
+--------------------------------------------------------------------------------
+-- Three private messages, each to one player about their own hands. Nothing
+-- here goes to a room: what OTHER people may see of a draw is the networked
+-- boolean sv_weapons sets on the player, which says somebody is reaching and
+-- nothing else.
+
+-- The draw has begun, and this is the window it runs in. Sent ONCE — the
+-- client counts against it locally, exactly as M19's bleed-out clock does. A
+-- per-frame stream of a number both sides can compute is traffic for nothing,
+-- and it steps in visible jerks besides.
+Omerta.Net.Register("weapons.equipping", {
+    realm = "server_to_client",
+    schema = {
+        { name = "instance", type = "uint", bits = 32 },
+        -- MILLISECONDS, where injury's prompt carries whole seconds. A
+        -- six-second treatment can afford the rounding and a 1.66-second draw
+        -- cannot: rounded to 2 the bar would still be filling after the gun
+        -- was already in the hand. 16 bits carries a full minute of draw.
+        { name = "millis",   type = "uint", bits = 16 },
+    },
+    handler = function(payload)
+        hook.Run("Omerta.WeaponEquipping", payload.instance, payload.millis)
+    end,
+})
+
+-- And it is over. `completed` distinguishes the gun arriving from the draw
+-- being interrupted: the client draws neither differently today, but they are
+-- different facts, and collapsing them on the wire is how a future sound would
+-- have to guess which one it was.
+Omerta.Net.Register("weapons.equip_end", {
+    realm = "server_to_client",
+    schema = {
+        { name = "instance",  type = "uint", bits = 32 },
+        { name = "completed", type = "bool" },
+    },
+    handler = function(payload)
+        hook.Run("Omerta.WeaponEquipEnded", payload.instance, payload.completed)
+    end,
+})
+
+-- How many rounds of the held weapon's caliber are on this character, for the
+-- contextual readout. Pushed rather than polled, and only when it changes:
+-- what is in a pocket is server truth like everything else in M9, and the
+-- client has no way to count it for itself.
+Omerta.Net.Register("weapons.reserve", {
+    realm = "server_to_client",
+    schema = {
+        { name = "count", type = "uint", bits = 16 },
+    },
+    handler = function(payload)
+        hook.Run("Omerta.WeaponReserve", payload.count)
+    end,
+})
