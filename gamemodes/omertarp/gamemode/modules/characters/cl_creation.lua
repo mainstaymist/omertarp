@@ -79,7 +79,8 @@ end)
 -- the life paths as PROSE (not stat blocks), one bone commit button, and the
 -- permadeath warning as a plain sentence — the game does not raise its voice.
 -- Returns { Focus = fn } so the owner can put the cursor in the first field.
-function Omerta.Characters.BuildCreationForm(formParent, boothParent)
+function Omerta.Characters.BuildCreationForm(formParent, boothParent, opts)
+    opts = opts or {}
     local scale = Omerta.HUD.Scale()
     local H = Omerta.HUD
     local fieldH, gap = 40 * scale, H.Space(4)
@@ -116,8 +117,10 @@ function Omerta.Characters.BuildCreationForm(formParent, boothParent)
         entry:DockMargin(0, 4 * scale, 0, 0)
         return entry
     end
+    -- "Last name", not "family name": in this game a Family is an institution
+    -- you are sworn into, and a surname says nothing about which one.
     local firstEntry = nameField(LEFT, "Given name")
-    local lastEntry = nameField(RIGHT, "Family name")
+    local lastEntry = nameField(RIGHT, "Last name")
 
     -- Tab hops between the name boxes and wraps; the whole form is typeable
     -- end to end without touching the mouse.
@@ -181,9 +184,29 @@ function Omerta.Characters.BuildCreationForm(formParent, boothParent)
             TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
     end
 
-    -- The commit, in the guide's words, with the plain sentence beside it.
+    -- The commit row is docked to the BOTTOM of whatever column hosts the
+    -- form, so it cannot be pushed off the screen by the fields above it —
+    -- which is exactly how Confirm went missing at 1.5x. Back takes a third,
+    -- Confirm the rest: the destructive-adjacent choice is the small one.
+    local buttons = vgui.Create("DPanel", formParent)
+    buttons:Dock(BOTTOM)
+    buttons:SetTall(48 * scale)
+    buttons.Paint = nil
+
+    local submit = H.Button(buttons, "Confirm", "commit")
+    submit:Dock(FILL)
+
+    if opts.onBack then
+        local back = H.Button(buttons, "Back", "quiet", opts.onBack)
+        back:Dock(LEFT)
+        back:DockMargin(0, 0, H.Space(1), 0)
+        back.PerformLayout = function(self)
+            self:SetWide(buttons:GetWide() * 0.33)
+        end
+    end
+
     local warning = vgui.Create("DPanel", formParent)
-    warning:Dock(TOP)
+    warning:Dock(BOTTOM)
     warning:SetTall(24 * scale)
     warning:DockMargin(0, gap, 0, 4 * scale)
     warning.Paint = function(_, w, h)
@@ -191,10 +214,6 @@ function Omerta.Characters.BuildCreationForm(formParent, boothParent)
             H.Font("small"), 0, h * 0.5, H.Colour("dim"),
             TEXT_ALIGN_LEFT, TEXT_ALIGN_CENTER)
     end
-
-    local submit = H.Button(formParent, "Step into the city", "commit")
-    submit:Dock(TOP)
-    submit:SetTall(48 * scale)
 
     -- Live feedback using the same validator the server enforces. This is a
     -- courtesy only: the server revalidates everything on arrival.
@@ -216,13 +235,12 @@ function Omerta.Characters.BuildCreationForm(formParent, boothParent)
     local function reenable()
         if IsValid(submit) then
             submit:SetEnabled(true)
-            submit:SetLabel("Step into the city")
+            submit:SetLabel("Confirm")
         end
     end
 
-    submit.DoClick = function()
-        if not validate() then return end
-        surface.PlaySound("omertarp/ui/inventory-click.wav")
+    -- What Confirm actually does, once the warning has been read and agreed.
+    local function commit()
         local model = modelChoice:GetSelected()
         local path = pathChoice:GetSelected()
         submit:SetEnabled(false)
@@ -230,6 +248,12 @@ function Omerta.Characters.BuildCreationForm(formParent, boothParent)
         -- The booth is still on screen; take the mugshot now, at creation,
         -- exactly once (D-011).
         requestCapture(booth)
+        -- The black starts falling here rather than on the server's answer:
+        -- the wait for two database round-trips is the least cinematic moment
+        -- in the game, and the fade is where M28's opening will live.
+        if Omerta.Menu and Omerta.Menu.BeginSpawnFade then
+            Omerta.Menu.BeginSpawnFade()
+        end
         Omerta.Net.Request("characters.create", {
             first = firstEntry:GetValue(),
             last = lastEntry:GetValue(),
@@ -238,6 +262,16 @@ function Omerta.Characters.BuildCreationForm(formParent, boothParent)
             path = path and path.value or 1,
         })
         timer.Simple(5, reenable)
+    end
+
+    submit.DoClick = function()
+        local first, last = validate()
+        if not first then return end
+        surface.PlaySound("omertarp/ui/inventory-click.wav")
+        -- Permadeath is the one rule the whole design rests on, so it is said
+        -- once, plainly, at the only moment it can still be avoided — and the
+        -- player has to reach past a Back button to accept it.
+        Omerta.Characters.ConfirmModal(first .. " " .. last, commit)
     end
 
     -- Server rejections (name taken, bad path, no season) land here.
@@ -253,6 +287,69 @@ function Omerta.Characters.BuildCreationForm(formParent, boothParent)
             if IsValid(firstEntry) then firstEntry:RequestFocus() end
         end,
     }
+end
+
+--------------------------------------------------------------------------------
+-- The confirmation
+--------------------------------------------------------------------------------
+-- Not a courtesy "are you sure": the one thing a new player cannot know from
+-- the form is that this is the ONLY copy of this person, and that the name
+-- goes with them. Said in prose, in the same rail grammar as everything else,
+-- with Back holding the same third of the row it holds on the form behind it.
+
+function Omerta.Characters.ConfirmModal(fullName, onConfirm)
+    local scale = Omerta.HUD.Scale()
+    local H = Omerta.HUD
+    local width, height = 520 * scale, 260 * scale
+
+    local modal = vgui.Create("DFrame")
+    modal:SetSize(width, height)
+    modal:Center()
+    modal:SetTitle("")
+    modal:ShowCloseButton(false)
+    modal:SetDraggable(false)
+    modal:MakePopup()
+    modal.Paint = function(_, w, h)
+        surface.SetDrawColor(H.Colour("plate", H.Theme.ALPHA.menu * 255))
+        surface.DrawRect(0, 0, w, h)
+        surface.SetDrawColor(H.Colour("rule"))
+        surface.DrawOutlinedRect(0, 0, w, h, 1)
+        draw.SimpleText("NO SECOND COPY", H.Font("mono"),
+            H.Space(5), H.Space(5), H.Colour("dim"),
+            TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
+    end
+
+    local prose = vgui.Create("DLabel", modal)
+    prose:SetPos(H.Space(5), H.Space(7) + 18 * scale)
+    prose:SetSize(width - H.Space(5) * 2, height - H.Space(7) * 2 - 40 * scale)
+    prose:SetFont(H.Font("label"))
+    prose:SetTextColor(H.Colour("text"))
+    prose:SetWrap(true)
+    prose:SetContentAlignment(7)
+    prose:SetText(fullName .. " cannot be remade. When they die, they are " ..
+        "gone — everything they own, everyone who knows them, and this name, " ..
+        "which no one will use again.")
+
+    local buttons = vgui.Create("DPanel", modal)
+    buttons:Dock(BOTTOM)
+    buttons:DockMargin(H.Space(5), 0, H.Space(5), H.Space(5))
+    buttons:SetTall(44 * scale)
+    buttons.Paint = nil
+
+    local confirm = H.Button(buttons, "Confirm", "commit", function()
+        modal:Remove()
+        onConfirm()
+    end)
+    confirm:Dock(FILL)
+
+    local back = H.Button(buttons, "Back", "quiet", function() modal:Remove() end)
+    back:Dock(LEFT)
+    back:DockMargin(0, 0, H.Space(1), 0)
+    back.PerformLayout = function(self)
+        self:SetWide(buttons:GetWide() * 0.33)
+    end
+
+    return modal
 end
 
 --------------------------------------------------------------------------------

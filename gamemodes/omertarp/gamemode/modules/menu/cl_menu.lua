@@ -1,5 +1,10 @@
 -- The front end on screen: the intro, the camera behind it, and the menu.
 --
+-- The same rail serves twice. As the FRONT END it appears when the server says
+-- this player has nobody to be; as the PAUSE MENU it answers F1 during normal
+-- play — same entries, same standard, but no intro, no music, and no orbit
+-- camera, because pausing must not become a tour of the spawn vantage.
+--
 -- The menu stands exactly where the character creator used to appear, and
 -- HOSTS it: creation is a screen of the menu, over the same drifting camera,
 -- built from the same form component (M4's BuildCreationForm) — not a window
@@ -15,12 +20,18 @@ Omerta.Menu.Client = Omerta.Menu.Client or {}
 local M = Omerta.Menu.Client
 
 M.phase = nil       -- nil | "intro" | "menu"
+M.mode = "front"    -- "front" (the opening flow) | "pause" (F1 over live play)
 M.screen = "root"   -- "root" | "creation" | "settings"
 M.startedAt = 0
 M.wanted = false    -- the server says this player has nobody to be
 M.selection = 1
 
 local frame = nil
+
+-- The handover fade into the world. Declared up here because the state hook
+-- below lifts it, and a local declared later would leave that hook writing to
+-- a global of the same name instead — silently, and only at runtime.
+local spawnFade = nil -- { phase = "out" | "hold" | "in", startedAt }
 
 --------------------------------------------------------------------------------
 -- Where the camera stands
@@ -91,12 +102,26 @@ end
 -- join" is the player's call. Operator-side control over the sequence is M27's.
 CreateClientConVar("omerta_intro", "1", true, false)
 
+-- Has the death sequence just handed over to us?
+--
+-- It matters because the intro opens on a second of pure black, and arriving
+-- there straight from the death screen's own black reads as the picture
+-- breaking — the "flashes black switching to the main menu" in the field
+-- report. A player who has just watched a character die does not need the
+-- title card again either way.
+local function afterDeath()
+    local C = Omerta.Injury and Omerta.Injury.Client
+    return C ~= nil and (C.leaving ~= nil or C.death ~= nil)
+end
+
 local function beginFrontEnd()
     if M.phase then return end
     M.startedAt = CurTime()
     M.selection = 1
     M.screen = "root"
-    M.phase = GetConVar("omerta_intro"):GetBool() and "intro" or "menu"
+    M.mode = "front"
+    M.phase = (GetConVar("omerta_intro"):GetBool() and not afterDeath())
+        and "intro" or "menu"
     startMusic()
     if M.phase == "menu" then Omerta.Menu.Client.Build() end
 end
@@ -104,6 +129,56 @@ end
 function Omerta.Menu.IsShowing()
     return M.phase ~= nil
 end
+
+--------------------------------------------------------------------------------
+-- Pause
+--------------------------------------------------------------------------------
+-- F1 during play shows the same rail. Two things it deliberately does NOT do:
+-- start the music, and touch the camera. Pausing must not become a free look
+-- at the spawn vantage — so the background is the player's OWN view, blurred
+-- where it stands, and the orbit is reserved for the front end.
+
+local BLUR = Material("pp/blurscreen")
+
+function Omerta.Menu.IsPaused()
+    return M.phase ~= nil and M.mode == "pause"
+end
+
+local function openPause()
+    if M.phase then return end
+    M.mode = "pause"
+    M.screen = "root"
+    M.selection = 1
+    M.startedAt = CurTime()
+    M.phase = "menu"
+    Omerta.Menu.Client.Build()
+end
+
+local function closePause()
+    if not Omerta.Menu.IsPaused() then return end
+    if IsValid(frame) then frame:Remove() end
+    frame = nil
+    M.phase = nil
+    M.mode = "front"
+    M.screen = "root"
+end
+
+function Omerta.Menu.TogglePause()
+    if Omerta.Menu.IsPaused() then closePause() return end
+    if M.phase or M.wanted then return end -- the front end owns the screen
+    if afterDeath() then return end
+    openPause()
+end
+
+-- F1 arrives as gm_showhelp. Swallowed either way, so the engine's own help
+-- panel never appears over ours.
+hook.Add("PlayerBindPress", "omerta.menu.pause", function(ply, bind, pressed)
+    if bind ~= "gm_showhelp" then return end
+    if not pressed then return true end
+    if ply:IsTyping() or gui.IsGameUIVisible() or gui.IsConsoleVisible() then return true end
+    Omerta.Menu.TogglePause()
+    return true
+end)
 
 -- Kept for a future "character exists, enter directly" path; today entering
 -- the city always means making somebody first, on the creation screen.
@@ -133,7 +208,12 @@ hook.Add("Omerta.CharactersState", "omerta.menu.state", function(state)
         M.wanted = false
         if IsValid(frame) then frame:Remove() end
         frame, M.phase = nil, nil
+        M.mode = "front"
         music.fadingOut = true
+        -- They are standing in the city now; lift the black off them.
+        if spawnFade and spawnFade.phase ~= "in" then
+            spawnFade = { phase = "in", startedAt = CurTime() }
+        end
     end
 end)
 
@@ -164,7 +244,9 @@ end)
 --------------------------------------------------------------------------------
 
 hook.Add("CalcView", "omerta.menu.view", function(ply, pos, angles, fov)
-    if not M.phase then return end
+    -- The front end only. Pause leaves the view exactly where the player left
+    -- it, blurred in the frame's own paint.
+    if not M.phase or M.mode == "pause" then return end
     local O = Omerta.Menu.ORBIT
     local spot = vantage()
     local dx, dy, yaw = Omerta.Menu.OrbitPoint(CurTime() - M.startedAt,
@@ -186,7 +268,10 @@ hook.Add("HUDShouldDraw", "omerta.menu.hide_hud", function(name)
 end)
 
 hook.Add("CalcViewModelView", "omerta.menu.no_viewmodel", function()
-    if M.phase then return Vector(0, 0, -10000), Angle(0, 0, 0) end
+    -- Paused, the world is frozen behind a blur and the hands may stay in it.
+    if M.phase and M.mode ~= "pause" then
+        return Vector(0, 0, -10000), Angle(0, 0, 0)
+    end
 end)
 
 --------------------------------------------------------------------------------
@@ -261,10 +346,26 @@ function Omerta.Menu.Client.Build()
     frame:MakePopup()
 
     frame.Paint = function(_, w, h)
-        -- A scrim over the whole city, then the rail. On the creation screen
-        -- the rail widens to hold the form.
-        surface.SetDrawColor(6, 6, 7, 90)
-        surface.DrawRect(0, 0, w, h)
+        -- Paused, the player's own view is the background — blurred, so it is
+        -- plainly not a view they can play from, and darkened so the rail
+        -- still reads over a bright street.
+        if M.mode == "pause" then
+            surface.SetMaterial(BLUR)
+            surface.SetDrawColor(255, 255, 255, 255)
+            for pass = 1, 3 do
+                BLUR:SetFloat("$blur", (pass / 3) * 6)
+                BLUR:Recompute()
+                render.UpdateScreenEffectTexture()
+                surface.DrawTexturedRect(0, 0, w, h)
+            end
+            surface.SetDrawColor(6, 6, 7, 90)
+            surface.DrawRect(0, 0, w, h)
+        else
+            -- A scrim over the whole city, then the rail. On the creation
+            -- screen the rail widens to hold the form.
+            surface.SetDrawColor(6, 6, 7, 90)
+            surface.DrawRect(0, 0, w, h)
+        end
 
         local railW = (M.screen == "creation" and 560 or 470) * scale
         surface.SetDrawColor(Omerta.HUD.Colour("plate",
@@ -399,10 +500,15 @@ function Omerta.Menu.Client.BuildCreation(parent)
     local margin = Omerta.HUD.Space(5)
     local columnW = 560 * scale - margin * 2
 
+    -- The column runs from under the heading to the bottom margin, and the
+    -- form docks its button row to the BOTTOM of it. Sized from the viewport
+    -- rather than from a fixed height: the fixed one ran off the screen at
+    -- 1.5x and took Confirm with it.
+    local top = ScrH() * 0.5 - 258 * scale + Omerta.HUD.Space(4)
     local column = vgui.Create("DPanel", parent)
     column.OmertaOwned = true
-    column:SetPos(margin, ScrH() * 0.5 - 240 * scale)
-    column:SetSize(columnW, 560 * scale)
+    column:SetPos(margin, top)
+    column:SetSize(columnW, ScrH() - top - margin)
     column.Paint = nil
 
     local boothSize = math.min(400 * scale, ScrH() * 0.5)
@@ -421,15 +527,14 @@ function Omerta.Menu.Client.BuildCreation(parent)
             Omerta.HUD.Colour("dim"), TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
     end
 
-    local form = Omerta.Characters.BuildCreationForm(column, boothPanel)
-
-    local back = Omerta.HUD.Button(column, "Back", "quiet", function()
-        M.screen = "root"
-        if IsValid(frame) then frame:Rebuild() end
-    end)
-    back:Dock(TOP)
-    back:SetTall(40 * scale)
-    back:DockMargin(0, Omerta.HUD.Space(3), 0, 0)
+    -- The form owns its own Back/Confirm row (docked to the column's bottom),
+    -- so the fallback window gets the same one.
+    local form = Omerta.Characters.BuildCreationForm(column, boothPanel, {
+        onBack = function()
+            M.screen = "root"
+            if IsValid(frame) then frame:Rebuild() end
+        end,
+    })
 
     form.Focus()
 end
@@ -476,6 +581,31 @@ function Omerta.Menu.Client.BuildSettings(parent)
         button:DockMargin(0, 0, Omerta.HUD.Space(1), 0)
     end
 
+    -- A toggle reads its convar and restyles: lit (commit) when on, quiet when
+    -- off, so the state is the button rather than a word beside it.
+    local function toggle(caption, convar, onApply)
+        local label = Omerta.HUD.FieldLabel(list, caption)
+        label:Dock(TOP)
+        label:SetTall(24 * scale)
+        label:DockMargin(0, Omerta.HUD.Space(4), 0, 0)
+
+        local on = GetConVar(convar):GetBool()
+        local button = Omerta.HUD.Button(list, on and "On" or "Off",
+            on and "commit" or "quiet", function()
+                local now = not GetConVar(convar):GetBool()
+                RunConsoleCommand(convar, now and "1" or "0")
+                if onApply then onApply(now) end
+                if IsValid(frame) then frame:Rebuild() end
+            end)
+        button:Dock(TOP)
+        button:SetTall(rowH * 0.8)
+        button:DockMargin(0, Omerta.HUD.Space(1), 0, 0)
+        button:SetWide(120 * scale)
+    end
+
+    toggle("Black and white", "omerta_blackwhite")
+    toggle("Multi-core rendering", "omerta_mcore", Omerta.Menu.ApplyMulticore)
+
     local back = Omerta.HUD.Button(list, "Back", "quiet", function()
         M.screen = "root"
         if IsValid(frame) then frame:Rebuild() end
@@ -486,12 +616,96 @@ function Omerta.Menu.Client.BuildSettings(parent)
 end
 
 --------------------------------------------------------------------------------
+-- Multi-core rendering
+--------------------------------------------------------------------------------
+-- The engine's experimental multithreaded renderer. It is off by default in
+-- stock Garry's Mod and on in most frameworks, because on modern hardware it
+-- is a large, free frame-rate win — and when a particular machine dislikes it,
+-- it is one toggle away from off, which is why it lives in settings rather
+-- than in a config nobody can reach mid-game.
+CreateClientConVar("omerta_mcore", "1", true, false)
+
+function Omerta.Menu.ApplyMulticore(enabled)
+    if enabled == nil then enabled = GetConVar("omerta_mcore"):GetBool() end
+    RunConsoleCommand("gmod_mcore_test", enabled and "1" or "0")
+    -- The queued material system is the half that actually threads the work;
+    -- -1 lets the engine choose (which means off on most setups).
+    RunConsoleCommand("mat_queue_mode", enabled and "2" or "-1")
+end
+
+-- Applied once the client is actually in a game, so the default takes effect
+-- without the player ever opening settings.
+local mcoreApplied = false
+hook.Add("Think", "omerta.menu.mcore", function()
+    if mcoreApplied then return end
+    if not IsValid(LocalPlayer()) then return end
+    mcoreApplied = true
+    Omerta.Menu.ApplyMulticore()
+end)
+
+--------------------------------------------------------------------------------
+-- The handover into the world
+--------------------------------------------------------------------------------
+-- Confirming a character fades the screen to black, holds it, and lifts it
+-- once the character is actually standing in the city. The hold is where M28's
+-- intro cinematic will play — it is already the right shape for it, which is
+-- why the fade is a small state machine rather than a timer.
+
+local FADE_OUT, FADE_IN = 0.8, 1.2
+
+function Omerta.Menu.BeginSpawnFade()
+    spawnFade = { phase = "out", startedAt = CurTime() }
+end
+
+-- A refusal (the name was taken while they were reading the warning) must not
+-- leave the player staring at black: the form is still there underneath, and
+-- it has something to tell them.
+hook.Add("Omerta.CharacterCreateFailed", "omerta.menu.fade_cancel", function()
+    if spawnFade and spawnFade.phase ~= "in" then spawnFade = nil end
+end)
+
+function Omerta.Menu.Client.SpawnFadeAlpha()
+    if not spawnFade then return 0 end
+    local elapsed = CurTime() - spawnFade.startedAt
+    if spawnFade.phase == "out" then
+        if elapsed >= FADE_OUT then
+            spawnFade.phase = "hold"
+            return 1
+        end
+        return elapsed / FADE_OUT
+    elseif spawnFade.phase == "hold" then
+        return 1
+    end
+    if elapsed >= FADE_IN then
+        spawnFade = nil
+        return 0
+    end
+    return 1 - (elapsed / FADE_IN)
+end
+
+hook.Add("PostRenderVGUI", "omerta.menu.spawn_fade", function()
+    local black = Omerta.Menu.Client.SpawnFadeAlpha()
+    if black <= 0 then return end
+    surface.SetDrawColor(5, 5, 6, 255 * black)
+    surface.DrawRect(0, 0, ScrW(), ScrH())
+end)
+
+--------------------------------------------------------------------------------
 -- What the menu offers
 --------------------------------------------------------------------------------
+
+-- Paused, the first thing on the list is the way back out of it.
+Omerta.Menu.RegisterEntry("menu.resume", {
+    label = "Resume",
+    order = 5,
+    visible = function() return Omerta.Menu.IsPaused() end,
+    onSelect = function() Omerta.Menu.TogglePause() end,
+})
 
 Omerta.Menu.RegisterEntry("menu.enter", {
     label = "Enter the city",
     order = 10,
+    visible = function() return not Omerta.Menu.IsPaused() end,
     onSelect = function()
         M.screen = "creation"
         if IsValid(frame) then frame:Rebuild() end
