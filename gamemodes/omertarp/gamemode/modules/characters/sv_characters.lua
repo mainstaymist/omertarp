@@ -88,6 +88,7 @@ local STATE_NAMES = {
     [STATE.NEEDS_CREATION] = "needs a character",
     [STATE.ACTIVE] = "active",
     [STATE.NO_SEASON] = "no season",
+    [STATE.AWAITING_ENTRY] = "has a character, waiting at the menu",
 }
 
 local function sendState(ply, state)
@@ -128,6 +129,18 @@ end
 function Internal.OnClientReady(ply)
     if not (Omerta.InEngine and IsValid(ply)) then return end
     local sid = ply:SteamID64()
+
+    -- Published for everyone else with something to say at join.
+    --
+    -- This is the ONLY moment on the server at which a joining client is known
+    -- to be listening, and it was about to be reinvented: M3's season number has
+    -- exactly the same problem this handshake was built for, and a second
+    -- module-specific handshake would have been a second thing to get wrong in
+    -- the same way. Fired before the early return below, because "there is
+    -- nothing to tell you about your character yet" says nothing at all about
+    -- whether another module has something to send.
+    hook.Run("Omerta.ClientReady", ply)
+
     local state = sid and told[sid]
     if not state then
         -- Not a fault: the client got here first and the load will answer it.
@@ -180,6 +193,114 @@ local function loadInto(ply, character)
     if Omerta.InEngine then hook.Run("Omerta.CharacterLoaded", ply, character) end
 end
 Internal.LoadInto = loadInto
+
+--------------------------------------------------------------------------------
+-- Joining, and then coming in
+--------------------------------------------------------------------------------
+-- EVERY PLAYER IS MET BY THE FRONT END, whether or not they already have
+-- somebody to be (project lead, 2026-08-01). That is a change to what joining
+-- means on this server, and the shape of it matters more than it looks.
+--
+-- The obvious implementation is to load the character at join exactly as
+-- before and let the client draw a menu over the top. That is wrong twice over:
+-- the player is genuinely standing in the city while they read the menu —
+-- shootable, findable, and dragged around by whatever the camera is doing —
+-- and the release of the movement gate would then have to be undone and redone
+-- from the client's side, which is not a thing a client may be trusted with.
+--
+-- So NOTHING HAPPENS AT JOIN. Finding a living character only ANNOUNCES it
+-- (STATE.AWAITING_ENTRY); the row is not cached, no module is told a character
+-- has arrived, and the ordinary PlayerSpawn gate holds the player exactly as it
+-- holds somebody who has no character at all — same freeze, same SetNoDraw,
+-- same god mode, one code path, nothing new that can leave a player stranded.
+--
+-- When they choose to come in, the SAME resolution runs again with `enter` set
+-- and the character loads through the same loadInto it always did. That is what
+-- keeps the release honest: the gate is lifted in one place, once, before
+-- Omerta.CharacterLoaded fires — so M19 still puts somebody who logged off on
+-- the floor back onto it, AFTER the release rather than before, which is the
+-- ordering that hook comment has always depended on.
+--
+-- The resolution is re-run rather than remembered on purpose. A character can
+-- be retired by staff or by a season ending between joining and pressing the
+-- entry, and a remembered row would walk a retired character into the city.
+
+-- Guards a second enter request arriving while the first one's queries are
+-- still in flight; without it a double-click is two loadIntos and two
+-- Omerta.CharacterLoaded fires. Cleared on disconnect with everything else.
+local entering = {}
+
+-- Resolve what this account is and tell the client. `enter` is the difference
+-- between the two occasions: false announces a living character, true loads it.
+-- `done` is called once, on every exit, so the in-flight guard cannot stick.
+local function resolve(ply, account, enter, done)
+    done = done or function() end
+    -- Seasons.WhenReady rather than GetActive(): at boot the active season is
+    -- itself the answer to a query, so a player who connects before it lands —
+    -- which the listen-server host always does — would be told the city is
+    -- closed and never told otherwise. M3 documents that trap for its own
+    -- consumers; this is the same one, on the join path.
+    Omerta.Seasons.WhenReady(function()
+        if not IsValid(ply) then done() return end
+        local season = Omerta.Seasons.GetActive()
+        if not season then sendState(ply, STATE.NO_SEASON) done() return end
+        Internal.Repo.GetActiveFor(account.id, season.id, function(character, err)
+            if not IsValid(ply) then done() return end
+            if err then
+                -- Saying nothing is the worst outcome available: the gate has
+                -- them frozen and a state message is the only way out of it.
+                -- Creation re-reads this same row before it writes and loads
+                -- whatever it finds, so pointing a player who may well have a
+                -- character at the creation screen recovers into their own
+                -- character rather than duplicating it.
+                Omerta.Log.Error("characters",
+                    "could not read the living character for account %d: %s",
+                    account.id, tostring(err))
+                sendState(ply, STATE.NEEDS_CREATION)
+                done()
+                return
+            end
+            if not character then
+                sendState(ply, STATE.NEEDS_CREATION)
+            elseif enter then
+                loadInto(ply, character)
+            else
+                sendState(ply, STATE.AWAITING_ENTRY)
+            end
+            done()
+        end)
+    end)
+end
+Internal.Resolve = resolve
+
+-- The front end saying the player is coming in (characters.enter).
+--
+-- Carries nothing and is trusted for nothing: it is a moment, not an
+-- instruction. Everything about WHO they are is read back out of the database
+-- here, on the server, under the same rules the join used.
+function Internal.OnEnterRequested(ply)
+    if not (Omerta.InEngine and IsValid(ply)) then return end
+    local sid = ply:SteamID64()
+    if not sid then return end
+
+    -- Already in the city. Nothing to do, and in particular nothing to
+    -- re-release: a repeat of this message must never be a second ungate.
+    if cache[sid] then return end
+    if entering[sid] then return end
+
+    local account = Omerta.Accounts.Get(ply)
+    if not account then
+        -- Their account has not finished loading, so there is nothing to look
+        -- them up by yet. The join is still in flight and will tell them where
+        -- they stand in a moment; the menu simply stays where it is.
+        Omerta.Log.Info("characters",
+            "enter: %s asked to come in before their account loaded", sid)
+        return
+    end
+
+    entering[sid] = true
+    resolve(ply, account, true, function() entering[sid] = nil end)
+end
 
 --------------------------------------------------------------------------------
 -- Creation
@@ -392,44 +513,17 @@ function MODULE:OnEnable()
     -- every definition, and this file is server-only.
     if not Omerta.InEngine then return end
 
-    -- Load the player's living character once their account is available.
+    -- Work out where this account stands once their account is available, and
+    -- say so. A living character is ANNOUNCED here, not loaded — the front end
+    -- is about to go up in front of them and the city can wait until they say
+    -- they are coming (see "Joining, and then coming in" above).
     hook.Add("Omerta.AccountLoaded", "omerta.characters.load", function(ply, account)
-        -- Seasons.WhenReady rather than GetActive(): at boot the active season
-        -- is itself the answer to a query, so a player who connects before it
-        -- lands — which the listen-server host always does — would be told the
-        -- city is closed and never told otherwise. M3 documents that trap for
-        -- its own consumers; this is the same one, on the join path.
-        Omerta.Seasons.WhenReady(function()
-            if not IsValid(ply) then return end
-            local season = Omerta.Seasons.GetActive()
-            if not season then sendState(ply, STATE.NO_SEASON) return end
-            Internal.Repo.GetActiveFor(account.id, season.id, function(character, err)
-                if not IsValid(ply) then return end
-                if err then
-                    -- Saying nothing is the worst outcome available: the gate
-                    -- has them frozen and a state message is the only way out
-                    -- of it. Creation re-reads this same row before it writes
-                    -- and loads whatever it finds, so pointing a player who may
-                    -- well have a character at the creation screen recovers
-                    -- into their own character rather than duplicating it.
-                    Omerta.Log.Error("characters",
-                        "could not read the living character for account %d: %s",
-                        account.id, tostring(err))
-                    sendState(ply, STATE.NEEDS_CREATION)
-                    return
-                end
-                if character then
-                    loadInto(ply, character)
-                else
-                    sendState(ply, STATE.NEEDS_CREATION)
-                end
-            end)
-        end)
+        resolve(ply, account, false)
     end)
 
     hook.Add("PlayerDisconnected", "omerta.characters.unload", function(ply)
         local sid = ply:SteamID64()
-        if sid then cache[sid], told[sid] = nil, nil end
+        if sid then cache[sid], told[sid], entering[sid] = nil, nil, nil end
     end)
 
     -- D-010: ending a season retires every living character in it.
@@ -495,21 +589,27 @@ function MODULE:OnEnable()
             Omerta.Log.Info("characters", "%s (%s)", p:Nick(), sid)
             Omerta.Log.Info("characters", "  account   : %s",
                 account and ("#" .. tostring(account.id)) or "NOT LOADED — the join stalled here")
+            -- `label` is the column and there is no `name` — reading the wrong
+            -- field here once made this command lie, which is the one thing it
+            -- must never do. Title() reads label and formats it.
             Omerta.Log.Info("characters", "  season    : %s",
-                season and ("#" .. season.id .. " " .. tostring(season.label))
+                season and ("#" .. season.id .. " " .. Omerta.Seasons.Title(season))
                     or "none active")
             Omerta.Log.Info("characters", "  character : %s",
                 character and ("#" .. character.id .. " " ..
                     character.first_name .. " " .. character.last_name)
-                    or "none")
+                    or "not in the city — see 'told'")
             Omerta.Log.Info("characters", "  told      : %s",
                 told[sid] and (STATE_NAMES[told[sid]] or told[sid])
                     or "NOTHING — this is why the screen is empty")
-            -- Frozen with a character is a bug; frozen without one is the
-            -- gate doing its job while the client shows the menu.
+            -- Frozen while loaded is a bug. Frozen while NOT loaded is the gate
+            -- doing its job, and there are now two honest reasons to be in it:
+            -- no character at all, or a character its owner has not walked into
+            -- the city with yet. Both look identical from the outside, so the
+            -- 'told' line above is what tells them apart.
             Omerta.Log.Info("characters", "  frozen    : %s%s",
                 tostring(p:IsFlagSet(FL_FROZEN) or false),
-                character and "" or "  (expected — no character)")
+                character and "" or "  (expected — not in the city)")
         end
     end)
 

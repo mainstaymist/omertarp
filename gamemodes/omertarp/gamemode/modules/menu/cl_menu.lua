@@ -1,16 +1,23 @@
 -- The front end on screen: the intro, the camera behind it, and the menu.
 --
--- The same rail serves twice. As the FRONT END it appears when the server says
--- this player has nobody to be; as the PAUSE MENU it answers F1 during normal
--- play — same entries, same standard, but no intro, no music, and no orbit
--- camera, because pausing must not become a tour of the spawn vantage.
+-- The same rail serves twice. As the FRONT END it meets EVERY player who joins;
+-- as the PAUSE MENU it answers F1 during normal play — same entries, same
+-- standard, but no intro, no music, and no orbit camera, because pausing must
+-- not become a tour of the spawn vantage.
+--
+-- EVERY player: somebody who already has a character is met by the menu too
+-- (project lead, 2026-08-01), and is held out of the city until they choose to
+-- walk into it. The rail therefore has two ways in, at the same place in the
+-- list and never both at once — "Enter the city" for somebody who has nobody to
+-- be, "Return to the city" for somebody who has. The first goes to creation;
+-- the second says one word to the server and lets it do the rest.
 --
 -- The menu stands exactly where the character creator used to appear, and
 -- HOSTS it: creation is a screen of the menu, over the same drifting camera,
 -- built from the same form component (M4's BuildCreationForm) — not a window
 -- floating on top. The menu registers a CREATION GATE — the same seam M19's
--- death screen uses to hold the handover — and never releases it; entering
--- the city goes through creation, and a finished character closes everything.
+-- death screen uses to hold the handover — and never releases it; a new arrival
+-- goes through creation, and a finished character closes everything.
 --
 -- Styled to the guide: ink plate rail, Oswald caps, the selected entry as the
 -- brass inversion, the season line in the mono system voice.
@@ -23,7 +30,8 @@ M.phase = nil       -- nil | "intro" | "menu"
 M.mode = "front"    -- "front" (the opening flow) | "pause" (F1 over live play)
 M.screen = "root"   -- "root" | "creation" | "settings"
 M.startedAt = 0
-M.wanted = false    -- the server says this player has nobody to be
+M.wanted = false    -- the server says this player is not in the city
+M.awaiting = false  -- ...and they already have somebody to be waiting for them
 M.selection = 1
 
 local frame = nil
@@ -203,15 +211,30 @@ hook.Add("PlayerBindPress", "omerta.menu.pause", function(_, bind)
     if bind == "gm_showhelp" then return true end
 end)
 
--- Kept for a future "character exists, enter directly" path; today entering
--- the city always means making somebody first, on the creation screen.
+-- Walking into the city with a character that already exists.
+--
+-- This is a REQUEST, and it is all the client is allowed to be: it names
+-- nobody, carries nothing, and cannot release anything. The server re-reads the
+-- account, the season and the living character, lifts the movement gate itself,
+-- and answers with STATE.ACTIVE — which is what actually takes this screen
+-- down, in the state hook below. Tearing the menu down here instead would put
+-- the player in front of a world they had not been let into yet.
+--
+-- The black falls on the keypress rather than on the answer, exactly as
+-- confirming a character does: the wait is a database round trip and a spawn,
+-- which is the least cinematic moment available, and the fade is where M28's
+-- opening will live for the people it is actually for.
 function Omerta.Menu.Enter()
-    if IsValid(frame) then frame:Remove() end
-    frame = nil
-    M.phase = nil
-    M.wanted = false
-    music.fadingOut = true
-    Omerta.Characters.ReleaseCreation()
+    if not M.awaiting then return end
+    -- NOT THE CINEMATIC (project lead: "though not the cinematic of course").
+    -- The intro is the title card on the way IN to the menu and everybody gets
+    -- it; the cinematic is the arrival, and somebody who has been living here
+    -- since Tuesday is not arriving. Nothing plays in the hold today, so this
+    -- is a fact recorded at the one place that knows it rather than a behaviour
+    -- — M28 reads it instead of having to work out, from the far side of a
+    -- fade, which of the two kinds of entry it is looking at.
+    Omerta.Menu.BeginSpawnFade({ cinematic = false })
+    Omerta.Net.Request("characters.enter", {})
 end
 
 -- The gate. While the front end is up, nothing else may put a window on
@@ -220,15 +243,35 @@ Omerta.Characters.RegisterCreationGate("menu", function()
     return M.phase ~= nil
 end)
 
--- The server says there is nobody to be. The menu does not appear on that
--- signal alone, though: after a death the death sequence is still playing, and
--- the menu must be revealed BY its fade rather than appear on top of it — so
--- it waits until nothing else is holding the handover.
+-- The server says this player is not in the city. Two ways to not be in it —
+-- with nobody to be, and with somebody waiting — and the front end goes up for
+-- both; only the way OUT of the rail differs.
+--
+-- The menu does not appear on that signal alone, though: after a death the
+-- death sequence is still playing, and the menu must be revealed BY its fade
+-- rather than appear on top of it — so it waits until nothing else is holding
+-- the handover.
+--
+-- NO_SEASON is deliberately not in here. A city that is closed has nothing for
+-- an "Enter" to do, and a rail whose first entry cannot work is worse than the
+-- plain notice M4 already shows for it.
 hook.Add("Omerta.CharactersState", "omerta.menu.state", function(state)
-    if state == Omerta.Characters.STATE.NEEDS_CREATION then
+    local STATE = Omerta.Characters.STATE
+    if state == STATE.NEEDS_CREATION or state == STATE.AWAITING_ENTRY then
         M.wanted = true
-    elseif state == Omerta.Characters.STATE.ACTIVE then
-        M.wanted = false
+        M.awaiting = state == STATE.AWAITING_ENTRY
+        -- A refusal must not leave somebody staring at black. If they asked to
+        -- come in and the answer was "you have no character" — staff retired it
+        -- while they read the menu, a season ended — the fade is cancelled and
+        -- the rail is still underneath, now offering creation instead.
+        if state == STATE.NEEDS_CREATION and spawnFade and spawnFade.phase ~= "in" then
+            spawnFade = nil
+        end
+        -- The rail's first entry has just changed identity; rebuild so the
+        -- player is not reading the other one's label.
+        if M.phase == "menu" and IsValid(frame) then frame:Rebuild() end
+    elseif state == STATE.ACTIVE then
+        M.wanted, M.awaiting = false, false
         if IsValid(frame) then frame:Remove() end
         frame, M.phase = nil, nil
         M.mode = "front"
@@ -367,12 +410,59 @@ end)
 
 local ROW_H, COLUMN_W = 52, 380
 
+--------------------------------------------------------------------------------
+-- The masthead, and the floor underneath it
+--------------------------------------------------------------------------------
+-- THE ONE PLACE THAT SAYS WHERE THE RAIL'S CONTENT BEGINS.
+--
+-- Two lines of type sit at the top of the rail — the wordmark over the tagline
+-- on the root and on settings, "NEW ARRIVAL" over "WHO ARE YOU" on creation —
+-- and everything else in the rail hangs below them. There used to be four
+-- opinions about where "below" was: the paint that draws the words, the root
+-- list, the creation column, and Settings, which had no opinion at all and
+-- centred itself on the screen. That is how INTERFACE SCALE ended up printed
+-- across "There are no witnesses."
+--
+-- So the words and the floor under them are worked out together, once, here,
+-- and every screen asks. A screen that measures the wordmark for itself is a
+-- screen that will one day be laid over it again.
+--
+-- Returns { eyebrow, title, subtitle, contentTop } — the first three are text
+-- baselines for TEXT_ALIGN_BOTTOM draws (nil where that line does not exist),
+-- contentTop is the top edge anything else in the rail may occupy.
+--
+-- Creation keeps a taller block than the root's. It is not a stylistic
+-- preference: its column runs from contentTop to the bottom margin and hosts a
+-- form with two name fields, two pickers, a status line and a docked button
+-- row, and the last time that column was made shorter than the form it holds,
+-- Confirm went off the bottom of the screen at 1.5x. The root's own block sits
+-- lower because a list of four entries wants to be nearer the middle of the
+-- screen than the top of it.
+function Omerta.Menu.Client.Masthead()
+    local scale = Omerta.HUD.Scale()
+    local middle = ScrH() * 0.5
+
+    if M.screen == "creation" then
+        return {
+            eyebrow = middle - 300 * scale,
+            title = middle - 258 * scale,
+            contentTop = middle - 258 * scale + Omerta.HUD.Space(4),
+        }
+    end
+
+    local title = middle - ROW_H * scale * 2.6
+    return {
+        title = title,
+        subtitle = title + 26 * scale,
+        contentTop = middle - ROW_H * scale,
+    }
+end
+
 function Omerta.Menu.Client.Build()
     if IsValid(frame) then frame:Remove() end
     if M.phase ~= "menu" then return end
 
     local scale = Omerta.HUD.Scale()
-    local rowH, columnW = ROW_H * scale, COLUMN_W * scale
     local margin = Omerta.HUD.Space(5)
 
     frame = vgui.Create("DFrame")
@@ -412,30 +502,39 @@ function Omerta.Menu.Client.Build()
         surface.SetDrawColor(Omerta.HUD.Colour("rule"))
         surface.DrawRect(railW, 0, 1, h)
 
+        -- Drawn from the same block every screen lays itself out against, so
+        -- the words and what sits under them cannot drift apart.
+        local head = Omerta.Menu.Client.Masthead()
         if M.screen == "creation" then
             draw.SimpleText("NEW ARRIVAL", Omerta.HUD.Font("mono"),
-                margin, h * 0.5 - 300 * scale, Omerta.HUD.Colour("dim"),
+                margin, head.eyebrow, Omerta.HUD.Colour("dim"),
                 TEXT_ALIGN_LEFT, TEXT_ALIGN_BOTTOM)
             draw.SimpleText("WHO ARE YOU", Omerta.HUD.Font("headline"),
-                margin, h * 0.5 - 258 * scale, Omerta.HUD.Colour("text"),
+                margin, head.title, Omerta.HUD.Colour("text"),
                 TEXT_ALIGN_LEFT, TEXT_ALIGN_BOTTOM)
         else
             draw.SimpleText(string.upper(Omerta.Menu.TITLE),
-                Omerta.HUD.Font("title"), margin, h * 0.5 - rowH * 2.6,
+                Omerta.HUD.Font("title"), margin, head.title,
                 Omerta.HUD.Colour("text"), TEXT_ALIGN_LEFT, TEXT_ALIGN_BOTTOM)
             draw.SimpleText(Omerta.Menu.SUBTITLE, Omerta.HUD.Font("label"),
-                margin, h * 0.5 - rowH * 2.6 + 26 * scale,
+                margin, head.subtitle,
                 Omerta.HUD.Colour("secondary"), TEXT_ALIGN_LEFT, TEXT_ALIGN_BOTTOM)
         end
 
-        -- The season is public: it is the city everybody is playing in. Soft
-        -- reference — Omerta.Seasons is a server table; the client learns the
-        -- season only if something has told it, and says so plainly if not.
+        -- The city, and which season of it. Both are public — it is the city
+        -- everybody is playing in — and the season is a NUMBER now, sent to the
+        -- client by M3 as one uint and nothing else.
+        --
+        -- Soft reference throughout: Omerta.Seasons is mostly a server table,
+        -- so a client that has not been told the number yet (or is on a server
+        -- with no season running) reads "THE CITY" and says nothing it does not
+        -- know. The number never comes from `label` on this side — the client
+        -- has never seen that column, which is exactly why it cannot read the
+        -- wrong field of it.
         local seasons = Omerta.Seasons
-        local season = seasons and seasons.GetActive and seasons.GetActive() or nil
-        -- `label`, not `name`: the column is label, and reading the wrong
-        -- field fails as a blank rather than as an error.
-        draw.SimpleText(string.upper(season and season.label or "The city"),
+        local number = seasons and seasons.GetNumber and seasons.GetNumber() or nil
+        draw.SimpleText(string.upper(number and ("The city · Season " .. number)
+                or "The city"),
             Omerta.HUD.Font("mono"), margin, h - margin,
             Omerta.HUD.Colour("dim"), TEXT_ALIGN_LEFT, TEXT_ALIGN_BOTTOM)
     end
@@ -488,7 +587,11 @@ function Omerta.Menu.Client.Build()
     -- The keyboard drives the root as well as the mouse: this screen is the
     -- first thing a player touches and it should not require finding a cursor.
     frame.OnKeyCodePressed = function(self, key)
-        if M.screen == "creation" then
+        -- Every screen of the rail that is not the root is backed out of the
+        -- same way, so the way out is never a button you have to find. On
+        -- settings that is also the guarantee that the screen cannot trap
+        -- somebody whose column has run past the bottom edge.
+        if M.screen == "creation" or M.screen == "settings" then
             if key == KEY_ESCAPE then
                 M.screen = "root"
                 self:Rebuild()
@@ -519,7 +622,7 @@ function Omerta.Menu.Client.BuildRoot(parent)
 
     local list = vgui.Create("DPanel", parent)
     list.OmertaOwned = true
-    list:SetPos(margin, ScrH() * 0.5 - rowH)
+    list:SetPos(margin, Omerta.Menu.Client.Masthead().contentTop)
     list:SetSize(columnW, rowH * 6)
     list:SetPaintBackground(false)
 
@@ -576,7 +679,7 @@ function Omerta.Menu.Client.BuildCreation(parent)
     -- form docks its button row to the BOTTOM of it. Sized from the viewport
     -- rather than from a fixed height: the fixed one ran off the screen at
     -- 1.5x and took Confirm with it.
-    local top = ScrH() * 0.5 - 258 * scale + Omerta.HUD.Space(4)
+    local top = Omerta.Menu.Client.Masthead().contentTop
     local column = vgui.Create("DPanel", parent)
     column.OmertaOwned = true
     column:SetPos(margin, top)
@@ -629,6 +732,11 @@ end
 -- So this walks a cursor down the column, and every control says how tall it
 -- is on the way past. The panel is then exactly as tall as what is in it,
 -- which is a thing that cannot be off by a row.
+--
+-- WHERE the column starts is no longer this screen's business. It used to
+-- centre itself on the screen, which is a perfectly good answer to a question
+-- nobody asked — the rail has a masthead, and centring walked the first caption
+-- straight over the tagline. It asks Masthead() like every other screen now.
 function Omerta.Menu.Client.BuildSettings(parent)
     local scale = Omerta.HUD.Scale()
     local margin = Omerta.HUD.Space(5)
@@ -711,11 +819,17 @@ function Omerta.Menu.Client.BuildSettings(parent)
     back:SetSize(140 * scale, rowH * 0.8)
     y = y + rowH * 0.8
 
-    -- Sized to what is actually in it, and pulled up off the bottom edge if
-    -- that comes to more than the screen has room for.
+    -- Sized to what is actually in it, and placed under the masthead.
+    --
+    -- No upward clamp. The old one existed to keep the last control on screen
+    -- and it is exactly what would put the first caption back over the tagline
+    -- on a short screen — and the masthead is the thing this change exists to
+    -- stop being overdrawn. If the column ever does outgrow the space beneath
+    -- it, that is a content problem (one more setting than the rail can hold),
+    -- not a positioning one, and the escape from it is the ESCAPE key rather
+    -- than a Back button dragged up over the wordmark to be reachable.
     list:SetSize(width, y)
-    list:SetPos(margin, math.max(margin,
-        math.min(ScrH() * 0.5 - y * 0.5, ScrH() - margin - y)))
+    list:SetPos(margin, Omerta.Menu.Client.Masthead().contentTop)
 end
 
 --------------------------------------------------------------------------------
@@ -757,8 +871,23 @@ end
 
 local FADE_OUT, FADE_IN = 0.8, 1.2
 
-function Omerta.Menu.BeginSpawnFade()
-    spawnFade = { phase = "out", startedAt = CurTime() }
+-- opts.cinematic says whether the hold is an ARRIVAL — somebody's first moment
+-- in the city, which is what M28's opening is for — or merely the cover over a
+-- round trip. Defaults to true, because the caller that has always existed is
+-- character creation and that IS an arrival; "Return to the city" passes false
+-- (project lead: "though not the cinematic of course").
+--
+-- Recorded rather than acted on: nothing plays in the hold today. It is put
+-- here because THIS is the only place that knows which of the two it is, and a
+-- flag written at the moment the fact is true is worth more than M28 trying to
+-- infer it later from the far side of a black screen.
+function Omerta.Menu.BeginSpawnFade(opts)
+    opts = opts or {}
+    spawnFade = {
+        phase = "out",
+        startedAt = CurTime(),
+        cinematic = opts.cinematic ~= false,
+    }
 end
 
 -- A refusal (the name was taken while they were reading the warning) must not
@@ -806,14 +935,30 @@ Omerta.Menu.RegisterEntry("menu.resume", {
     onSelect = function() Omerta.Menu.TogglePause() end,
 })
 
+-- THE WAY IN, which is two entries because there are two kinds of player in
+-- front of this rail and only one kind of first item.
+--
+-- They share an order and are mutually exclusive, so the way into the city is
+-- always the top line of the list whoever is reading it — the muscle memory a
+-- front end is allowed to have. What differs is the promise each one makes:
+-- "Enter" leads to a form and a name that cannot be taken back, "Return" leads
+-- straight through the door to somebody who is already standing behind it. One
+-- label for both would have made the irreversible one look like the routine one.
 Omerta.Menu.RegisterEntry("menu.enter", {
     label = "Enter the city",
     order = 10,
-    visible = function() return not Omerta.Menu.IsPaused() end,
+    visible = function() return not Omerta.Menu.IsPaused() and not M.awaiting end,
     onSelect = function()
         M.screen = "creation"
         if IsValid(frame) then frame:Rebuild() end
     end,
+})
+
+Omerta.Menu.RegisterEntry("menu.return", {
+    label = "Return to the city",
+    order = 10,
+    visible = function() return not Omerta.Menu.IsPaused() and M.awaiting end,
+    onSelect = function() Omerta.Menu.Enter() end,
 })
 
 Omerta.Menu.RegisterEntry("menu.settings", {

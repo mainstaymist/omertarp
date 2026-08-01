@@ -12,10 +12,19 @@ Omerta.Characters = Omerta.Characters or {}
 Omerta.Characters.STATUS = { ALIVE = "alive", RETIRED = "retired", DEAD = "dead" }
 
 -- Client state codes for the characters.state message (§5 of the review).
+--
+-- AWAITING_ENTRY is the front end's state: this account HAS a living character
+-- and is not in the city with it yet. It exists because the server has to be
+-- able to tell the two apart — "you have somebody to be" and "you are standing
+-- in the street as them" used to be one message, so a client could not know
+-- whether to raise the menu or take it down, and the server could not repeat
+-- the fact after a Lua refresh without also implying the player had just
+-- spawned. Nothing is loaded and nothing is released while a player is in it.
 Omerta.Characters.STATE = {
     NEEDS_CREATION = 1,
     ACTIVE         = 2,
     NO_SEASON      = 3,
+    AWAITING_ENTRY = 4,
 }
 
 -- Selectable models, by index. A client sends the INDEX; the server maps it.
@@ -186,6 +195,25 @@ if CLIENT and Omerta.InEngine then
     -- handshake exists to end: gated at spawn, no menu, nothing in the console.
     hook.Add("OnReloaded", "omerta.characters.ready_reload", announce)
 end
+
+-- The player, at the front end, saying they are coming in.
+--
+-- NO PAYLOAD: the message is the fact, and it has to be, because a payload here
+-- would be a client naming the character it wants to be. The server resolves
+-- the account, the season and the living character itself — the same resolution
+-- the join runs — so this message can ask for nothing except "now".
+--
+-- The allowance is small for the same reason characters.ready's is: there are
+-- two honest occasions to send it (choosing the entry, and choosing it again
+-- after a refusal), and everything beyond that is somebody prodding the server.
+Omerta.Net.Register("characters.enter", {
+    realm = "client_to_server",
+    schema = {},
+    rate = { burst = 3, per = 10 },
+    handler = function(ply)
+        Omerta.Characters.Internal.OnEnterRequested(ply)
+    end,
+})
 
 -- A player's own character details. Safe to send: it is their own data, and
 -- D-015 needs it so their own Nick() can return their own name. Never carries

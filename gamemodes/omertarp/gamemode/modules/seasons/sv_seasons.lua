@@ -94,6 +94,36 @@ function Internal.PickSoleSetupSeason(rows)
     return setup[1].id
 end
 
+-- The number the next season gets: one past the highest that has existed.
+--
+-- Derived from the seasons table itself, never from reading a number back out
+-- of a name. Two facts are combined and the larger wins:
+--
+--   * THE HIGHEST NUMBER ANY SEASON CARRIES (Omerta.Seasons.NumberOf). This is
+--     what survives a gap: delete season 4 of 1,2,3,4 and the next is still 5,
+--     because 5 is what comes after the highest that ever existed. Reusing 4
+--     would put two different seasons under one number in the audit log, which
+--     is the one thing a season number is for.
+--   * HOW MANY ROWS THERE ARE AT ALL. This is what survives a live database
+--     full of NAMED seasons from before the numbering. Nine names and no
+--     numbers produce #10 — the ruling in its own words, "just make the season
+--     creation make the 10th season" — rather than starting again at 1
+--     underneath nine seasons of history.
+--
+-- Both move in the only direction that matters: creating a season raises at
+-- least one of them, so a number is never handed out twice while the rows that
+-- carry it are still there.
+function Internal.NextSeasonNumber(rows)
+    rows = rows or {}
+    local highest = 0
+    for _, row in ipairs(rows) do
+        local number = Omerta.Seasons.NumberOf(row)
+        if number and number > highest then highest = number end
+    end
+    if #rows > highest then highest = #rows end
+    return highest + 1
+end
+
 -- Boot invariant: at most one active season may exist in the table.
 function Internal.CheckActiveInvariant(rows)
     local active = {}
@@ -180,6 +210,42 @@ function Omerta.Seasons.GetPath(ply)
 end
 
 --------------------------------------------------------------------------------
+-- Telling clients the number
+--------------------------------------------------------------------------------
+-- The front end names the city ("THE CITY · SEASON 10"), so the number has to
+-- reach a client. Nothing else about a season does.
+--
+-- Sent on two occasions, and both are necessary:
+--
+--   * WHEN A CLIENT SAYS IT IS LISTENING. The join flow begins while the client
+--     is still loading, and a net message aimed at a client that is not
+--     listening yet is simply gone — no queue, no retry, no error in either
+--     console. M4 learned that the expensive way and answered it with the
+--     characters.ready handshake; Omerta.ClientReady is that same moment,
+--     published so this module does not have to invent a second one.
+--   * WHEN THE RUNNING SEASON CHANGES underneath everybody. Written out to
+--     player.GetAll() by hand because Omerta.Net has no broadcast on purpose.
+--
+-- Omerta.Seasons.Number is refreshed on the server either way, so GetNumber()
+-- answers in both realms rather than being a client-only curiosity.
+
+local function refreshNumber()
+    Omerta.Seasons.Number = activeSeason and Omerta.Seasons.NumberOf(activeSeason) or nil
+end
+
+local function tellNumber(targets)
+    refreshNumber()
+    if not Omerta.InEngine or targets == nil then return end
+    if type(targets) == "table" and #targets == 0 then return end
+    Omerta.Net.Send("seasons.number", { number = Omerta.Seasons.Number or 0 }, targets)
+end
+
+local function tellEveryone()
+    if not Omerta.InEngine then refreshNumber() return end
+    tellNumber(player.GetAll())
+end
+
+--------------------------------------------------------------------------------
 -- Path transitions (all funnel through applyTransition; there is no bypass)
 --------------------------------------------------------------------------------
 
@@ -256,24 +322,57 @@ end
 -- Lifecycle
 --------------------------------------------------------------------------------
 
+-- Creating a season takes no name.
+--
+-- WHY THE `label` COLUMN STAYED. It now holds the number as its text ("10"),
+-- and that is the whole change: no migration 14, no second column that can
+-- disagree with the first, and every existing reader — the boot log, whoami,
+-- omerta_season_list, the self-test's `DELETE ... WHERE label = ? AND state = ?`
+-- guard that stops it ever touching a real season — keeps working against the
+-- same field it always read. Dropping it would have meant a migration on both
+-- dialects, a NOT NULL to relax, and a rewrite of all of those, to buy nothing
+-- a numeric string in the same column does not already buy. It also keeps the
+-- seasons a live database already has: they hold their names, read as their
+-- names, and simply carry no number (Omerta.Seasons.NumberOf).
+--
+-- An explicit label is still accepted and there is exactly ONE caller that
+-- passes one — the in-engine self-test, which names its row `__selftest__` so
+-- its cleanup can delete that row and nothing else. Staff never type a label.
 function Omerta.Seasons.Create(opts, cb)
     if not guard(cb) then return end
-    local label = opts and opts.label
-    if type(label) ~= "string" or label == "" or #label > 64 then
-        if cb then cb(nil, "season label must be a non-empty string of at most 64 characters") end
-        return
+    opts = opts or {}
+    cb = cb or function() end
+
+    local ruleset = opts.ruleset_version or "1"
+
+    local function insert(label)
+        Internal.Repo.CreateSeason(label, ruleset, os.time(), function(id, err)
+            if not id then cb(nil, err) return end
+            Omerta.Log.Audit("season.created", {
+                actor = opts.actor, season_id = id, label = label,
+            })
+            Omerta.Log.Info("seasons", "season #%d created — %s (setup)",
+                id, Omerta.Seasons.Title({ label = label }))
+            cb(id)
+        end)
     end
-    local ruleset = (opts and opts.ruleset_version) or "1"
-    Internal.Repo.CreateSeason(label, ruleset, os.time(), function(id, err)
-        if not id then
-            if cb then cb(nil, err) end
+
+    if opts.label ~= nil then
+        if type(opts.label) ~= "string" or opts.label == "" or #opts.label > 64 then
+            cb(nil, "season label must be a non-empty string of at most 64 characters")
             return
         end
-        Omerta.Log.Audit("season.created", {
-            actor = opts and opts.actor, season_id = id, label = label,
-        })
-        Omerta.Log.Info("seasons", "season #%d '%s' created (setup)", id, label)
-        if cb then cb(id) end
+        insert(opts.label)
+        return
+    end
+
+    -- The number is worked out from the seasons that already exist, on the
+    -- server, at the moment of creation. Nobody is asked for it and nobody may
+    -- supply it: a number handed in from anywhere else is a number that can
+    -- collide with one already in the audit log.
+    Internal.Repo.GetAllSeasons(function(rows, err)
+        if err then cb(nil, err) return end
+        insert(tostring(Internal.NextSeasonNumber(rows)))
     end)
 end
 
@@ -302,9 +401,12 @@ function Omerta.Seasons.Start(seasonId, actorSid, cb)
             end
             season.state, season.started_at, season.ends_at = "active", now, endsAt
             activeSeason = season
+            -- The city everybody is standing in just changed; the front end
+            -- says which one, so everybody is told which one.
+            tellEveryone()
             Omerta.Log.Audit("season.started", { actor = actorSid, season_id = season.id })
-            Omerta.Log.Info("seasons", "season #%d '%s' started (planned end %s)",
-                season.id, season.label, os.date("%Y-%m-%d", endsAt))
+            Omerta.Log.Info("seasons", "season #%d started — %s (planned end %s)",
+                season.id, Omerta.Seasons.Title(season), os.date("%Y-%m-%d", endsAt))
             if cb then cb(true) end
             runHook("Omerta.SeasonStarted", season)
         end)
@@ -340,8 +442,10 @@ function Omerta.Seasons.End(seasonId, actorSid, cb)
                     end
                 end
             end
+            tellEveryone()
             Omerta.Log.Audit("season.ended", { actor = actorSid, season_id = season.id })
-            Omerta.Log.Info("seasons", "season #%d '%s' ended", season.id, season.label)
+            Omerta.Log.Info("seasons", "season #%d ended — %s",
+                season.id, Omerta.Seasons.Title(season))
             if cb then cb(true) end
             runHook("Omerta.SeasonEnded", season)
         end)
@@ -403,9 +507,12 @@ function MODULE:OnEnable()
             for _, row in ipairs(rows) do
                 if row.state == "active" then activeSeason = row end
             end
+            -- Nobody to send it to at boot; the handshake below catches every
+            -- client that arrives afterwards, including the listen-server host.
+            refreshNumber()
             if activeSeason then
-                Omerta.Log.Info("seasons", "active season: #%d '%s'",
-                    activeSeason.id, activeSeason.label)
+                Omerta.Log.Info("seasons", "active season: #%d — %s",
+                    activeSeason.id, Omerta.Seasons.Title(activeSeason))
             else
                 Omerta.Log.Info("seasons",
                     "no active season — character creation will be unavailable until one is started " ..
@@ -419,6 +526,16 @@ function MODULE:OnEnable()
 
     -- First consumer of M2's extension point: carry the player's path for the
     -- active season onto the cached account object.
+    -- The number, the moment the client is demonstrably able to hear it.
+    -- Behind WhenReady because a client can beat the boot query: without it a
+    -- listen-server host is told "no season" once, permanently, which is the
+    -- exact trap M3 documents for its own consumers.
+    hook.Add("Omerta.ClientReady", "omerta.seasons.number", function(ply)
+        Omerta.Seasons.WhenReady(function()
+            if IsValid(ply) then tellNumber(ply) end
+        end)
+    end)
+
     hook.Add("Omerta.AccountLoaded", "omerta.seasons.path", function(ply, account)
         if not activeSeason then return end
         Internal.Repo.GetPathRow(account.id, activeSeason.id, function(row)
@@ -439,8 +556,8 @@ function MODULE:OnEnable()
         if Internal.Failed then
             Omerta.Log.Error("seasons", "status: FAILED state — see boot log")
         elseif activeSeason then
-            Omerta.Log.Info("seasons", "status: season #%d '%s' active since %s, planned end %s",
-                activeSeason.id, activeSeason.label,
+            Omerta.Log.Info("seasons", "status: season #%d (%s) active since %s, planned end %s",
+                activeSeason.id, Omerta.Seasons.Title(activeSeason),
                 os.date("%Y-%m-%d", activeSeason.started_at or 0),
                 os.date("%Y-%m-%d", activeSeason.ends_at or 0))
         else
@@ -448,12 +565,18 @@ function MODULE:OnEnable()
         end
     end)
 
+    -- No arguments. A name typed here used to become the season's identity;
+    -- seasons are numbered now and the number is the server's to work out, so
+    -- anything typed after the command is said back rather than silently
+    -- dropped — somebody who types "omerta_season_create Season 11" has an
+    -- expectation about what season they just made and deserves to be corrected.
     concommand.Add("omerta_season_create", function(ply, _, args)
         if not staffOnly(ply) then return end
-        Omerta.Seasons.Create({
-            label = table.concat(args, " "),
-            actor = actorOf(ply),
-        }, function(id, err)
+        if args[1] then
+            Omerta.Log.Warn("seasons", "omerta_season_create takes no arguments — " ..
+                "seasons are numbered, not named; ignoring '%s'", table.concat(args, " "))
+        end
+        Omerta.Seasons.Create({ actor = actorOf(ply) }, function(id, err)
             if not id then Omerta.Log.Error("seasons", "create failed: %s", tostring(err)) end
         end)
     end)
@@ -472,7 +595,7 @@ function MODULE:OnEnable()
                         and ("ended " .. os.date("%Y-%m-%d", row.ended_at or 0))
                     or ("created " .. os.date("%Y-%m-%d", row.created_at or 0))
                 Omerta.Log.Info("seasons", "  #%d  %-8s  %s  (%s)",
-                    row.id, row.state, row.label, when)
+                    row.id, row.state, Omerta.Seasons.Title(row), when)
             end
         end)
     end)

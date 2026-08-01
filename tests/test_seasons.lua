@@ -122,6 +122,73 @@ check("sole-setup-season resolution for argument-less staff commands", function(
     assert(why:find("1, 2", 1, true), "ambiguity message should name the ids: " .. why)
 end)
 
+-- Seasons are numbered, not named (project lead, 2026-08-01). The number is
+-- pure arithmetic over the rows that exist — existing seasons in, next number
+-- out — which is the whole reason it is worth pinning here: the alternative is
+-- discovering the sequence was wrong a season after it mattered.
+check("a season's number is read off the label, never parsed out of a name", function()
+    loadRules()
+    local NumberOf = Omerta.Seasons.NumberOf
+    assert(NumberOf({ label = "10" }) == 10, "a numbered season is its number")
+    assert(NumberOf({ label = 10 }) == 10, "and reads the same if the backend hands back a number")
+    assert(NumberOf({ label = "1" }) == 1)
+
+    -- Everything that is not a plain run of digits has NO number. Recovering
+    -- one from the middle of a name is the exact mistake the ruling refuses:
+    -- "Season 10" and "The 10th of Never" would become the same season.
+    assert(NumberOf({ label = "Season 10" }) == nil, "a name is not a number")
+    assert(NumberOf({ label = "The Winter of Knives" }) == nil)
+    assert(NumberOf({ label = "__selftest__" }) == nil, "the self-test's own row")
+    assert(NumberOf({ label = "0" }) == nil, "there is no season zero")
+    assert(NumberOf({ label = "" }) == nil)
+    assert(NumberOf({ label = "10a" }) == nil and NumberOf({ label = " 10" }) == nil)
+    assert(NumberOf({}) == nil and NumberOf(nil) == nil, "degenerate input answers nil")
+
+    -- What it is called follows from that, in one place, for the server log and
+    -- the client's front end alike.
+    assert(Omerta.Seasons.Title({ label = "10" }) == "Season 10")
+    assert(Omerta.Seasons.Title({ label = "The Winter of Knives" }) == "The Winter of Knives",
+        "a legacy named season keeps the name the operator gave it")
+    assert(Omerta.Seasons.Title(nil) == "no season")
+end)
+
+check("the next season's number is one past the highest that has existed", function()
+    loadRules()
+    local Next = Omerta.Seasons.Internal.NextSeasonNumber
+
+    -- An empty database starts at one.
+    assert(Next({}) == 1, "the first season is season one")
+    assert(Next(nil) == 1, "and nothing at all is still the first season")
+
+    assert(Next({ { label = "1" } }) == 2)
+    assert(Next({ { label = "1" }, { label = "2" }, { label = "3" } }) == 4)
+
+    -- A GAP does not get filled. Season 4 of 1,2,4 existed and was removed;
+    -- handing 4 out again would put two seasons under one number in the audit
+    -- log, which is the one thing a season number is for.
+    assert(Next({ { label = "1" }, { label = "2" }, { label = "4" } }) == 5,
+        "one past the highest, not the first hole")
+    -- Order is irrelevant: it is a maximum, not a walk.
+    assert(Next({ { label = "4" }, { label = "1" } }) == 5)
+
+    -- NON-NUMERIC LEGACY LABELS still advance the sequence. A live database
+    -- full of named seasons must not restart at 1 underneath its own history —
+    -- nine seasons that happened produce the tenth, which is the ruling in the
+    -- project lead's own words.
+    local named = {}
+    for i = 1, 9 do named[i] = { label = "The Winter of Knives " .. i } end
+    assert(Next(named) == 10, "nine seasons of history make the next one the tenth")
+    assert(Next({ { label = "__selftest__" } }) == 2)
+
+    -- Mixed: the larger of "highest number" and "how many rows" wins, so
+    -- neither a renumbered database nor a renamed one can go backwards.
+    assert(Next({ { label = "The Winter of Knives" }, { label = "7" } }) == 8,
+        "the highest number wins when it is ahead of the count")
+    local mixed = { { label = "1" }, { label = "2" } }
+    for i = 3, 12 do mixed[i] = { label = "a name" } end
+    assert(Next(mixed) == 13, "and the count wins when it is ahead of the numbers")
+end)
+
 check("one-active invariant checker", function()
     loadRules()
     local Check = Omerta.Seasons.Internal.CheckActiveInvariant

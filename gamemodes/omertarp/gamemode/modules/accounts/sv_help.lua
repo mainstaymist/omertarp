@@ -29,7 +29,7 @@
 -- `client = true` marks commands that must be run from a CLIENT console.
 local COMMANDS = {
     -- Seasons
-    ["omerta_season_create"] = { usage = "<name>", what = "Create a season.", area = "Seasons" },
+    ["omerta_season_create"] = { usage = "", what = "Create the next season. Takes no name — seasons are numbered, and the number is one past the highest that has existed.", area = "Seasons" },
     ["omerta_season_start"] = { usage = "<id>", what = "Start a season; the city opens.", area = "Seasons" },
     ["omerta_season_end"] = { usage = "<id>", what = "End a season.", area = "Seasons" },
     ["omerta_season_list"] = { usage = "", what = "List all seasons.", area = "Seasons" },
