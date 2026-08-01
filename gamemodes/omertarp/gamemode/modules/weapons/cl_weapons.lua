@@ -23,11 +23,20 @@ hook.Add("Omerta.WeaponReserve", "omerta.weapons.reserve", function(count)
     reserve = count or 0
 end)
 
+-- By CLASS, not by `wep.OmertaId`.
+--
+-- Our own generated classes carry the id on the class table, so both realms
+-- see it — but a weapon running a third party's class carries it only on the
+-- server entity, where giveOne stamps it, and a plain Lua field is not
+-- networked. The arsenal is shared data and maps BOTH classes to the same
+-- definition, so asking what class is in the hand is the reading that works
+-- whichever half of the pair won.
 local function activeOmertaWeapon()
     local ply = LocalPlayer()
     if not IsValid(ply) then return nil end
     local wep = ply:GetActiveWeapon()
-    if not (IsValid(wep) and wep.OmertaId) then return nil end
+    if not IsValid(wep) then return nil end
+    if not Omerta.Weapons.ForClass(wep:GetClass()) then return nil end
     return wep
 end
 
@@ -61,7 +70,9 @@ Omerta.HUD.Register("weapons.rounds", {
     draw = function(alpha)
         local wep = activeOmertaWeapon()
         if not wep then return end
-        local def = wep:Def()
+        -- `wep:Clip1()`, never `wep:Def()`. Def is a method on OUR base and a
+        -- third party's SWEP does not have it; Clip1 is engine and every
+        -- weapon does. Nothing here needed the definition anyway.
         local clip = wep:Clip1()
         local scale = Omerta.HUD.Scale()
         local margin = Omerta.HUD.Space(5)

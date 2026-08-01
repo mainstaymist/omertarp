@@ -32,13 +32,16 @@ local function buildSlots()
         slots[1].wep, slots[1].name = hands, "Hands"
     end
 
+    -- Resolved by CLASS: a weapon running a third party's SWEP has no id on
+    -- its class table, and the entity field the server stamps does not cross
+    -- the wire. The arsenal maps both classes to the same definition, so this
+    -- reading works whichever one is in the hand — and a gun the arsenal does
+    -- not know (an admin's physgun) still falls through to no slot at all.
     for _, wep in ipairs(ply:GetWeapons()) do
-        if wep.OmertaId then
-            local def = Omerta.Weapons.Get(wep.OmertaId)
-            local position = def and SLOT_POSITION[def.slot]
-            if position then
-                slots[position].wep, slots[position].name = wep, def.name
-            end
+        local def = Omerta.Weapons.ForClass(wep:GetClass())
+        local position = def and SLOT_POSITION[def.slot]
+        if position then
+            slots[position].wep, slots[position].name = wep, def.name
         end
     end
     return slots

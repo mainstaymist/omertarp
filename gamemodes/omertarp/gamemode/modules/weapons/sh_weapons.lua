@@ -22,9 +22,15 @@ Omerta.Weapons.Internal = Omerta.Weapons.Internal or {}
 
 local weapons_ = {}     -- id -> definition
 local byItem = {}       -- item id -> weapon definition
+local byClass = {}      -- SWEP class (ours OR a third party's) -> definition
 local ammo = {}         -- ammo item id -> ammo definition
 
 local ID_PATTERN = "^[a-z0-9_%.]+$"
+-- A SWEP class as the engine spells one. Deliberately narrower than the engine
+-- allows: every class we will ever be handed is a folder name under
+-- `entities/weapons`, and refusing punctuation is what stops a typo'd arsenal
+-- entry becoming a lookup for something that could never exist.
+local CLASS_PATTERN = "^[a-z0-9_]+$"
 
 -- The holster. Every character carries this SWEP at all times; holding it IS
 -- having nothing drawn, and switching to it is how a weapon is put away. Not a
@@ -74,6 +80,214 @@ function Omerta.Weapons.ClassFor(id)
     return "weapon_omerta_" .. tostring(id):gsub("^weapon%.", ""):gsub("%.", "_")
 end
 
+--------------------------------------------------------------------------------
+-- Somebody else's SWEP
+--------------------------------------------------------------------------------
+-- A weapon may name a SWEP written by a third party:
+--
+--     Omerta.Weapons.Register("weapon.thompson", {
+--         ...
+--         external = "arc9_bo2_thompson",
+--     })
+--
+-- and per D-039 that line IS the whole edit. The module gives, strips,
+-- holsters and reconciles that class in place of our generated one; nothing
+-- else in the gamemode learns the addon exists.
+--
+-- READ THIS BEFORE CHANGING ANYTHING BELOW IT.
+--
+-- The project lead installed an ARC9 pack and a TFA pack and named three
+-- classes. Those three strings are the only facts. EVERYTHING ELSE ABOUT
+-- EITHER ADDON IS UNKNOWN HERE: neither is installed on the machine this was
+-- written on and there was no network to fetch them, so not one function of
+-- theirs has been read, not one field name verified, not one model path
+-- confirmed.
+--
+-- What makes that survivable is the rule D-043's environment seam set, applied
+-- to a different kind of dependency: DETECT BY WHAT YOU INTEND TO CALL, never
+-- by a name or a version. So the shape of this integration was chosen to make
+-- that detection trivial — everything the bridge drives on a third-party
+-- weapon is Garry's Mod BASE API, listed in EXTERNAL_CALLS below, and not one
+-- line of it calls an ARC9 or a TFA function. There is nothing of theirs to
+-- guess at, because we guess at nothing of theirs.
+--
+-- That leaves exactly one thing to detect: whether the class exists at all.
+-- `weapons.Get(class)` answers that honestly and is the only check performed.
+--
+-- When it answers no, the weapon falls back to the generated `weapon_omerta_*`
+-- class — which is registered UNCONDITIONALLY for exactly that reason, even
+-- for a weapon that names an external. A server without the addon gets our own
+-- gun and one line in the log, never an empty hand.
+
+-- Every engine call the bridge makes against a third-party weapon, gathered in
+-- one place so that a reader can satisfy themselves in ten seconds that none
+-- of them belongs to an addon. If a future bridge needs something outside this
+-- list, that is the moment to stop and detect it properly.
+Omerta.Weapons.EXTERNAL_CALLS = {
+    "weapons.Get",                  -- does the class exist (the ONLY detection)
+    "Player:Give",                  -- put it in a hand
+    "Player:StripWeapon",           -- take it out again
+    "Player:HasWeapon",
+    "Player:SetAmmo",               -- project the inventory into the engine pool
+    "Player:GetAmmoCount",          -- read the pool back
+    "Weapon:Clip1",                 -- read the magazine
+    "Weapon:SetClip1",              -- and clamp it
+    "Weapon:GetPrimaryAmmoType",    -- which pool this weapon eats from
+}
+
+-- The default existence check, in the engine. Headless there is no `weapons`
+-- table at all, which is the correct answer for a machine with no addons: no
+-- external class is present and every weapon falls back.
+function Omerta.Weapons.ExternalPresent(class)
+    if not Omerta.InEngine then return false end
+    return weapons.Get(class) ~= nil
+end
+
+-- Which class this weapon is actually using RIGHT NOW. Resolution runs at boot
+-- and again once the map is up; until it has, this answers with our own class,
+-- which is the safe half of the pair.
+function Omerta.Weapons.ClassOf(def)
+    if type(def) ~= "table" then return nil end
+    return def.activeClass or def.class
+end
+
+function Omerta.Weapons.IsExternal(def)
+    return type(def) == "table" and def.external ~= nil
+        and def.activeClass == def.external
+end
+
+-- A SWEP class back to the weapon it is. Both halves of the pair resolve to
+-- the same definition, deliberately: whichever class ends up in a hand, the
+-- hotbar, the round readout and the holster all want the same table, and none
+-- of them should have to know which one won.
+function Omerta.Weapons.ForClass(class) return byClass[class or ""] end
+
+-- Chooses a class per weapon. `present` is injectable for the same reason
+-- Omerta.Util.ResolveModel's validator is: the decision is then exercisable
+-- headlessly, with an addon conjured and taken away again, on a machine that
+-- has neither.
+--
+-- Returns the number that fell back, and the list of them, so the caller owns
+-- the logging rather than this owning a log line the tests have to tolerate.
+function Omerta.Weapons.ResolveExternal(present, allow)
+    present = present or Omerta.Weapons.ExternalPresent
+    if allow == nil then allow = true end
+
+    local fellBack = {}
+    for _, def in pairs(weapons_) do
+        if not def.external then
+            def.activeClass = def.class
+        elseif not allow then
+            def.activeClass = def.class
+        else
+            -- A detector that errors has answered: the class is not there.
+            -- Anything else would let one bad lookup stop every other weapon
+            -- in the arsenal from resolving.
+            local ok, yes = pcall(present, def.external)
+            if ok and yes then
+                def.activeClass = def.external
+            else
+                def.activeClass = def.class
+                fellBack[#fellBack + 1] = def
+            end
+        end
+    end
+    table.sort(fellBack, function(a, b) return a.id < b.id end)
+    return #fellBack, fellBack
+end
+
+--------------------------------------------------------------------------------
+-- The ammunition bridge (pure)
+--------------------------------------------------------------------------------
+-- D-004 does not bend for a third-party SWEP: THE INVENTORY IS STILL THE
+-- TRUTH. What changes is that a gun we did not write does its own reloading,
+-- out of the engine's ammo pool — so the pool becomes a PROJECTION of the M9
+-- rows, written by the server and re-written every quarter second, and the
+-- rounds that leave it are charged to the inventory that backed them.
+--
+-- The whole accounting is this one function, and it is pure so the suite can
+-- pin it rather than an in-engine session having to. Every ambiguous case
+-- resolves the SAME way — the player ends up with FEWER rounds than they might
+-- have had, never more — because we cannot read the addon and a bridge that
+-- guesses generously is a duplication bug with extra steps.
+
+-- Sanity ceiling for anything crossing in from the engine. Infinities and NaN
+-- survive arithmetic and poison every comparison downstream, and a pocket
+-- holding a million rounds is a bug somewhere else that this must not amplify.
+local MAX_ROUNDS = 1000000
+
+local function wholeRounds(value)
+    value = tonumber(value) or 0
+    if value ~= value then return 0 end -- NaN
+    if value >= MAX_ROUNDS then return MAX_ROUNDS end
+    if value <= 0 then return 0 end
+    return math.floor(value)
+end
+
+-- reserve  — rounds of this caliber in the M9 inventory right now (the truth)
+-- lastClip — the magazine the server last settled on for this weapon
+-- lastPool — the pool the server last projected for this caliber
+-- clip     — what the live weapon says its magazine is now
+-- pool     — what the engine says the pool is now
+--
+-- Returns { spend, clip, pool }:
+--   spend — rounds to take out of the inventory, transactionally
+--   clip  — what the magazine must be clamped to (rounds nothing paid for
+--           come straight back out of it)
+--   pool  — what the pool must be set to, which is always the inventory after
+--           the spend, because the pool is a projection and nothing else
+function Omerta.Weapons.PlanPoolSync(reserve, lastClip, lastPool, clip, pool)
+    reserve  = wholeRounds(reserve)
+    lastClip = wholeRounds(lastClip)
+    lastPool = wholeRounds(lastPool)
+    clip     = wholeRounds(clip)
+    pool     = wholeRounds(pool)
+
+    -- Rounds the SWEP pulled out of the pool since we last looked. The pool
+    -- WAS a projection of the inventory, so these are backed by real objects
+    -- and charging for them is simply settling up. This also covers a weapon
+    -- that eats the pool directly instead of through a magazine, which some
+    -- bases do — the rounds are gone either way and the bill is the same.
+    local drawn = math.max(0, lastPool - pool)
+
+    -- Rounds that turned up in the magazine.
+    local appeared = math.max(0, clip - lastClip)
+
+    -- Magazine rounds that nothing paid for: they did not come out of the
+    -- pool, so either the addon keeps ammunition somewhere we cannot see or it
+    -- refilled itself. Both are the same problem and get the same answer.
+    local unbacked = math.max(0, appeared - drawn)
+
+    local spend = math.min(drawn, reserve)
+    spend = spend + math.min(unbacked, reserve - spend)
+
+    -- Whatever could not be paid for comes straight back out of the magazine.
+    -- This is the conservative failure, stated in one line: the gun ends up
+    -- holding what the character actually owns.
+    local shortfall = (drawn + unbacked) - spend
+
+    return {
+        spend = spend,
+        clip = math.max(0, clip - shortfall),
+        pool = reserve - spend,
+    }
+end
+
+-- What may be put back in a pocket when a gun leaves a hand.
+--
+-- For our own weapons that is simply the magazine — those rounds were on the
+-- character's person a moment ago. For a third party's it is the magazine OR
+-- what we last vouched for, whichever is SMALLER: `Clip1` on a SWEP whose
+-- magazine model we cannot read is a number we did not write, and refunding a
+-- number we did not write is how a strip-and-re-equip loop mints ammunition.
+function Omerta.Weapons.RefundableClip(clip, committed, external)
+    clip = wholeRounds(clip)
+    if not external then return clip end
+    return math.min(clip, wholeRounds(committed))
+end
+
+--------------------------------------------------------------------------------
+
 -- Returns true, or false + reason. Split out so the rules are testable and the
 -- error messages are the documentation.
 function Omerta.Weapons.Validate(id, def)
@@ -106,6 +320,21 @@ function Omerta.Weapons.Validate(id, def)
     end
     if def.spread ~= nil and (type(def.spread) ~= "number" or def.spread < 0) then
         return false, "weapon '" .. id .. "' spread must be at least 0"
+    end
+    if def.external ~= nil then
+        if type(def.external) ~= "string" or not def.external:find(CLASS_PATTERN) then
+            return false, "weapon '" .. id .. "' names external SWEP class '"
+                .. tostring(def.external) .. "', which is not a class name — "
+                .. "lowercase [a-z0-9_], exactly as the addon spells its folder"
+        end
+        -- Claiming one of ours would make the fallback point at itself, so a
+        -- missing addon would resolve to "present" and the degradation this
+        -- whole seam exists for would never fire.
+        if def.external:find("^weapon_omerta_") then
+            return false, "weapon '" .. id .. "' names '" .. def.external
+                .. "' as an EXTERNAL class, but weapon_omerta_* is ours — "
+                .. "an external is somebody else's SWEP or it is nothing"
+        end
     end
     return true
 end
@@ -184,6 +413,13 @@ function Omerta.Weapons.Register(id, def)
 
     def.id = id
     def.class = Omerta.Weapons.ClassFor(id)
+    if def.external and byClass[def.external] then
+        error("weapon '" .. id .. "' names external class '" .. def.external
+            .. "', which '" .. byClass[def.external].id .. "' already claims", 2)
+    end
+    -- Our own class until resolution says otherwise, so a call site that reads
+    -- it before boot gets the half that certainly exists rather than nil.
+    def.activeClass = def.class
     def.spread = def.spread or 1
     def.recoil = def.recoil or 1
     def.reloadTime = def.reloadTime or 2.5
@@ -191,6 +427,8 @@ function Omerta.Weapons.Register(id, def)
     def.holdType = def.holdType or "revolver"
     weapons_[id] = def
     byItem[id] = def
+    byClass[def.class] = def
+    if def.external then byClass[def.external] = def end
     -- Resolved once, here, rather than on every draw: the curve is the default
     -- and the table entry is the exception, and after this line nothing else
     -- has to know which of the two a given gun used.
@@ -212,6 +450,11 @@ function Omerta.Weapons.Register(id, def)
     -- The SWEP class the engine runs. Registered on both realms at load;
     -- everything behavioural lives on the shared base, so the generated class
     -- is nothing but the definition wearing an engine-shaped coat.
+    --
+    -- Registered even for a weapon that names an `external`, and that is the
+    -- point rather than an oversight: it is the fallback, and a fallback that
+    -- is only built when it turns out to be needed is a fallback nobody has
+    -- ever run.
     if Omerta.InEngine then
         weapons.Register({
             Base = "weapon_omerta_base",

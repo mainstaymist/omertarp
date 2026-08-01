@@ -77,14 +77,27 @@ local function giveOne(ply, row, def)
     -- A downed character holds nothing; the row stays equipped and the weapon
     -- arrives when they stand up, through the same reconcile.
     if Omerta.Injury.IsPlayerDown(ply) then return end
-    if ply:HasWeapon(def.class) then return end
+    -- The class the weapon is actually running: ours, or the third party's the
+    -- arsenal named and this server turned out to have. Everything below is
+    -- written against the resolved answer rather than against `def.class`, and
+    -- that is the entire cost of the seam on this path.
+    local class = Omerta.Weapons.ClassOf(def)
+    if ply:HasWeapon(class) then return end
 
-    local wep = ply:Give(def.class)
+    local wep = ply:Give(class)
     if IsValid(wep) then
         wep.OmertaInstance = row.id
+        -- Set on the ENTITY for an external class, where our own generated
+        -- classes carry it on the class table. It is what the reconcile, the
+        -- holster props and M15's provenance all read, and a third party's
+        -- SWEP has no reason to mind an extra Lua field.
+        wep.OmertaId = def.id
         -- Given EMPTY, always. Rounds are items; the clip is filled by
         -- reloading from what the character actually carries.
         wep:SetClip1(0)
+        if Internal.ExternalAfterGive then
+            Internal.ExternalAfterGive(ply, wep, def)
+        end
     end
 
     -- The readout is right the moment the gun appears, rather than a quarter
@@ -95,10 +108,21 @@ end
 -- Rounds in the clip go back into the pocket they came from. `force` skips the
 -- room check deliberately: this ammunition was on the character's person a
 -- moment ago, inside the gun, so refusing it now would delete real objects.
+--
+-- For a third party's SWEP the amount is clamped to what the bridge last
+-- vouched for (`RefundableClip`): `Clip1` on a magazine model we have never
+-- read is a number we did not write, and refunding a number we did not write
+-- is how strip-and-re-equip mints ammunition.
 local function refundClip(ply, wep, def)
-    local rounds = IsValid(wep) and wep:Clip1() or 0
-    if rounds <= 0 or not IsValid(ply) then return end
+    if not (IsValid(ply) and IsValid(wep)) then return end
+    if Internal.ExternalBeforeStrip then
+        Internal.ExternalBeforeStrip(ply, wep, def)
+    end
+    local rounds = Omerta.Weapons.RefundableClip(wep:Clip1(), wep.OmertaCommitted,
+        Omerta.Weapons.IsExternal(def))
     wep:SetClip1(0)
+    wep.OmertaClipSeen, wep.OmertaCommitted = 0, 0
+    if rounds <= 0 then return end
     Omerta.Inventory.Add(ply, def.ammo, rounds, { force = true }, function(ok, err)
         if not ok then
             Omerta.Log.Error("weapons", "could not refund %d round(s) of %s: %s",
@@ -109,13 +133,15 @@ end
 
 local function stripOne(ply, def)
     if not (IsValid(ply) and def) then return end
-    local wep = ply:GetWeapon(def.class)
+    local class = Omerta.Weapons.ClassOf(def)
+    local wep = ply:GetWeapon(class)
     if IsValid(wep) then
         refundClip(ply, wep, def)
-        ply:StripWeapon(def.class)
+        ply:StripWeapon(class)
         -- Empty hands hold no caliber, so the count that was on screen a
         -- moment ago is now about a gun the character no longer has.
         Internal.PushReserve(ply)
+        if Internal.SyncExternal then Internal.SyncExternal(ply) end
     end
 end
 
@@ -139,7 +165,12 @@ function Internal.Reconcile(ply)
         for _, row in ipairs(Omerta.Inventory.Get(ply) or {}) do
             if row.equipped_slot then
                 local def = Omerta.Weapons.ForItem(row.def_id)
-                if def then desired[def.class] = { row = row, def = def } end
+                -- Keyed by the RESOLVED class. Keying by ours would strip a
+                -- third party's SWEP on the first sweep after giving it, one
+                -- quarter second later, forever.
+                if def then
+                    desired[Omerta.Weapons.ClassOf(def)] = { row = row, def = def }
+                end
             end
         end
     end
@@ -159,6 +190,7 @@ function Internal.Reconcile(ply)
     -- The holster props are NOT settled here; see their own section for why
     -- the reconcile timer is their only owner.
     Internal.PushReserve(ply)
+    if Internal.SyncExternal then Internal.SyncExternal(ply) end
 end
 
 --------------------------------------------------------------------------------
@@ -271,24 +303,34 @@ end
 
 local lastReserve = {} -- SteamID64 -> the number last sent
 
+-- Rounds of one caliber on this character.
+--
+-- The player goes STRAIGHT into Get, which normalises a Player itself.
+-- OwnerOf returns a type/id PAIR, not a descriptor — the trap this file
+-- already documents once above, and the reason reloading read every pocket as
+-- empty for a week.
+function Internal.ReserveOf(ply, ammoId)
+    if not (IsValid(ply) and ammoId) then return 0 end
+    local total = 0
+    for _, row in ipairs(Omerta.Inventory.Get(ply) or {}) do
+        if row.def_id == ammoId then total = total + row.quantity end
+    end
+    return total
+end
+
 -- Rounds of the HELD weapon's caliber, on this character. Nothing else is a
 -- reserve: the .45 in a coat is not this revolver's ammunition, and saying
 -- otherwise would make the readout a lie exactly when it matters.
+--
+-- Resolved by CLASS rather than by `wep.OmertaId`, because a third party's
+-- SWEP carries no class-table id of ours — the entity field giveOne stamps is
+-- server-side only, and this same reading is wanted on the client.
 function Internal.ReserveFor(ply)
     if not IsValid(ply) then return 0 end
     local wep = ply:GetActiveWeapon()
-    local def = IsValid(wep) and wep.OmertaId and Omerta.Weapons.Get(wep.OmertaId)
+    local def = IsValid(wep) and Omerta.Weapons.ForClass(wep:GetClass())
     if not def then return 0 end
-
-    -- The player goes STRAIGHT into Get, which normalises a Player itself.
-    -- OwnerOf returns a type/id PAIR, not a descriptor — the trap this file
-    -- already documents once above, and the reason reloading read every pocket
-    -- as empty for a week.
-    local total = 0
-    for _, row in ipairs(Omerta.Inventory.Get(ply) or {}) do
-        if row.def_id == def.ammo then total = total + row.quantity end
-    end
-    return total
+    return Internal.ReserveOf(ply, def.ammo)
 end
 
 function Internal.PushReserve(ply)
@@ -585,9 +627,13 @@ local function holsterSignature(ply)
     for _, wep in ipairs(ply:GetWeapons()) do
         -- What is in the hands is not on the hip. Compared by class rather
         -- than by entity so a weapon re-given mid-frame cannot read as two.
-        if wep.OmertaId and wep:GetClass() ~= activeClass then
-            ids[#ids + 1] = wep.OmertaId
-        end
+        --
+        -- Resolved by class for the same reason the hotbar and the readout
+        -- are: one rule for "is this gun one of ours", so a weapon running a
+        -- third party's SWEP hangs off a back exactly as our own does.
+        local def = wep:GetClass() ~= activeClass
+            and Omerta.Weapons.ForClass(wep:GetClass()) or nil
+        if def then ids[#ids + 1] = def.id end
     end
     table.sort(ids) -- deterministic, or an unchanged loadout rebuilds forever
     return table.concat(ids, ",")
@@ -621,6 +667,12 @@ end
 function MODULE:OnEnable()
     if not Omerta.InEngine then return end
 
+    -- Which class each weapon actually runs, and the hooks a SWEP we did not
+    -- write owes the rest of the game. Installed here rather than at file
+    -- scope because resolution asks the engine what is registered, and
+    -- OnEnable is the first moment every addon has finished registering.
+    if Internal.InstallExternal then Internal.InstallExternal() end
+
     -- Hands from the first breath, not only once the inventory loads: the
     -- holster has to exist before there is anything to holster into it.
     hook.Add("PlayerSpawn", "omerta.weapons.hands", function(ply)
@@ -646,10 +698,17 @@ function MODULE:OnEnable()
     -- state nothing announces — a weapon becoming the active one is a keypress
     -- the engine handles by itself. So they are reconciled on a timer against
     -- the answer rather than hung off events that do not exist.
+    -- The third-party bridge rides the SAME sweep, and deliberately: the
+    -- engine's ammo pool is a projection of the M9 rows and it is re-written
+    -- from them here, so a round entering or leaving a pocket by ANY route —
+    -- picked up, bought, dropped, searched off a body — reaches the pool
+    -- within a quarter second without M9 needing a hook it has no other use
+    -- for. Give, strip and every shot fired settle it immediately besides.
     timer.Create("omerta.weapons.carried", RECONCILE_INTERVAL, 0, function()
         for _, ply in ipairs(player.GetAll()) do
             Internal.RefreshHolsters(ply)
             Internal.PushReserve(ply)
+            if Internal.SyncExternal then Internal.SyncExternal(ply) end
         end
     end)
 
@@ -700,9 +759,8 @@ function MODULE:OnEnable()
     -- a clip of ammunition per weapon.
     hook.Add("PlayerDisconnected", "omerta.weapons.refund", function(ply)
         for _, wep in ipairs(ply:GetWeapons()) do
-            if wep.OmertaId then
-                refundClip(ply, wep, Omerta.Weapons.Get(wep.OmertaId))
-            end
+            local def = Omerta.Weapons.ForClass(wep:GetClass())
+            if def then refundClip(ply, wep, def) end
         end
 
         -- A draw interrupted by the front door. Nothing was written, so this
@@ -713,13 +771,22 @@ function MODULE:OnEnable()
         -- comes back would keep its entry for the life of the server.
         clearHolsters(ply)
         Internal.ForgetReserve(ply)
+        if Internal.ForgetExternal then Internal.ForgetExternal(ply) end
     end)
 
+    -- The class column answers the question an operator who has just installed
+    -- an addon actually has, which is "did it take" — so it prints what each
+    -- weapon is RUNNING, and says when that is not what the arsenal asked for.
     concommand.Add("omerta_weapons_list", function(caller)
         if IsValid(caller) and not caller:IsSuperAdmin() then return end
         for _, def in ipairs(Omerta.Weapons.All()) do
-            Omerta.Log.Info("weapons", "  %-20s %-22s dmg %-3d clip %-2d  %s",
-                def.id, def.class, def.damage, def.clip, def.ammo)
+            local note = ""
+            if def.external and not Omerta.Weapons.IsExternal(def) then
+                note = "  (wanted " .. def.external .. ")"
+            end
+            Omerta.Log.Info("weapons", "  %-20s %-26s dmg %-3d clip %-2d  %s%s",
+                def.id, Omerta.Weapons.ClassOf(def), def.damage, def.clip,
+                def.ammo, note)
         end
     end)
 end
