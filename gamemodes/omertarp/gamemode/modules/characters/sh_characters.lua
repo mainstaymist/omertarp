@@ -29,24 +29,43 @@ Omerta.Characters.STATE = {
 
 -- Selectable models, by index. A client sends the INDEX; the server maps it.
 -- Never accept a model path from a client — it would set arbitrary models on
--- players. Placeholder roster per D-005 (existing props/models first, custom
--- period assets only once gameplay is settled).
+-- players.
+--
+-- The period pack, chosen by the project lead. This retires the HL2 citizens
+-- D-005 allowed as placeholders: these are the first assets in the game that
+-- actually look like the city the design describes, and the placeholder rule
+-- was always "until the real thing exists".
+--
+-- What is STORED is the resolved path, not this index (see sv_characters'
+-- creation path), which is what makes editing this list safe: a character
+-- created against an older roster keeps the model they were made with rather
+-- than silently becoming whoever now occupies that slot.
+--
+-- The pack is Workshop content and is NOT mounted by this repository. A server
+-- without it renders these as errors; the addon has to be in the collection
+-- beside the map and the weather system.
 Omerta.Characters.MODELS = {
-    "models/player/group01/male_01.mdl",
-    "models/player/group01/male_02.mdl",
-    "models/player/group01/male_03.mdl",
-    "models/player/group01/male_04.mdl",
-    "models/player/group01/male_05.mdl",
-    "models/player/group01/male_06.mdl",
-    "models/player/group01/male_07.mdl",
-    "models/player/group01/male_08.mdl",
-    "models/player/group01/male_09.mdl",
-    "models/player/group01/female_01.mdl",
-    "models/player/group01/female_02.mdl",
-    "models/player/group01/female_03.mdl",
-    "models/player/group01/female_04.mdl",
-    "models/player/group01/female_06.mdl",
+    "models/sentry/sentryoldmob/mafia/sentrymobmale2pm.mdl",
+    "models/sentry/sentryoldmob/mafia/sentrymobmale4pm.mdl",
+    "models/sentry/sentryoldmob/mafia/sentrymobmale6pm.mdl",
+    "models/sentry/sentryoldmob/mafia/sentrymobmale7pm.mdl",
+    "models/sentry/sentryoldmob/mafia/sentrymobmale8pm.mdl",
+    "models/sentry/sentryoldmob/mafia/sentrymobmale9pm.mdl",
 }
+
+-- What the creation screen calls each one.
+--
+-- The form used to label a model with its own filename, which was tolerable
+-- while those read "male_01" and is not now that they read
+-- "sentrymobmale7pm". A player choosing a face is not choosing a file, and the
+-- number in the filename is an artist's ordering that means nothing to them.
+--
+-- Deliberately just numbers. Naming these six would be inventing six
+-- characters the player has not made yet — the name is the next field down and
+-- it is theirs to fill in.
+function Omerta.Characters.ModelLabel(index)
+    return "Appearance " .. tostring(index)
+end
 
 Omerta.Characters.PATHS = { "criminal", "police", "independent" }
 

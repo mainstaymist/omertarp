@@ -152,6 +152,34 @@ check("a season's number is read off the label, never parsed out of a name", fun
     assert(Omerta.Seasons.Title(nil) == "no season")
 end)
 
+check("a season that predates numbering still has a number", function()
+    loadRules()
+    local Ordinal = Omerta.Seasons.OrdinalOf
+
+    -- The case the field actually hit. Numbering arrived AFTER the seasons
+    -- did, so the season everybody was running had a typed label, read as no
+    -- number at all, and the front end showed a bare "THE CITY".
+    local rows = { { id = 7, label = "The Long Winter" } }
+    assert(Ordinal(rows, 7) == 1, "the only season that has ever existed is #1")
+
+    -- Ordered by id, not by position in the result set: a backend is free to
+    -- return rows in whatever order it likes.
+    local three = { { id = 9 }, { id = 2 }, { id = 5 } }
+    assert(Ordinal(three, 2) == 1)
+    assert(Ordinal(three, 5) == 2)
+    assert(Ordinal(three, 9) == 3)
+
+    -- A deleted season shifts the ones after it, and that is correct for a
+    -- COUNT: this is "which season is this" for a caption, not the identity
+    -- the audit log keys on. Numbering new seasons never reuses a number
+    -- (see the check below); reading an old one is a different question.
+    assert(Ordinal({ { id = 2 }, { id = 9 } }, 9) == 2)
+
+    assert(Ordinal(three, 4) == nil, "a season not in the list has no ordinal")
+    assert(Ordinal(nil, 1) == nil)
+    assert(Ordinal(three, nil) == nil)
+end)
+
 check("the next season's number is one past the highest that has existed", function()
     loadRules()
     local Next = Omerta.Seasons.Internal.NextSeasonNumber

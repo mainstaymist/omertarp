@@ -229,15 +229,66 @@ end
 -- Omerta.Seasons.Number is refreshed on the server either way, so GetNumber()
 -- answers in both realms rather than being a client-only curiosity.
 
-local function refreshNumber()
-    Omerta.Seasons.Number = activeSeason and Omerta.Seasons.NumberOf(activeSeason) or nil
+-- A season that predates numbering still has a number: its ORDINAL.
+--
+-- The first version read the number off the label and stopped there, so any
+-- season created before this change carried none and the front end read a bare
+-- "THE CITY" forever. That was reported from the field on the first season
+-- anybody actually had, which makes it the common case rather than the edge
+-- one: numbering arrived after the seasons did.
+--
+-- The fallback counts rather than parses. "Season 10", "The Long Winter" and
+-- an empty label are all equally unparseable and all equally the Nth season
+-- that has existed, and the row order is a fact the database already keeps.
+-- The label itself is left alone: it is what the operator typed, it is what
+-- omerta_season_list has always shown them, and rewriting somebody's data to
+-- make a display line easier is not a trade this project makes.
+local function refreshNumber(done)
+    done = done or function() end
+
+    if not activeSeason then
+        Omerta.Seasons.Number = nil
+        done()
+        return
+    end
+
+    local direct = Omerta.Seasons.NumberOf(activeSeason)
+    if direct then
+        Omerta.Seasons.Number = direct
+        done()
+        return
+    end
+
+    Internal.Repo.GetAllSeasons(function(rows, err)
+        if err then
+            -- Not fatal, and deliberately not silent: the city keeps running
+            -- under a nameless number rather than refusing to start over a
+            -- caption.
+            Omerta.Log.Warn("seasons", "could not derive season number: %s", tostring(err))
+        else
+            Omerta.Seasons.Number = Omerta.Seasons.OrdinalOf(rows, activeSeason.id)
+        end
+        done()
+    end)
 end
 
 local function tellNumber(targets)
-    refreshNumber()
-    if not Omerta.InEngine or targets == nil then return end
-    if type(targets) == "table" and #targets == 0 then return end
-    Omerta.Net.Send("seasons.number", { number = Omerta.Seasons.Number or 0 }, targets)
+    refreshNumber(function()
+        if not Omerta.InEngine or targets == nil then return end
+        -- Re-checked after the round trip, not before it: the answer may have
+        -- come back from the database a tick after somebody disconnected, and
+        -- Net.Send to a player who has gone is an error rather than a no-op.
+        local live = {}
+        if type(targets) == "table" then
+            for _, ply in ipairs(targets) do
+                if IsValid(ply) then live[#live + 1] = ply end
+            end
+        elseif IsValid(targets) then
+            live[1] = targets
+        end
+        if #live == 0 then return end
+        Omerta.Net.Send("seasons.number", { number = Omerta.Seasons.Number or 0 }, live)
+    end)
 end
 
 local function tellEveryone()

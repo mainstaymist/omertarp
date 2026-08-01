@@ -2,8 +2,8 @@
 
 **What this is:** everything built but not yet confirmed working in-engine, in the order worth doing it. Kept current as work lands — when you report results, the statuses here get updated and anything that fails becomes a fix before new work starts.
 
-**Last updated:** 2026-08-01, after the fourteen-item pass.
-**Headless suite:** 421 checks passing. `luac -p` clean across the tree. 19 modules resolving.
+**Last updated:** 2026-08-01, after the field report on section 1.
+**Headless suite:** 422 checks passing. `luac -p` clean across the tree. 19 modules resolving.
 
 Status key: **☐ untested** · **☑ passed** · **☒ failed** (details inline) · **◐ partly**
 
@@ -13,9 +13,9 @@ Status key: **☐ untested** · **☑ passed** · **☒ failed** (details inline
 
 | | Check | How |
 |---|---|---|
-| ☐ | **Server boots clean with 18 modules** | Look for `loaded 18 module(s): … injury, events, death, phone, weapons, menu` and no Lua errors |
-| ☐ | **Client boots clean** | Join and check the client console — this has never been confirmed since the module count grew |
-| ☐ | **Migrations 12 and 13 apply on MySQL** | **This is the one that matters most.** D-008 makes MySQL the backend of record, and the injury/body/event tables have only ever run against SQLite |
+| ☑ | **Server boots clean with 18 modules** | Look for `loaded 18 module(s): … injury, events, death, phone, weapons, menu` and no Lua errors |
+| ☑ | **Client boots clean** | Join and check the client console — this has never been confirmed since the module count grew |
+| ☑ | **Migrations 12 and 13 apply on MySQL** | **This is the one that matters most.** D-008 makes MySQL the backend of record, and the injury/body/event tables have only ever run against SQLite |
 
 If migrations fail, stop and send me the error — everything below depends on them.
 
@@ -46,32 +46,32 @@ was the thing that fired the race.**
 
 | | Check | How | Expect |
 |---|---|---|---|
-| ☐ | **Spam C** | Hold and release C repeatedly, fast | One window, every time. Never two, never one that will not leave |
-| ☐ | **C closes the loot window** | Search a body, press C | It closes. This is the one that was completely stuck |
-| ☐ | **C does not then open your pockets** | Same press, watch what follows | Nothing opens behind it |
-| ☐ | **Pockets cannot open over a loot plate** | Loot plate up, press and hold C | The plate closes; your pockets do not appear in its place |
-| ☐ | **The server lets go too** | Dismiss a loot plate, then pick something up | Your pockets refresh silently. The body's plate does **not** come back unasked |
-| ☐ | **E again cancels a search** | Start searching, press E again | It stops. Nothing was taken, nothing to undo |
-| ☐ | **Holding E does not stutter** | Hold E on a body | One continuous search, not a rummage restarting several times a second |
-| ☐ | **The titles sit properly** | Open pockets, then a body, then a container | POCKETS / the body's name / the container's name all clear of the plate edge |
+| ☑ | **Spam C** | Hold and release C repeatedly, fast | One window, every time. Never two, never one that will not leave |
+| ☑ | **C closes the loot window** | Search a body, press C | It closes. This is the one that was completely stuck |
+| ☑ | **C does not then open your pockets** | Same press, watch what follows | Nothing opens behind it |
+| ☑ | **Pockets cannot open over a loot plate** | Loot plate up, press and hold C | The plate closes; your pockets do not appear in its place |
+| ☑ | **The server lets go too** | Dismiss a loot plate, then pick something up | Your pockets refresh silently. The body's plate does **not** come back unasked |
+| ☑ | **E again cancels a search** | Start searching, press E again | It stops. Nothing was taken, nothing to undo |
+| ☑ | **Holding E does not stutter** | Hold E on a body | One continuous search, not a rummage restarting several times a second |
+| ☑ | **The titles sit properly** | Open pockets, then a body, then a container | POCKETS / the body's name / the container's name all clear of the plate edge |
 
 ### The gun
 
 | | Check | How | Expect |
 |---|---|---|---|
-| ☐ | **The crosshair is round** | Look at anything | An actual circle, slightly smaller. It was a rounded *square* — `draw.RoundedBox` builds corners from a texture, which cannot resolve a curve at three pixels |
-| ☐ | **The ammo reads left to right** | Hold a gun | Big loaded count **first**, `/ reserve` small after it. It was reversed |
-| ☐ | **Reload with empty pockets** | Hold R with no ammo | One line per press. Hold it down and it stays one line |
-| ☐ | **Tapping R twice still says it twice** | Press R, pause, press again | Two lines. The suppression is per press, not a cooldown |
+| ☑ | **The crosshair is round** | Look at anything | An actual circle, slightly smaller. It was a rounded *square* — `draw.RoundedBox` builds corners from a texture, which cannot resolve a curve at three pixels |
+| ☑ | **The ammo reads left to right** | Hold a gun | Big loaded count **first**, `/ reserve` small after it. It was reversed |
+| ☑ | **Reload with empty pockets** | Hold R with no ammo | One line per press. Hold it down and it stays one line |
+| ☑ | **Tapping R twice still says it twice** | Press R, pause, press again | Two lines. The suppression is per press, not a cooldown |
 
 ### The screen
 
 | | Check | How | Expect |
 |---|---|---|---|
-| ☐ | **No more legs** | Look straight down | Your own model does not appear. It is removed, not fixed — see below |
-| ☐ | **Black and white takes the UI with it** | Settings → Black and white → on, then open anything | Menus, inventory, HUD all grey. Brass and the danger red stay **tellable apart** — that is what the weighting is for |
-| ☐ | **Settings clears the wordmark** | Menu → Settings | Nothing overlaps OMERTÀ or the tagline |
-| ☐ | **The season number shows** | Look at the bottom of the menu | "THE CITY" with the season number beside it |
+| ☑ | **No more legs** | Look straight down | Your own model does not appear. It is removed, not fixed — see below |
+| ☑ | **Black and white takes the UI with it** | Settings → Black and white → on, then open anything | Menus, inventory, HUD all grey. Brass and the danger red stay **tellable apart** — that is what the weighting is for |
+| ☑ | **Settings clears the wordmark** | Menu → Settings | Nothing overlaps OMERTÀ or the tagline |
+| ☒ | **The season number shows** | Look at the bottom of the menu | **Failed 2026-08-01** — read a bare "THE CITY". The running season predates numbering, so its label was a name and the number was read off the label alone. Fixed: a season with an unreadable label now takes its ordinal |
 
 **The legs are gone rather than repaired.** `ShouldDrawLocalPlayer` draws the
 whole model at its world position, head included, and the first-person camera
@@ -101,14 +101,14 @@ Seasons are numbered. `omerta_season_create` takes no arguments now.
 
 | | Check | How | Expect |
 |---|---|---|---|
-| ☐ | **A returning player gets the menu** | Rejoin with a living character | Menu, with **RETURN TO THE CITY** at the top |
-| ☐ | **And can get back in** | Press it | Fade, then you are standing in the world where you left off |
-| ☐ | **You cannot move behind the menu** | Push forward while the menu is up | You do not move. **This is the one to break hardest** — a player who cannot move after pressing Return is worse than the bug this fixes |
-| ☐ | **A new player still creates** | Fresh account | **ENTER THE CITY**, then the creation form |
-| ☐ | **Dying still skips the intro** | Die, make a new character | No title card on the way back |
-| ☐ | **Rejoining while down** | Go down, disconnect, rejoin, Return | You come back **on the floor**, not standing |
-| ☐ | **A season is one command** | `omerta_season_create` | Creates the next number with no label typed. Nine existing named seasons should produce #10, not #1 |
-| ☐ | **Numbers survive a gap** | Delete a middle season, create another | The next number, never a reused one |
+| ☑ | **A returning player gets the menu** | Rejoin with a living character | Menu, with **RETURN TO THE CITY** at the top |
+| ☑ | **And can get back in** | Press it | Fade, then you are standing in the world where you left off |
+| ☑ | **You cannot move behind the menu** | Push forward while the menu is up | You do not move. **This is the one to break hardest** — a player who cannot move after pressing Return is worse than the bug this fixes |
+| ☑ | **A new player still creates** | Fresh account | **ENTER THE CITY**, then the creation form |
+| ☑ | **Dying still skips the intro** | Die, make a new character | No title card on the way back |
+| ☑ | **Rejoining while down** | Go down, disconnect, rejoin, Return | You come back **on the floor**, not standing |
+| ☑ | **A season is one command** | `omerta_season_create` | Creates the next number with no label typed. Nine existing named seasons should produce #10, not #1 |
+| ☑ | **Numbers survive a gap** | Delete a middle season, create another | The next number, never a reused one |
 
 **Three things could not be verified without a running server**, all in the
 join path: that `PlayerSpawn` fires reliably for a player who now never loads a

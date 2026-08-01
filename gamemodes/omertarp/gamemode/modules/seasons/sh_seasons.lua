@@ -41,6 +41,31 @@ function Omerta.Seasons.NumberOf(season)
     return number
 end
 
+-- Which season this is by COUNT — the Nth ever created — for a season whose
+-- label is not a number and cannot be read as one.
+--
+-- Ordered by id rather than by created_at: ids are handed out by the database
+-- in creation order and are unique, where two seasons created in the same
+-- second would tie on a timestamp and sort differently on two backends. A
+-- season that is not in the list has no ordinal rather than a guessed one.
+--
+-- Pure, and takes the rows it is asked about, so the headless suite can pin
+-- the gap case without a database.
+function Omerta.Seasons.OrdinalOf(rows, seasonId)
+    if type(rows) ~= "table" or not seasonId then return nil end
+
+    local ids = {}
+    for _, row in ipairs(rows) do
+        if row and row.id then ids[#ids + 1] = row.id end
+    end
+    table.sort(ids)
+
+    for index, id in ipairs(ids) do
+        if id == seasonId then return index end
+    end
+    return nil
+end
+
 -- What a season is called, on screen and in the log. A legacy named season
 -- keeps its name: it is what the operator called it and what omerta_season_list
 -- has always shown them.

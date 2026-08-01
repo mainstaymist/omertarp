@@ -145,8 +145,8 @@ function Omerta.Characters.BuildCreationForm(formParent, boothParent, opts)
 
     fieldLabel("Appearance")
     local models = {}
-    for i, mdl in ipairs(Omerta.Characters.MODELS) do
-        models[i] = { label = mdl:match("([^/]+)%.mdl$") or mdl, value = i }
+    for i in ipairs(Omerta.Characters.MODELS) do
+        models[i] = { label = Omerta.Characters.ModelLabel(i), value = i }
     end
     local modelChoice = H.Cycler(formParent, models, 1, function(item)
         booth:SetModel(Omerta.Characters.MODELS[item.value]

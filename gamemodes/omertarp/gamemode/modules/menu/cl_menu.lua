@@ -811,18 +811,39 @@ function Omerta.Menu.Client.BuildSettings(parent)
 
     -- A toggle reads its convar and restyles: lit (commit) when on, quiet when
     -- off, so the state is the button rather than a word beside it.
+    -- A toggle reads its convar and restyles: lit when on, quiet when off, so
+    -- the state IS the button rather than a word beside it.
+    --
+    -- It follows the convar rather than rebuilding on the click, and that is
+    -- the fix for a reported bug: RunConsoleCommand does not set a convar, it
+    -- QUEUES a console command, which the engine runs at the end of the frame.
+    -- Rebuilding on the next line therefore re-read the OLD value and drew the
+    -- old button, while the setting itself applied perfectly — "the button
+    -- doesn't change but the setting works, and it's right when I come back",
+    -- exactly as reported.
+    --
+    -- Watching the value instead of predicting it is also correct for the case
+    -- nobody thought about: the convar changed from the console, or by another
+    -- screen, while this one is open.
     local function toggle(text, convar, onApply)
         caption(text)
-        local on = GetConVar(convar):GetBool()
-        local button = Omerta.HUD.Button(list, on and "On" or "Off",
-            on and "commit" or "quiet", function()
+        local built = GetConVar(convar):GetBool()
+        local button = Omerta.HUD.Button(list, built and "On" or "Off",
+            built and "commit" or "quiet", function()
                 local now = not GetConVar(convar):GetBool()
                 RunConsoleCommand(convar, now and "1" or "0")
                 if onApply then onApply(now) end
-                if IsValid(frame) then frame:Rebuild() end
             end)
         button:SetPos(0, y)
         button:SetSize(140 * scale, rowH * 0.8)
+        -- One comparison per frame on a screen with three controls on it. The
+        -- rebuild is what restyles the button, because a Button bakes its
+        -- style at construction — and it lands the frame after the console
+        -- command actually ran, which is the whole point.
+        button.Think = function()
+            if GetConVar(convar):GetBool() == built then return end
+            if IsValid(frame) then frame:Rebuild() end
+        end
         y = y + rowH * 0.8 + block
     end
 
