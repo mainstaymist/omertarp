@@ -268,8 +268,13 @@ hook.Add("Omerta.CharactersState", "omerta.menu.state", function(state)
             spawnFade = nil
         end
         -- The rail's first entry has just changed identity; rebuild so the
-        -- player is not reading the other one's label.
-        if M.phase == "menu" and IsValid(frame) then frame:Rebuild() end
+        -- player is not reading the other one's label. Only on the root: this
+        -- message can arrive again at any time (the readiness handshake repeats
+        -- it, a staff retirement sends it) and rebuilding the creation screen
+        -- underneath somebody would throw away the name they were typing.
+        if M.phase == "menu" and M.screen == "root" and IsValid(frame) then
+            frame:Rebuild()
+        end
     elseif state == STATE.ACTIVE then
         M.wanted, M.awaiting = false, false
         if IsValid(frame) then frame:Remove() end
@@ -427,9 +432,16 @@ local ROW_H, COLUMN_W = 52, 380
 -- and every screen asks. A screen that measures the wordmark for itself is a
 -- screen that will one day be laid over it again.
 --
--- Returns { eyebrow, title, subtitle, contentTop } — the first three are text
--- baselines for TEXT_ALIGN_BOTTOM draws (nil where that line does not exist),
--- contentTop is the top edge anything else in the rail may occupy.
+-- Returns { eyebrow, title, subtitle, contentTop, contentCeiling } — the first
+-- three are text baselines for TEXT_ALIGN_BOTTOM draws (nil where that line
+-- does not exist), and the last two are the two numbers a screen needs:
+--
+--   contentTop      where content RESTS, which is where it belongs.
+--   contentCeiling  the smallest Y it may ever be pushed to — one step under
+--                   the last line of the masthead. A tall screen may borrow the
+--                   space between the two to fit itself; nothing may cross the
+--                   ceiling, because the wordmark is the thing all of this
+--                   exists to stop being drawn over.
 --
 -- Creation keeps a taller block than the root's. It is not a stylistic
 -- preference: its column runs from contentTop to the bottom margin and hosts a
@@ -443,18 +455,24 @@ function Omerta.Menu.Client.Masthead()
     local middle = ScrH() * 0.5
 
     if M.screen == "creation" then
+        local top = middle - 258 * scale + Omerta.HUD.Space(4)
         return {
             eyebrow = middle - 300 * scale,
             title = middle - 258 * scale,
-            contentTop = middle - 258 * scale + Omerta.HUD.Space(4),
+            -- Creation's column already begins immediately under its heading,
+            -- so there is nothing between rest and ceiling for it to borrow.
+            contentTop = top,
+            contentCeiling = top,
         }
     end
 
     local title = middle - ROW_H * scale * 2.6
+    local subtitle = title + 26 * scale
     return {
         title = title,
-        subtitle = title + 26 * scale,
+        subtitle = subtitle,
         contentTop = middle - ROW_H * scale,
+        contentCeiling = subtitle + Omerta.HUD.Space(1),
     }
 end
 
@@ -821,15 +839,19 @@ function Omerta.Menu.Client.BuildSettings(parent)
 
     -- Sized to what is actually in it, and placed under the masthead.
     --
-    -- No upward clamp. The old one existed to keep the last control on screen
-    -- and it is exactly what would put the first caption back over the tagline
-    -- on a short screen — and the masthead is the thing this change exists to
-    -- stop being overdrawn. If the column ever does outgrow the space beneath
-    -- it, that is a content problem (one more setting than the rail can hold),
-    -- not a positioning one, and the escape from it is the ESCAPE key rather
-    -- than a Back button dragged up over the wordmark to be reachable.
+    -- The old clamp centred the column and then pulled it off the bottom edge,
+    -- which is what printed INTERFACE SCALE across the tagline. This one moves
+    -- between the masthead's two numbers and no further: it rests at
+    -- contentTop, and only if the column will not otherwise reach the bottom
+    -- margin — which happens on a 1080p screen at the largest interface scale,
+    -- where three settings and a Back button come to more than half the height
+    -- of the display — does it borrow upward, stopping dead at contentCeiling.
+    -- Past that the column simply runs long, and ESCAPE (above) is the way out
+    -- rather than a Back button dragged over the wordmark to be reachable.
+    local head = Omerta.Menu.Client.Masthead()
     list:SetSize(width, y)
-    list:SetPos(margin, Omerta.Menu.Client.Masthead().contentTop)
+    list:SetPos(margin, math.max(head.contentCeiling,
+        math.min(head.contentTop, ScrH() - margin - y)))
 end
 
 --------------------------------------------------------------------------------
@@ -897,6 +919,18 @@ hook.Add("Omerta.CharacterCreateFailed", "omerta.menu.fade_cancel", function()
     if spawnFade and spawnFade.phase ~= "in" then spawnFade = nil end
 end)
 
+-- The hold is bounded. It covers a round trip, and a round trip that never
+-- comes back must not leave somebody staring at a black screen they cannot
+-- press anything through — which is now reachable in a way it was not before:
+-- "Return to the city" starts the fade and then waits on a server that could,
+-- in principle, have nothing to say (an account still loading, a season ending
+-- in the same second). After this the black lifts and puts them back on the
+-- rail they pressed it from, which is a screen with a way out on it.
+--
+-- A CEILING, not a duration. M28's opening plays inside this hold and will want
+-- longer; raising it then is one number, and it is a number that exists.
+local HOLD_MAX = 8
+
 function Omerta.Menu.Client.SpawnFadeAlpha()
     if not spawnFade then return 0 end
     local elapsed = CurTime() - spawnFade.startedAt
@@ -907,6 +941,11 @@ function Omerta.Menu.Client.SpawnFadeAlpha()
         end
         return elapsed / FADE_OUT
     elseif spawnFade.phase == "hold" then
+        if elapsed >= FADE_OUT + HOLD_MAX then
+            Omerta.Log.Warn("menu", "the handover into the world went unanswered " ..
+                "for %d seconds — lifting the black rather than holding it", HOLD_MAX)
+            spawnFade = { phase = "in", startedAt = CurTime(), cinematic = false }
+        end
         return 1
     end
     if elapsed >= FADE_IN then

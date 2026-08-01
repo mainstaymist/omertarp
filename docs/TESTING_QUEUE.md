@@ -2,8 +2,8 @@
 
 **What this is:** everything built but not yet confirmed working in-engine, in the order worth doing it. Kept current as work lands — when you report results, the statuses here get updated and anything that fails becomes a fix before new work starts.
 
-**Last updated:** 2026-07-31, after the motion and world pass.
-**Headless suite:** 405 checks passing. `luac -p` clean across the tree. 18 modules resolving.
+**Last updated:** 2026-08-01, after the fourteen-item pass.
+**Headless suite:** 421 checks passing. `luac -p` clean across the tree. 19 modules resolving.
 
 Status key: **☐ untested** · **☑ passed** · **☒ failed** (details inline) · **◐ partly**
 
@@ -21,7 +21,108 @@ If migrations fail, stop and send me the error — everything below depends on t
 
 ---
 
-## 1. Motion, and the world outside (2026-07-31)
+## 1. The fourteen-item pass (2026-08-01)
+
+Two of these were the same bug, and two more were not what they looked like.
+
+### The stuck windows — one race, reported twice
+
+*"Spam C and it duplicates the inventory menu which stays and will not go away"*
+and *"the looting screen cannot be closed with C and you can still open your
+inventory in that view"* have a single cause.
+
+`Panel:Remove()` does not destroy a panel where it stands — GMod marks it and
+deletes it at the end of the frame. So a **replaced** window's teardown always
+ran after its replacement had been built, and it nulled the live window's
+pointer and zeroed the shared loot session. No pointer meant nothing could
+close what was on screen and the next C built another over the top; a zeroed
+loot session meant a live loot plate stopped counting as looting, so C stopped
+dismissing it and the pockets branch became reachable underneath it.
+
+And the C poll was level-triggered, so the press that dismissed a loot plate
+was still down on the next frame — by which time the plate read as "not open"
+and the dismissal opened pockets itself. **Pressing C to close the loot window
+was the thing that fired the race.**
+
+| | Check | How | Expect |
+|---|---|---|---|
+| ☐ | **Spam C** | Hold and release C repeatedly, fast | One window, every time. Never two, never one that will not leave |
+| ☐ | **C closes the loot window** | Search a body, press C | It closes. This is the one that was completely stuck |
+| ☐ | **C does not then open your pockets** | Same press, watch what follows | Nothing opens behind it |
+| ☐ | **Pockets cannot open over a loot plate** | Loot plate up, press and hold C | The plate closes; your pockets do not appear in its place |
+| ☐ | **The server lets go too** | Dismiss a loot plate, then pick something up | Your pockets refresh silently. The body's plate does **not** come back unasked |
+| ☐ | **E again cancels a search** | Start searching, press E again | It stops. Nothing was taken, nothing to undo |
+| ☐ | **Holding E does not stutter** | Hold E on a body | One continuous search, not a rummage restarting several times a second |
+| ☐ | **The titles sit properly** | Open pockets, then a body, then a container | POCKETS / the body's name / the container's name all clear of the plate edge |
+
+### The gun
+
+| | Check | How | Expect |
+|---|---|---|---|
+| ☐ | **The crosshair is round** | Look at anything | An actual circle, slightly smaller. It was a rounded *square* — `draw.RoundedBox` builds corners from a texture, which cannot resolve a curve at three pixels |
+| ☐ | **The ammo reads left to right** | Hold a gun | Big loaded count **first**, `/ reserve` small after it. It was reversed |
+| ☐ | **Reload with empty pockets** | Hold R with no ammo | One line per press. Hold it down and it stays one line |
+| ☐ | **Tapping R twice still says it twice** | Press R, pause, press again | Two lines. The suppression is per press, not a cooldown |
+
+### The screen
+
+| | Check | How | Expect |
+|---|---|---|---|
+| ☐ | **No more legs** | Look straight down | Your own model does not appear. It is removed, not fixed — see below |
+| ☐ | **Black and white takes the UI with it** | Settings → Black and white → on, then open anything | Menus, inventory, HUD all grey. Brass and the danger red stay **tellable apart** — that is what the weighting is for |
+| ☐ | **Settings clears the wordmark** | Menu → Settings | Nothing overlaps OMERTÀ or the tagline |
+| ☐ | **The season number shows** | Look at the bottom of the menu | "THE CITY" with the season number beside it |
+
+**The legs are gone rather than repaired.** `ShouldDrawLocalPlayer` draws the
+whole model at its world position, head included, and the first-person camera
+sits inside that head — which is exactly the "appears and you look through it"
+you described. A real first-person body needs a separate rig with the head bone
+scaled away and arms driven off the viewmodel. Your addon is the right call.
+
+**Your console error is not ours.** Nothing in this repository mentions
+ClearSans — we ship Germania One and IBM Plex Mono. The path in that message is
+`cache\workshop\`, so it is another addon shipping a font it cannot load.
+Harmless.
+
+### Joining, and seasons
+
+Everyone is met by the menu now, including a player who already has a
+character. The rail has two ways in, never both at once: **Enter the city** for
+a new arrival (which goes to creation) and **Return to the city** for somebody
+who has somebody to be.
+
+The join no longer loads your character at all until you ask it to — which
+means the hold on your movement is the same gate a character-less player has
+always had, and the release stays in the one place it has always been. That
+ordering matters: M19 puts a reconnecting downed player back on the floor from
+that hook, and releasing after it would stand them up out of their own body.
+
+Seasons are numbered. `omerta_season_create` takes no arguments now.
+
+| | Check | How | Expect |
+|---|---|---|---|
+| ☐ | **A returning player gets the menu** | Rejoin with a living character | Menu, with **RETURN TO THE CITY** at the top |
+| ☐ | **And can get back in** | Press it | Fade, then you are standing in the world where you left off |
+| ☐ | **You cannot move behind the menu** | Push forward while the menu is up | You do not move. **This is the one to break hardest** — a player who cannot move after pressing Return is worse than the bug this fixes |
+| ☐ | **A new player still creates** | Fresh account | **ENTER THE CITY**, then the creation form |
+| ☐ | **Dying still skips the intro** | Die, make a new character | No title card on the way back |
+| ☐ | **Rejoining while down** | Go down, disconnect, rejoin, Return | You come back **on the floor**, not standing |
+| ☐ | **A season is one command** | `omerta_season_create` | Creates the next number with no label typed. Nine existing named seasons should produce #10, not #1 |
+| ☐ | **Numbers survive a gap** | Delete a middle season, create another | The next number, never a reused one |
+
+**Three things could not be verified without a running server**, all in the
+join path: that `PlayerSpawn` fires reliably for a player who now never loads a
+character at join (the mechanism is unchanged, but the returning-player case
+has never taken that path); the round-trip feel of Return, which has an
+8-second ceiling on the hold that is a guess; and whether the season number
+arrives before the menu first paints — with `omerta_intro 0` the margin is one
+frame, and the line reads "THE CITY" until it lands.
+
+Also unseen: whether IBM Plex Mono renders `·` at the drawn size.
+
+---
+
+## 1b. Motion, and the world outside (2026-07-31)
 
 ### Every window now arrives and leaves
 
@@ -87,7 +188,7 @@ document for you to rule on.
 
 ---
 
-## 1b. The four-item follow-up (2026-07-31)
+## 1c. The four-item follow-up (2026-07-31)
 
 All four were real, and two of them were bugs I had already "fixed" twice by
 changing a number that was never being used.
@@ -135,7 +236,7 @@ a popup panel, with the line still drawn over the world in our own type.
 
 ---
 
-## 1c. The nine-item pass (2026-07-31)
+## 1d. The nine-item pass (2026-07-31)
 
 Your notes after the city let you in. Everything here is new or changed since
 that session, so it is all first-time verification.

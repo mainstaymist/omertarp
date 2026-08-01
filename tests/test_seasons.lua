@@ -283,6 +283,49 @@ check("two active seasons in the database disable the module", function()
     assert(refused and refused:find("failed state"), tostring(refused))
 end)
 
+check("creating a season asks for no name and writes the next number", function()
+    local inserted
+    bootSeasons(function(sqlStr, params)
+        if sqlStr:find("INSERT INTO omerta_seasons", 1, true) then
+            inserted = params
+            return {}, nil, 12
+        end
+        if sqlStr:find("FROM omerta_seasons", 1, true) and not sqlStr:find("WHERE", 1, true) then
+            -- A database with history in it: one numbered season, one from
+            -- before the numbering, and a gap where a third was removed.
+            return { { id = "1", state = "ended", label = "1" },
+                     { id = "2", state = "ended", label = "The Winter of Knives" },
+                     { id = "5", state = "ended", label = "9" } }
+        end
+        return {}
+    end)
+
+    local createdId, err
+    Omerta.Seasons.Create({ actor = "test" }, function(id, why) createdId, err = id, why end)
+    assert(createdId == 12, "create should report the new row: " .. tostring(err))
+
+    local carried = false
+    for _, value in ipairs(inserted or {}) do
+        if value == "10" then carried = true end
+    end
+    assert(carried, "the insert should carry the label '10' — one past the highest " ..
+        "that existed (9), not the row count (3)")
+
+    -- The self-test still names its own row, because its cleanup deletes by
+    -- label and must never be able to reach a real season.
+    Omerta.Seasons.Create({ label = "__selftest__" }, function() end)
+    local named = false
+    for _, value in ipairs(inserted or {}) do
+        if value == "__selftest__" then named = true end
+    end
+    assert(named, "an explicit label must still be honoured")
+
+    local refused
+    Omerta.Seasons.Create({ label = 7 }, function(_, why) refused = why end)
+    -- Plain find: the hyphen in "non-empty" is a pattern quantifier otherwise.
+    assert(refused and refused:find("non-empty string", 1, true), tostring(refused))
+end)
+
 check("create -> start -> end lifecycle with guards", function()
     local state5 = "setup"
     local mock = bootSeasons(function(sqlStr, params)

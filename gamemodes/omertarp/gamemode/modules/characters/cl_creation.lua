@@ -508,6 +508,16 @@ hook.Add("Omerta.CharactersState", "omerta.characters.ui", function(state)
         if creationHeld() then creationPending = true return end
         creationPending = false
         buildFrame()
+    elseif state == STATE.AWAITING_ENTRY then
+        -- A character is waiting and the server is holding this player out of
+        -- the city until somebody asks for them. The FRONT END is what normally
+        -- asks — it meets every player on join and offers "Return to the city".
+        -- In a build without the menu module there is nothing to meet them and
+        -- nothing to press, and a frozen player with no interface is the worst
+        -- failure this module has ever shipped, so ask immediately: M4 alone
+        -- behaves exactly as it did before there was a front end.
+        if Omerta.Menu ~= nil then return end
+        Omerta.Net.Request("characters.enter", {})
     elseif state == STATE.ACTIVE then
         -- Close, not Remove: the character is standing in the city and the form
         -- (or the "no season" notice, which shares this window) is finished
