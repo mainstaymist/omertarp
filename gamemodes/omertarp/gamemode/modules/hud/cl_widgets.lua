@@ -166,8 +166,18 @@ end
 -- still IsValid for a tenth of a second after the player dismissed it.
 -- Rebuilding one puts fresh contents into a window that is already leaving, and
 -- the window the player asked for never appears at all.
+-- There is a THIRD way to be gone, and it caught the inventory: a panel that
+-- has been Remove()d is not destroyed where it stands. GMod marks it and
+-- deletes it at the end of the frame — which is exactly why
+-- Panel:IsMarkedForDeletion exists as a question separate from IsValid. Such a
+-- panel is still IsValid, and never set OmertaClosing because nothing animated
+-- it, so both tests above pass on a window that is already dead. Any module
+-- that keeps a pointer to a panel it removed would be told the window is up.
 function Omerta.HUD.Revealed(panel)
-    return IsValid(panel) and panel.OmertaClosing ~= true
+    if not IsValid(panel) then return false end
+    if panel.OmertaClosing == true then return false end
+    if panel.IsMarkedForDeletion and panel:IsMarkedForDeletion() then return false end
+    return true
 end
 
 --------------------------------------------------------------------------------

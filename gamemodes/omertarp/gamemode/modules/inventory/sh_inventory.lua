@@ -224,6 +224,55 @@ function Omerta.Inventory.FormatBulk(units)
 end
 
 --------------------------------------------------------------------------------
+-- The pockets key (pure)
+--------------------------------------------------------------------------------
+-- C is POLLED rather than bound (cl_inventory.lua says why), and the poll has
+-- to answer exactly one question per frame: open, close, or leave it alone.
+--
+-- That question has now been got wrong twice, both times in the same shape: a
+-- window that is SINKING OUT is still a panel for a tenth of a second, and code
+-- that asks "is there a window" instead of "is a window UP" gets the wrong
+-- answer for that tenth of a second after every single dismissal. So the rule
+-- lives here as arithmetic over a description of the window, where the headless
+-- suite can pin it, rather than as three conditions in a Think hook where the
+-- next person to touch it has to rediscover the distinction.
+--
+--   window   nil when there is no window at all, otherwise a table:
+--              revealed  is it actually up? A CLOSING WINDOW COUNTS AS CLOSED.
+--              looting   is it showing somebody else's pockets?
+--              held      was it opened by holding the key?
+--   down     is the key physically down AND allowed (not typing, not in a menu)
+--   wasDown  was it, last frame
+--
+-- Returns "open", "close" or "none".
+function Omerta.Inventory.HoldAction(window, down, wasDown)
+    local pressed = down == true and wasDown ~= true
+    local up = window ~= nil and window.revealed == true
+
+    if up and window.looting then
+        -- A loot plate is dismissed by a PRESS. It was opened by a search, so
+        -- there was never a key held down that could let go of it — and while
+        -- it is up, C does nothing else: opening your own pockets over the top
+        -- of somebody's coat is the state bug 3 reported.
+        return pressed and "close" or "none"
+    end
+
+    if up then
+        -- Pockets are held open: up exactly while the key is down.
+        if window.held and down ~= true then return "close" end
+        return "none"
+    end
+
+    -- Opening is EDGE triggered, and that is load-bearing rather than tidy.
+    -- The press that dismisses a loot plate is still physically down on the
+    -- frame after, by which time the plate is sinking and therefore counts as
+    -- closed; a level-triggered open answers that by putting the player's own
+    -- pockets up in the plate's place, which reads exactly like the dismissal
+    -- having failed. A fresh press is the honest signal for "now show me mine".
+    return pressed and "open" or "none"
+end
+
+--------------------------------------------------------------------------------
 -- Networking
 --------------------------------------------------------------------------------
 -- A client is told its OWN inventory and any container it has legitimately

@@ -719,3 +719,66 @@ check("straight up is not a division by zero", function()
     local up = Omerta.Injury.HoldPoint(Vector(0, 0, 0), Vector(0, 0, 1), 50)
     assert(up.z == 0 and up:Length() > 0, "a degenerate aim still yields a point")
 end)
+
+--------------------------------------------------------------------------------
+suite("injury.search_intent")
+--------------------------------------------------------------------------------
+
+-- E over a body is one key with two meanings: go through their pockets, or stop
+-- going through them. Which one it is, is the server's decision and this is the
+-- rule it makes it with.
+
+check("E on a body you are already searching stops the search", function()
+    loadModules()
+    local I = Omerta.Injury.SearchIntent
+    assert(I(nil, 7) == "search", "nothing in progress: go through their pockets")
+    assert(I({ characterId = 7, id = "injury.search_body" }, 7) == "cancel",
+        "the same body again is a stop")
+end)
+
+check("stopping one thing does not stop another", function()
+    loadModules()
+    local I = Omerta.Injury.SearchIntent
+    -- Busy with somebody ELSE. The refusal for that belongs to Perform, which
+    -- owns the sentence the player reads, so the answer here is still "search".
+    assert(I({ characterId = 9 }, 7) == "search", "a different body is not a stop")
+    -- Anything timed on THIS body answers to the key, not only a search: an
+    -- action you cannot back out of is one you started by accident.
+    assert(I({ characterId = 7, id = "injury.stabilize" }, 7) == "cancel")
+end)
+
+check("one press cannot stop a search and start it again", function()
+    loadModules()
+    local I = Omerta.Injury.SearchIntent
+    local lock = Omerta.Injury.SEARCH_RESTART_SECONDS
+    assert(lock > 0, "there has to be a lock at all")
+
+    -- The interaction path sends one message per press, but the engine's own
+    -- +use fallback re-fires for as long as the key is held — so without this
+    -- a hold would stop and restart the rummage several times a second and it
+    -- would never finish.
+    assert(I(nil, 7, 0) == "ignore", "the same hold does not restart it")
+    assert(I(nil, 7, lock * 0.5) == "ignore", "nor does the rest of it")
+    assert(I(nil, 7, lock) == "search", "a fresh press does")
+    assert(I(nil, 7, lock + 10) == "search", "and so does one much later")
+    assert(I(nil, 7, nil) == "search", "never having stopped is not a lock")
+
+    -- The lock is short enough that changing your mind is not punished.
+    assert(lock <= 1, "half a second is a mistake being prevented, not a cooldown")
+end)
+
+check("the lock never blocks a stop", function()
+    loadModules()
+    local I = Omerta.Injury.SearchIntent
+    -- Two presses inside the lock window while a search runs: the second is
+    -- still a stop. Refusing it would make the search uncancellable for exactly
+    -- as long as the lock lasts, which is the bug wearing the fix's clothes.
+    assert(I({ characterId = 7 }, 7, 0) == "cancel")
+end)
+
+check("a press over nothing is not a search", function()
+    loadModules()
+    local I = Omerta.Injury.SearchIntent
+    assert(I(nil, nil) == "ignore", "no body, no verb")
+    assert(I({ characterId = 7 }, nil) == "ignore")
+end)

@@ -456,6 +456,45 @@ function Omerta.Injury.DragSpeedMultiplier(isDragging, scale)
 end
 
 --------------------------------------------------------------------------------
+-- Going through somebody's pockets
+--------------------------------------------------------------------------------
+-- E starts the search. E AGAIN STOPS IT — down the same cancel path that
+-- walking away already takes, so nothing has been written and there is nothing
+-- to unwind. A four-second commitment you cannot back out of is a commitment
+-- made by accident, and the only way out of one used to be to walk away from a
+-- body you had just decided to go through.
+--
+-- The one thing that has to be right is that a stop and a start cannot come out
+-- of the SAME physical press. The interaction path sends exactly one message
+-- per press (cl_interaction swallows the matching release), but the engine's
+-- own +use fallback in sv_bodies re-fires for as long as the key is held — so a
+-- hold would stop and restart the search several times a second, the prompt
+-- would flicker, and the rummage would never finish. A short lock after a
+-- deliberate stop covers both paths from one rule.
+Omerta.Injury.SEARCH_RESTART_SECONDS = 0.5
+
+-- What a press of E over a body means right now. Pure, so the rule is pinned
+-- headlessly rather than being re-derived at the call site.
+--
+--   current      what this actor is in the middle of, or nil: { characterId }
+--   characterId  whose pockets the key was pressed over
+--   sinceStop    seconds since this actor last deliberately stopped, or nil
+--
+-- Returns "cancel", "search" or "ignore". Being busy with somebody ELSE still
+-- answers "search": the refusal for that belongs to Perform, which owns the
+-- sentence the player reads.
+function Omerta.Injury.SearchIntent(current, characterId, sinceStop)
+    if not characterId then return "ignore" end
+    if current and current.characterId == characterId then return "cancel" end
+    sinceStop = tonumber(sinceStop)
+    if not current and sinceStop
+            and sinceStop < Omerta.Injury.SEARCH_RESTART_SECONDS then
+        return "ignore"
+    end
+    return "search"
+end
+
+--------------------------------------------------------------------------------
 -- Networking
 --------------------------------------------------------------------------------
 -- Private to its owner, following M8's stamina precedent and M6's rule. A

@@ -344,9 +344,22 @@ local function startLootAll()
     lootAll.skipped = {}
 end
 
+-- Everything that belongs to looking in somebody else's pockets, put down. The
+-- window is NOT touched: this is the session, not the panel, and the two end at
+-- different moments — the panel spends a tenth of a second sinking out after
+-- the session it was showing is over.
+local function endLootSession()
+    state.container = 0
+    lootActions = {}
+    stopLootAll()
+end
+
 hook.Add("Think", "omerta.inventory.loot_all", function()
     if not lootAll.active then return end
-    if not (IsValid(frame) and state.container and state.container > 0) then
+    -- A window that is sinking out counts as gone: a sequence that kept lifting
+    -- items into a leaving window would go on asking the server for takes with
+    -- nothing on screen to show for them.
+    if not (Omerta.Inventory.IsOpen() and state.container and state.container > 0) then
         stopLootAll()
         return
     end
@@ -555,41 +568,76 @@ end
 
 -- A titled column: Oswald caps title, mono note on the right, a rule under,
 -- then the scrolling rows. Two of these side by side is looting.
+--
+-- THE HEADER IS MEASURED, NOT GUESSED. It used to bottom-align the title on a
+-- hardcoded 34px baseline, which was a fair guess at the heading's height
+-- before the type scale gained its readability multiplier and stopped being one
+-- afterwards: the heading's box is nearer 34 DESIGN px tall on its own, so the
+-- words sat with their caps on the top edge of the plate with no margin at all
+-- above them. Asking the font how tall it is costs one call at build time and
+-- cannot go stale the next time a size moves.
 local function buildColumn(parent, title, note, entries, mine, wide)
     local scale = Omerta.HUD.Scale()
+
+    surface.SetFont(Omerta.HUD.Font("heading"))
+    local _, titleTall = surface.GetTextSize("H")
+    surface.SetFont(Omerta.HUD.Font("mono"))
+    local _, captionTall = surface.GetTextSize("H")
+
+    -- The title keeps the same margin above it that the column keeps at its
+    -- left edge — the guide's screen-edge step, which is the one every other
+    -- distance in this window is already measured from.
+    local pad = Omerta.HUD.Space(5)
+    local titleBottom = pad + titleTall
+    local ruleY = titleBottom + Omerta.HUD.Space(3)
+    local captionBottom = ruleY + 1 + captionTall
+    local captionRuleY = captionBottom + Omerta.HUD.Space(1)
+    local listTop = wide and (captionRuleY + Omerta.HUD.Space(1))
+        or (ruleY + Omerta.HUD.Space(2))
+
+    -- Where the rows start, published for anything that re-docks the list
+    -- later: the loot action bar does, and a second copy of this number is how
+    -- the two halves of the same column drift apart.
     local column = vgui.Create("DPanel", parent)
+    column.OmertaListTop = listTop
+    -- The middle of the title's own line, for anything that has to sit level
+    -- with it. Loot All does.
+    column.OmertaTitleMid = pad + titleTall * 0.5
+
     column.Paint = function(_, w, h)
         draw.SimpleText(string.upper(title), Omerta.HUD.Font("heading"),
-            24 * scale, 34 * scale, Omerta.HUD.Colour("text"),
+            pad, titleBottom, Omerta.HUD.Colour("text"),
             TEXT_ALIGN_LEFT, TEXT_ALIGN_BOTTOM)
         if note then
             draw.SimpleText(note, Omerta.HUD.Font("mono"),
-                w - 24 * scale, 32 * scale, Omerta.HUD.Colour("dim"),
+                w - pad, titleBottom, Omerta.HUD.Colour("dim"),
                 TEXT_ALIGN_RIGHT, TEXT_ALIGN_BOTTOM)
         end
         surface.SetDrawColor(Omerta.HUD.Colour("rule"))
-        surface.DrawRect(0, 44 * scale, w, 1)
+        surface.DrawRect(0, ruleY, w, 1)
 
         if wide then
             -- The ledger's column captions, once, in the system voice.
-            local y = 62 * scale
-            local pad = 24 * scale
-            draw.SimpleText("ITEM", Omerta.HUD.Font("mono"), pad + 40 * scale, y,
+            draw.SimpleText("ITEM", Omerta.HUD.Font("mono"), pad + 40 * scale,
+                captionBottom,
                 Omerta.HUD.Colour("dim"), TEXT_ALIGN_LEFT, TEXT_ALIGN_BOTTOM)
-            draw.SimpleText("QTY", Omerta.HUD.Font("mono"), w - pad - 168 * scale, y,
+            draw.SimpleText("QTY", Omerta.HUD.Font("mono"), w - pad - 168 * scale,
+                captionBottom,
                 Omerta.HUD.Colour("dim"), TEXT_ALIGN_RIGHT, TEXT_ALIGN_BOTTOM)
-            draw.SimpleText("BULK", Omerta.HUD.Font("mono"), w - pad - 96 * scale, y,
+            draw.SimpleText("BULK", Omerta.HUD.Font("mono"), w - pad - 96 * scale,
+                captionBottom,
                 Omerta.HUD.Colour("dim"), TEXT_ALIGN_RIGHT, TEXT_ALIGN_BOTTOM)
-            draw.SimpleText("STATE", Omerta.HUD.Font("mono"), w - pad, y,
+            draw.SimpleText("STATE", Omerta.HUD.Font("mono"), w - pad,
+                captionBottom,
                 Omerta.HUD.Colour("dim"), TEXT_ALIGN_RIGHT, TEXT_ALIGN_BOTTOM)
             surface.SetDrawColor(Omerta.HUD.Colour("ruleFaint"))
-            surface.DrawRect(0, 66 * scale, w, 1)
+            surface.DrawRect(0, captionRuleY, w, 1)
         end
     end
 
     local scroll = vgui.Create("DScrollPanel", column)
     scroll:Dock(FILL)
-    scroll:DockMargin(0, (wide and 70 or 52) * scale, 0, 8 * scale)
+    scroll:DockMargin(0, listTop, 0, Omerta.HUD.Space(2))
     styleScrollbar(scroll, scale)
     column.OmertaScroll = scroll
 
@@ -789,7 +837,7 @@ end
 local LOOT_ACTION_BAR = 64
 
 local function buildLootActions()
-    local column = IsValid(frame) and frame.OmertaLootColumn or nil
+    local column = Omerta.Inventory.IsOpen() and frame.OmertaLootColumn or nil
     if not IsValid(column) then return end
 
     local scale = Omerta.HUD.Scale()
@@ -837,15 +885,19 @@ local function buildLootActions()
 
     column.OmertaActions = bar
     -- The rows give up the space the bar takes rather than scrolling under it.
+    -- The top margin comes back off the column rather than being written out
+    -- again here: two copies of where the list starts is how the header and the
+    -- rows under it end up disagreeing by a few pixels.
     if IsValid(column.OmertaScroll) then
-        column.OmertaScroll:DockMargin(0, 52 * scale, 0,
-            (bar and LOOT_ACTION_BAR + 8 or 8) * scale)
+        column.OmertaScroll:DockMargin(0, column.OmertaListTop or 0, 0,
+            bar and (LOOT_ACTION_BAR * scale + Omerta.HUD.Space(2))
+                or Omerta.HUD.Space(2))
         column:InvalidateLayout()
     end
 end
 
 hook.Add("Omerta.InteractionOptions", "omerta.inventory.loot_actions", function(payload)
-    if not IsValid(frame) then return end
+    if not Omerta.Inventory.IsOpen() then return end
     if not (state.container and state.container > 0) then return end
     -- Options for anything else belong to whoever asked for them.
     if payload.target ~= state.container then return end
@@ -868,12 +920,36 @@ end)
 -- The frame
 --------------------------------------------------------------------------------
 
+-- A window's teardown: what has to be put down when a window goes away.
+--
+-- IDENTITY-CHECKED, because the panel being torn down is very often not the one
+-- on screen. Panel:Remove does not destroy a panel where it stands: it marks it,
+-- and the engine deletes it — running OnRemove — at the end of the frame. So a
+-- REPLACED window's teardown lands after its replacement has been built and
+-- stored, and a teardown that wrote `frame = nil` unconditionally erased the
+-- pointer to a window that was already on screen. Nothing could then close it or
+-- even find it, and the next press of C built another one over the top of it:
+-- the duplicate that "stays and will not go away".
+local function release(panel)
+    if frame ~= panel then return end
+    frame = nil
+    endLootSession()
+end
+
 function Omerta.Inventory.Show()
+    -- THE OUTGOING WINDOW STOPS BEING THE WINDOW BEFORE IT IS REMOVED, and that
+    -- ordering is half the fix for both stuck-window reports (release above is
+    -- the other half; either one alone still loses the race in one direction).
+    -- Once `frame` no longer points at it, its late teardown is a no-op, and the
+    -- window that IS on screen keeps its pointer and its loot session.
+    --
     -- Remove, not Close: the window is being REPLACED. This is also the path
     -- that takes a sinking window off screen early — reopen your pockets in the
     -- tenth of a second one is leaving and the new window is on the key, with
     -- no wait for the old one to finish going.
-    if IsValid(frame) then frame:Remove() end
+    local outgoing = frame
+    frame = nil
+    if IsValid(outgoing) then outgoing:Remove() end
 
     local scale = Omerta.HUD.Scale()
 
@@ -944,7 +1020,13 @@ function Omerta.Inventory.Show()
         end
         self.OmertaLootColumn = nil
 
-        local looting = state.container and state.container > 0
+        local looting = (state.container and state.container > 0) == true
+        -- WHAT KIND OF WINDOW THIS IS, recorded on the window itself. The key
+        -- poll reads this rather than the module's state, so the plate on screen
+        -- and the rule that dismisses it cannot disagree about what is being
+        -- shown — which is the disagreement bug 3 was made of.
+        self.OmertaLooting = looting
+
         -- Wants the design size; takes the screen's answer. Two columns of
         -- loot at 1x come to more than a 1366-wide laptop has.
         local width, height = Omerta.HUD.Fit((looting and 960 or 980) * scale,
@@ -953,6 +1035,12 @@ function Omerta.Inventory.Show()
 
         if looting then
             self:Center()
+
+            -- Opened by a search, never by a key. A loot plate that arrived
+            -- while C happened to be held must not vanish on the let-go, and
+            -- rebuilding a held pockets window into one is exactly how it
+            -- inherited a hold nobody made.
+            self.OmertaHeld = false
 
             -- A new subject: the verbs offered on the last one mean nothing here.
             if self.OmertaTarget ~= state.container then
@@ -989,9 +1077,13 @@ function Omerta.Inventory.Show()
             local noteWide = surface.GetTextSize("C TO CLOSE")
             local lootAllButton = Omerta.HUD.Button(theirs, "Loot all", "quiet",
                 startLootAll)
-            lootAllButton:SetSize(104 * scale, 26 * scale)
-            lootAllButton:SetPos(columnWide - 24 * scale - noteWide
-                - 12 * scale - 104 * scale, 10 * scale)
+            local buttonTall = 26 * scale
+            lootAllButton:SetSize(104 * scale, buttonTall)
+            -- Level with the title beside it, off the column's own measured
+            -- header rather than off a second guess at where the title sits.
+            lootAllButton:SetPos(columnWide - Omerta.HUD.Space(5) - noteWide
+                - Omerta.HUD.Space(3) - 104 * scale,
+                math.max(0, theirs.OmertaTitleMid - buttonTall * 0.5))
 
             buildLootActions()
             Internal.QueryLootActions(false)
@@ -1028,12 +1120,7 @@ function Omerta.Inventory.Show()
 
     frame:Rebuild()
 
-    frame.OnRemove = function()
-        frame = nil
-        state.container = 0
-        lootActions = {}
-        stopLootAll()
-    end
+    frame.OnRemove = function(self) release(self) end
 end
 
 --------------------------------------------------------------------------------
@@ -1052,9 +1139,16 @@ end
 --
 -- LOOT is the exception. A container or body opens from a search (no key
 -- held), stays up while you move things, and a press of C dismisses it. Which
--- window is which is remembered on the frame itself (OmertaHeld) rather than
--- inferred: a loot plate that the release of C could close would vanish under
--- the hand of anyone who had opened it while walking.
+-- window is which is remembered on the frame itself (OmertaLooting, OmertaHeld)
+-- rather than inferred: a loot plate that the release of C could close would
+-- vanish under the hand of anyone who had opened it while walking.
+--
+-- WHAT THE POLL DECIDES IS NOT DECIDED HERE. Omerta.Inventory.HoldAction is the
+-- rule, pure and headless-tested, and this hook only gathers the facts it needs
+-- and carries out the answer. The distinction that keeps being lost — a window
+-- that is sinking out counts as CLOSED — is a line of that function with a test
+-- against it, rather than a condition here that reads correct until somebody
+-- swaps it for IsValid.
 --
 -- `pinned` is the console command's escape hatch: omerta_inventory holds the
 -- window open with no key for staff and debugging, and toggles back off.
@@ -1068,6 +1162,7 @@ concommand.Add("omerta_inventory", function()
         return
     end
     pinned = true
+    endLootSession()
     Omerta.Inventory.Show()
     Omerta.Inventory.Request(0)
 end)
@@ -1086,7 +1181,7 @@ hook.Add("Think", "omerta.inventory.hold", function()
         or (Omerta.Chat and Omerta.Chat.IsTyping and Omerta.Chat.IsTyping())
     local down = input.IsKeyDown(KEY_C) and not chatting
         and not gui.IsGameUIVisible() and not gui.IsConsoleVisible()
-    local pressed = down and not wasDown
+    local previous = wasDown
     wasDown = down
 
     if pinned then
@@ -1094,27 +1189,38 @@ hook.Add("Think", "omerta.inventory.hold", function()
         return
     end
 
-    -- A window that is sinking out counts as closed, so tapping C again
-    -- during the animation reopens immediately rather than waiting for it to
-    -- finish and then ignoring the press.
-    local open = Omerta.Inventory.IsOpen()
-    local looting = open and state.container and state.container > 0
-
-    if looting then
-        -- A press dismisses the loot plate; holding is not required while
-        -- both hands are in somebody's coat.
-        if pressed then frame:OmertaClose() end
-        return
+    -- The window, described for the rule. `revealed` is the one that matters:
+    -- Omerta.HUD.Revealed answers "is it up", not "does it exist", so a window
+    -- in the tenth of a second it spends sinking out is already gone here.
+    local window = nil
+    if IsValid(frame) then
+        window = {
+            revealed = Omerta.HUD.Revealed(frame),
+            looting = frame.OmertaLooting == true,
+            held = frame.OmertaHeld == true,
+        }
     end
 
-    if down and not open then
+    local action = Omerta.Inventory.HoldAction(window, down, previous)
+
+    if action == "close" then
+        -- Telling the server a loot plate is gone is not politeness. The open
+        -- container lives on the server until something replaces it, and every
+        -- later refresh arrives carrying it — which reopens, unasked, the plate
+        -- the player just dismissed. Asking for plain pockets says "I am not in
+        -- that coat any more" in the one message that already means it.
+        if frame.OmertaLooting then Omerta.Inventory.Request(0) end
+        frame:OmertaClose()
+    elseif action == "open" then
+        -- Pockets, always: the poll never opens somebody else's. Whatever is
+        -- left of a loot session goes first, so the cached state cannot build a
+        -- loot layout under a key that is meant to hold pockets open.
+        endLootSession()
         -- Shown immediately from the cached state so the window is ON the
         -- key, then refreshed; the stream rebuilds it when it lands.
         Omerta.Inventory.Show()
         frame.OmertaHeld = true
         Omerta.Inventory.Request(0)
-    elseif not down and open and frame.OmertaHeld then
-        frame:OmertaClose()
     end
 end)
 

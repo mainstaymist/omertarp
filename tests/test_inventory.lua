@@ -539,3 +539,105 @@ check("the wire never carries a name or a value it should not", function()
         assert(registry[name].realm == "server_to_client", name .. " should be outbound")
     end
 end)
+
+--------------------------------------------------------------------------------
+suite("inventory.hold_key")
+--------------------------------------------------------------------------------
+
+-- The C poll's whole decision, pure. Every stuck-window report this window has
+-- produced came out of one of these rows being got wrong in a Think hook, so
+-- they are pinned here instead.
+
+-- The window descriptions the rule is fed. `revealed` is the one that matters:
+-- a window that is SINKING OUT is still a panel for a tenth of a second, and it
+-- counts as closed for every purpose below.
+local POCKETS  = { revealed = true,  looting = false, held = true }
+local SINKING  = { revealed = false, looting = false, held = true }
+local LOOT     = { revealed = true,  looting = true,  held = false }
+local LOOT_OUT = { revealed = false, looting = true,  held = false }
+
+check("nothing on screen: the press opens, the hold does not re-open", function()
+    loadModules()
+    local A = Omerta.Inventory.HoldAction
+    assert(A(nil, true, false) == "open", "the press edge opens the pockets")
+    assert(A(nil, true, true) == "none", "and the rest of the hold does nothing")
+    assert(A(nil, false, true) == "none", "letting go of nothing does nothing")
+    assert(A(nil, false, false) == "none", "an idle frame is an idle frame")
+end)
+
+check("pockets are up exactly while the key is down", function()
+    loadModules()
+    local A = Omerta.Inventory.HoldAction
+    assert(A(POCKETS, true, true) == "none", "held open, nothing to do")
+    assert(A(POCKETS, false, true) == "close", "the release closes it")
+    -- Level-triggered, deliberately: a release that the engine never reported
+    -- (a panel took focus, the player alt-tabbed) must still close the window
+    -- on the next frame the key is seen to be up.
+    assert(A(POCKETS, false, false) == "close", "a missed release still closes it")
+end)
+
+check("A CLOSING WINDOW COUNTS AS CLOSED", function()
+    loadModules()
+    local A = Omerta.Inventory.HoldAction
+
+    -- The rule that keeps getting missed. Tapping C again while the last window
+    -- is still sinking must build a new one immediately — waiting for the
+    -- animation and then ignoring the press is how the key stops answering.
+    assert(A(SINKING, true, false) == "open", "the tap reopens mid-animation")
+    -- And it must not be closed a second time: it is already leaving, and a
+    -- second dismissal of a loot plate would be read as a press that never
+    -- reached it.
+    assert(A(SINKING, false, true) == "none", "nothing left to close")
+    assert(A(LOOT_OUT, true, false) == "open", "a sinking loot plate is gone too")
+end)
+
+check("a loot plate is dismissed by a press, and by nothing else", function()
+    loadModules()
+    local A = Omerta.Inventory.HoldAction
+
+    assert(A(LOOT, true, false) == "close", "the press dismisses it")
+    assert(A(LOOT, true, true) == "none", "holding does not dismiss it twice")
+    -- It was opened by a search, so there was never a key held down that could
+    -- let go of it. A loot plate that the release of C could close would vanish
+    -- under the hand of anyone who opened one while walking.
+    assert(A(LOOT, false, true) == "none", "the release leaves it alone")
+    assert(A(LOOT, false, false) == "none", "and so does an idle frame")
+end)
+
+check("the press that dismisses a loot plate does not then open the pockets", function()
+    loadModules()
+    local A = Omerta.Inventory.HoldAction
+
+    -- THIS is the whole of the stuck-loot-window report, as arithmetic. Frame
+    -- one dismisses the plate; on frame two the plate is sinking and therefore
+    -- counts as closed, and the key is STILL physically down. A level-triggered
+    -- open answers that by putting the player's own pockets up in the plate's
+    -- place — which reads exactly like the dismissal having failed, and used to
+    -- leave the plate on screen with no pointer to it.
+    assert(A(LOOT, true, false) == "close", "frame one: dismissed")
+    assert(A(LOOT_OUT, true, true) == "none", "frame two: the same hold opens nothing")
+    assert(A(nil, true, true) == "none", "frame three, plate gone: still nothing")
+    -- A fresh press is the honest signal for "now show me mine".
+    assert(A(nil, true, false) == "open", "let go and press again, and it opens")
+end)
+
+check("a window nobody is holding is left alone", function()
+    loadModules()
+    local A = Omerta.Inventory.HoldAction
+    -- omerta_inventory pins the window open with no key. The poll returns early
+    -- on `pinned`, but the rule must not close such a window if it ever sees
+    -- one: the release of a key that never opened it means nothing.
+    local pinned = { revealed = true, looting = false, held = false }
+    assert(A(pinned, false, true) == "none", "no hold, no release to honour")
+    assert(A(pinned, true, false) == "none", "and a press does not toggle it")
+end)
+
+check("the rule survives whatever the poll hands it", function()
+    loadModules()
+    local A = Omerta.Inventory.HoldAction
+    -- A window table straight off a fresh panel has none of these fields set,
+    -- and a frame where the poll could not read the key hands it nil.
+    assert(A({}, true, false) == "open", "an undescribed window is not up")
+    assert(A(nil, nil, nil) == "none")
+    assert(A(POCKETS, nil, true) == "close", "no key down is a key that is up")
+end)

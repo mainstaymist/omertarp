@@ -63,9 +63,17 @@ end
 -- require exactly this of M20's confirm kill; building it here means M20
 -- inherits it instead of reinventing it.
 
-function Internal.IsBusy(ply)
+-- What this player is in the middle of, or nil. Read by anything that has to
+-- tell "do it again" from "stop doing it" — E over a body being the first.
+function Internal.InProgress(ply)
+    if not IsValid(ply) then return nil end
     local entry = inProgress[ply:SteamID64() or ""]
-    return entry and entry.finishAt > CurTime()
+    if not (entry and entry.finishAt > CurTime()) then return nil end
+    return entry
+end
+
+function Internal.IsBusy(ply)
+    return Internal.InProgress(ply) ~= nil
 end
 
 function Internal.Begin(ply, def, characterId, cb)

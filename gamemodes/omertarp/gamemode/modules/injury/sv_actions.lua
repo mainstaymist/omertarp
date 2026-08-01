@@ -155,9 +155,31 @@ function Internal.ForgetSearches(targetId, exceptActorId)
     end
 end
 
+-- When each actor last deliberately stopped. See Omerta.Injury.SearchIntent:
+-- one press of the key must not stop a search and start it again, and the
+-- engine's +use fallback re-fires for as long as the key is held.
+local stoppedAt = {} -- actor SteamID64 -> CurTime()
+
 function Internal.BeginSearch(ply, characterId)
     local actor = Omerta.Characters.Get(ply)
     if not (actor and characterId) then return end
+
+    -- E is one key with two meanings on the same body: go through their
+    -- pockets, or stop. The server decides which — the client only ever says
+    -- "I pressed E on that", exactly as it did before.
+    local sid = ply:SteamID64() or ""
+    local last = stoppedAt[sid]
+    local intent = Omerta.Injury.SearchIntent(Internal.InProgress(ply), characterId,
+        last and (CurTime() - last) or nil)
+
+    if intent == "ignore" then return end
+    if intent == "cancel" then
+        stoppedAt[sid] = CurTime()
+        -- The same path walking away takes: the action is dropped before its
+        -- clock runs out, so onComplete never fires and nothing was written.
+        Internal.Cancel(ply, "you stop searching")
+        return
+    end
 
     if Internal.HasSearched(actor.id, characterId) then
         Internal.SearchBody(ply, characterId)
