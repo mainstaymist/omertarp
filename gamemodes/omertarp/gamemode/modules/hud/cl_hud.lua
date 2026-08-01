@@ -5,6 +5,9 @@
 local elements = {}
 local ordered = nil
 local alphas = {}
+-- Consecutive failed draws, per element. Reset by any frame that draws cleanly,
+-- so this counts a broken element rather than an unlucky one.
+local failures = {}
 
 function Omerta.HUD.Register(id, def)
     if type(id) ~= "string" or not id:find("^[a-z0-9_%.]+$") then
@@ -37,6 +40,7 @@ function Omerta.HUD.Register(id, def)
     def.rise = def.rise or 0
     elements[id] = def
     alphas[id] = 0
+    failures[id] = nil
     ordered = nil
     return def
 end
@@ -44,6 +48,7 @@ end
 function Omerta.HUD.Unregister(id)
     elements[id] = nil
     alphas[id] = nil
+    failures[id] = nil
     ordered = nil
 end
 
@@ -353,10 +358,24 @@ hook.Add("HUDPaint", "omerta.hud.draw", function()
                     def.rise * scale)
                 or 0
             local ok, err = pcall(def.draw, alphas[def.id], rise)
-            if not ok then
-                -- A broken element must not take the whole screen down with it.
-                Omerta.Log.Error("hud", "element '%s' failed to draw: %s", def.id, tostring(err))
-                Omerta.HUD.Unregister(def.id)
+            if ok then
+                failures[def.id] = nil
+            else
+                -- A broken element must not take the whole screen down with
+                -- it — but nor should one bad frame cost the player that
+                -- element for the rest of the session. It is given a few
+                -- frames to be transient; a genuinely broken one fails every
+                -- frame and reaches the limit in a fraction of a second.
+                local count = (failures[def.id] or 0) + 1
+                failures[def.id] = count
+                Omerta.Log.Error("hud", "element '%s' failed to draw: %s",
+                    def.id, tostring(err))
+                if Omerta.HUD.DrawFailureIsFatal(count) then
+                    Omerta.Log.Error("hud",
+                        "element '%s' removed after %d consecutive failures",
+                        def.id, count)
+                    Omerta.HUD.Unregister(def.id)
+                end
             end
         end
     end

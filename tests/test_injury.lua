@@ -344,6 +344,44 @@ check("prompt sound codes are frozen", function()
     assert(Omerta.Injury.PROMPT_SOUND.RUSTLE == 1)
 end)
 
+-- A timed action's clock reaches the client as a DURATION, and the unit it is
+-- sent in decides whether the plate can be drawn at all. Floored whole seconds
+-- rounded a fractional action to the wrong length and rounded a sub-second one
+-- to nothing — a prompt whose window has already closed, which the controller
+-- correctly never draws while the action itself runs and makes its noise.
+check("the prompt clock is milliseconds, so no action rounds away", function()
+    loadModules()
+    local M = Omerta.Injury.PromptMillis
+    assert(M(4) == 4000, "the search")
+    assert(M(6) == 6000 and M(10) == 10000, "the two treatments")
+
+    -- The weapon draw's own reason (D-039, sh_weapons), applied here: a 1.66s
+    -- action floored to 1 leaves the bar still filling after it finished, and
+    -- rounded to 2 leaves it filling after the action is over.
+    assert(M(1.66) == 1660)
+
+    -- The one that produced a plate nobody ever saw. injury.search_seconds is
+    -- configurable down to 0, so a half-second search was a setting away.
+    assert(M(0.5) == 500, "half a second is half a second, not none")
+
+    assert(M(0) == 0, "an instant action asks for no plate, honestly")
+    assert(M(nil) == 0 and M(-3) == 0, "and never a negative window")
+    assert(M(120) == 65535, "clamped to the 16 bits it is sent in")
+end)
+
+check("the prompt carries its clock in milliseconds on the wire", function()
+    loadModules()
+    local schema = Omerta.Net.GetRegistry()["injury.prompt"].schema
+    local field = nil
+    for _, entry in ipairs(schema) do
+        assert(entry.name ~= "seconds",
+            "whole seconds is the unit that made a short action invisible")
+        if entry.name == "millis" then field = entry end
+    end
+    assert(field, "the prompt has to carry a clock")
+    assert(field.bits >= 16, "8 bits cannot hold a duration in milliseconds")
+end)
+
 check("a condition is prose, never a number", function()
     loadModules()
     for _, state in ipairs(Omerta.Injury.ORDER) do
@@ -781,4 +819,70 @@ check("a press over nothing is not a search", function()
     local I = Omerta.Injury.SearchIntent
     assert(I(nil, nil) == "ignore", "no body, no verb")
     assert(I({ characterId = 7 }, nil) == "ignore")
+end)
+
+-- The other half of "one press, one meaning", and the one that was missing.
+-- The suite pinned that a press cannot STOP and then START a search; nothing
+-- pinned that it cannot START one and then STOP it, which is what two entry
+-- paths landing on BeginSearch for a single press actually did — the plate was
+-- told to appear and told to go away a tick later, before it had faded in far
+-- enough to be seen, while the rummage carried on being audible.
+check("one press cannot start a search and stop it again", function()
+    loadModules()
+    local I = Omerta.Injury.SearchIntent
+    local lock = Omerta.Injury.SEARCH_RESTART_SECONDS
+    local current = { characterId = 7, id = "injury.search_body" }
+
+    assert(I(current, 7, nil, 0) == "ignore",
+        "a stop arriving with the start is the same press counted twice")
+    assert(I(current, 7, nil, 1 / 66) == "ignore", "a server tick later, still")
+    assert(I(current, 7, nil, lock * 0.5) == "ignore", "and through the lock")
+
+    -- A real second press still stops it. The lock is a duplicate filter, not
+    -- a commitment: a search you cannot back out of is the bug this whole rule
+    -- exists to prevent.
+    assert(I(current, 7, nil, lock) == "cancel")
+    assert(I(current, 7, nil, 30) == "cancel", "and much later")
+
+    -- The two locks are the same number on purpose: one physical press, one
+    -- meaning, whichever side of the action it lands on.
+    assert(lock <= 1, "and short enough to be invisible in the hand")
+end)
+
+check("not knowing how long it has run is not a reason to refuse a stop", function()
+    loadModules()
+    local I = Omerta.Injury.SearchIntent
+    -- Every caller that has the number passes it; one that does not must not
+    -- silently make a search uncancellable.
+    assert(I({ characterId = 7 }, 7) == "cancel")
+    assert(I({ characterId = 7 }, 7, nil, nil) == "cancel")
+end)
+
+--------------------------------------------------------------------------------
+suite("injury.use_edge")
+--------------------------------------------------------------------------------
+
+-- GM:PlayerUse reports a LEVEL — it fires again on every tick the key is held —
+-- and sv_bodies' fallback fed each of those calls to BeginSearch as though it
+-- were a fresh press. The gap between two calls is the only evidence the key
+-- ever came up, so that is the rule.
+
+check("holding the use key is one press, not one press per tick", function()
+    loadModules()
+    local F = Omerta.Injury.IsFreshUse
+    assert(F(nil) == true, "the first use there has ever been is a press")
+    assert(F(0) == false, "the same tick is not a second press")
+    assert(F(1 / 66) == false, "nor is the next one")
+    assert(F(1 / 22) == false, "nor is the next one on a slow tickrate")
+    assert(F(Omerta.Injury.USE_EDGE_SECONDS) == true, "a gap is a release")
+    assert(F(5) == true, "and much later is plainly a new press")
+end)
+
+check("the edge is wider than a tick and narrower than a decision", function()
+    loadModules()
+    local gap = Omerta.Injury.USE_EDGE_SECONDS
+    -- Below a couple of ticks it stops detecting the release at all, which is
+    -- the bug. Above a third of a second it starts eating deliberate presses.
+    assert(gap > 2 * (1 / 22), "must survive a slow server's tick")
+    assert(gap <= 0.35, "must not swallow a second press")
 end)

@@ -169,8 +169,10 @@ function Internal.BeginSearch(ply, characterId)
     -- "I pressed E on that", exactly as it did before.
     local sid = ply:SteamID64() or ""
     local last = stoppedAt[sid]
-    local intent = Omerta.Injury.SearchIntent(Internal.InProgress(ply), characterId,
-        last and (CurTime() - last) or nil)
+    local current = Internal.InProgress(ply)
+    local intent = Omerta.Injury.SearchIntent(current, characterId,
+        last and (CurTime() - last) or nil,
+        current and current.startedAt and (CurTime() - current.startedAt) or nil)
 
     if intent == "ignore" then return end
     if intent == "cancel" then

@@ -187,6 +187,45 @@ function Omerta.HUD.RevealOffset(eased, rise)
 end
 
 --------------------------------------------------------------------------------
+-- Asynchronous sound
+--------------------------------------------------------------------------------
+-- sound.PlayFile is ASYNCHRONOUS, and there is nothing to stop before its
+-- callback lands: stopping a channel that does not exist yet is a no-op, so a
+-- request cancelled during the load carries on and plays anyway. That is how a
+-- search cancelled a tick after it started could still be heard rummaging for
+-- four seconds with nothing on screen — the sound had already been asked for,
+-- and the stop had nothing to act on.
+--
+-- Two facts answer it, and both are only knowable inside the callback: whether
+-- the request is still the CURRENT one (a token, bumped by every stop and every
+-- fresh request), and whether its window has since closed. Pure so the suite can
+-- pin the rule; the BASS plumbing is Omerta.HUD.Rustle in cl_widgets.lua.
+-- Silence is the safe answer to every question this cannot answer: a clock it
+-- cannot read is not a licence to make a noise nothing on screen explains.
+function Omerta.HUD.SoundStillWanted(token, current, now, stopAt)
+    if token ~= current then return false end
+    now, stopAt = tonumber(now), tonumber(stopAt)
+    if not (now and stopAt) then return false end
+    if now ~= now or stopAt ~= stopAt then return false end -- NaN
+    return now <= stopAt
+end
+
+--------------------------------------------------------------------------------
+-- When the controller gives up on an element
+--------------------------------------------------------------------------------
+-- A broken element must not take the whole screen down with it, and it must not
+-- keep erroring forever either — but removing it on its FIRST bad frame turns
+-- any momentary race into a HUD element that is gone for the rest of the
+-- session, with no notice to the player and no way back short of reconnecting.
+-- That is a large permanent punishment for a transient fault, and it is what
+-- made one cancelled search look like "the search bar is broken now".
+Omerta.HUD.DRAW_FAILURES_ALLOWED = 3
+
+function Omerta.HUD.DrawFailureIsFatal(consecutive)
+    return (tonumber(consecutive) or 0) >= Omerta.HUD.DRAW_FAILURES_ALLOWED
+end
+
+--------------------------------------------------------------------------------
 -- Entity labels
 --------------------------------------------------------------------------------
 -- What is written under the interaction dot when you look at something.

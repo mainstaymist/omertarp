@@ -370,9 +370,19 @@ end
 -- bodies (injury) and looting (inventory) both play it, and two copies of a
 -- sound player is how one of them keeps playing.
 
-local rustle = { channel = nil, stopAt = 0 }
+-- `token` is what makes a stop reach a load that has not landed yet. PlayFile
+-- is asynchronous, so between asking for the sound and being handed the channel
+-- there is a window in which StopRustle has nothing to stop — and the callback
+-- would arrive afterwards, find its own deadline still in the future, and play.
+-- Every stop and every fresh request bumps the token, so a callback carrying a
+-- stale one knows it was cancelled while it was loading.
+local rustle = { channel = nil, stopAt = 0, token = 0 }
 
 function Omerta.HUD.StopRustle()
+    -- The token first, so an in-flight load is disowned even on the frames
+    -- there is no channel yet to stop.
+    rustle.token = rustle.token + 1
+    rustle.stopAt = 0
     if rustle.channel and rustle.channel:IsValid() then
         rustle.channel:Stop()
     end
@@ -382,12 +392,17 @@ end
 function Omerta.HUD.Rustle(duration)
     Omerta.HUD.StopRustle()
     duration = duration or 4
+    local token = rustle.token
     rustle.stopAt = CurTime() + duration
     -- "noplay": opened paused so it can be seeked before it makes a sound.
     -- (NOT "noblock" — that flag silently fails for disk files.)
     sound.PlayFile("sound/omertarp/ui/searching-rustle.wav", "noplay", function(channel)
         if not (channel and channel:IsValid()) then return end
-        if CurTime() > rustle.stopAt then channel:Stop() return end
+        if not Omerta.HUD.SoundStillWanted(token, rustle.token,
+                CurTime(), rustle.stopAt) then
+            channel:Stop()
+            return
+        end
         local length = channel:GetLength() or 0
         if length > duration + 1 then
             channel:SetTime(math.Rand(0, length - duration - 0.5))

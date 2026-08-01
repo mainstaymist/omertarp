@@ -78,16 +78,23 @@ end
 
 function Internal.Begin(ply, def, characterId, cb)
     local sid = ply:SteamID64() or ""
+    local now = CurTime()
     inProgress[sid] = {
-        finishAt = CurTime() + def.duration,
+        -- Kept alongside finishAt because "how long has this been running" is a
+        -- question the E-over-a-body rule has to answer, and deriving it from
+        -- the deadline would mean re-reading the definition's duration at a
+        -- call site that has no business knowing it.
+        startedAt = now,
+        finishAt = now + def.duration,
         characterId = characterId,
         id = def.id,
         startPos = ply:GetPos(),
         cb = cb,
     }
+    local millis = Omerta.Injury.PromptMillis(def.duration)
     Omerta.Net.Send("injury.prompt", {
         text = def.label .. "…",
-        seconds = math.min(255, math.floor(def.duration)),
+        millis = millis,
         sound = def.sound or Omerta.Injury.PROMPT_SOUND.NONE,
     }, ply)
 
@@ -97,7 +104,7 @@ function Internal.Begin(ply, def, characterId, cb)
     if IsValid(target) then
         Omerta.Net.Send("injury.prompt", {
             text = "Somebody is working on you.",
-            seconds = math.min(255, math.floor(def.duration)),
+            millis = millis,
             sound = Omerta.Injury.PROMPT_SOUND.NONE,
         }, target)
     end
@@ -111,7 +118,7 @@ function Internal.Cancel(ply, reason)
     if entry.cb then entry.cb(false, reason or "interrupted") end
     if IsValid(ply) then
         Omerta.Net.Send("injury.prompt",
-            { text = "", seconds = 0, sound = Omerta.Injury.PROMPT_SOUND.NONE }, ply)
+            { text = "", millis = 0, sound = Omerta.Injury.PROMPT_SOUND.NONE }, ply)
     end
 end
 

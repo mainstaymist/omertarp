@@ -10,6 +10,10 @@ local Internal = Omerta.Injury.Internal
 
 local bodies = {}   -- characterId -> entity
 local dragging = {} -- dragger SteamID64 -> { characterId, anchor, startedAt }
+-- When each player's +use last landed on a body. See the PlayerUse hook: the
+-- engine reports a held key, not a press, and this is what turns one into the
+-- other.
+local usedAt = {}   -- SteamID64 -> CurTime()
 
 Internal.Bodies = bodies
 
@@ -115,9 +119,20 @@ function Internal.RegisterBodyCleanup()
 
     -- prop_ragdoll has no Use of its own, so the E shortcut is wired here.
     -- It goes through the same server-side path the interaction menu uses.
+    --
+    -- ONLY ON THE RISING EDGE. PlayerUse is a level: it fires again on every
+    -- tick the key is held, and every one of those calls used to reach
+    -- BeginSearch looking exactly like a fresh press — so a search started this
+    -- way was cancelled by its own hold a tick later, before the plate had
+    -- faded in far enough to be seen. The gap between two calls is the only
+    -- evidence the key ever came up; Omerta.Injury.IsFreshUse owns that rule.
     hook.Add("PlayerUse", "omerta.injury.body_use", function(ply, ent)
         if not (IsValid(ent) and ent.OmertaCharacter) then return end
-        Internal.HandleUse(ply, ent)
+        local sid = ply:SteamID64() or ""
+        local now = CurTime()
+        local fresh = Omerta.Injury.IsFreshUse(usedAt[sid] and (now - usedAt[sid]) or nil)
+        usedAt[sid] = now
+        if fresh then Internal.HandleUse(ply, ent) end
         return false -- consumed; do not also +use the world behind it
     end)
 end
@@ -431,6 +446,7 @@ function Internal.RegisterDisconnect()
         -- Whatever they were carrying hits the floor.
         if Omerta.Injury.DraggedBy(ply) then Omerta.Injury.LetGo(ply) end
         dragging[ply:SteamID64() or ""] = nil
+        usedAt[ply:SteamID64() or ""] = nil
 
         -- Their own body stays exactly where it is, and its clock keeps
         -- running. This is the point of D-037 §4a: logging out while

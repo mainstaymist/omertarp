@@ -465,12 +465,13 @@ end
 -- body you had just decided to go through.
 --
 -- The one thing that has to be right is that a stop and a start cannot come out
--- of the SAME physical press. The interaction path sends exactly one message
--- per press (cl_interaction swallows the matching release), but the engine's
--- own +use fallback in sv_bodies re-fires for as long as the key is held — so a
--- hold would stop and restart the search several times a second, the prompt
--- would flicker, and the rummage would never finish. A short lock after a
--- deliberate stop covers both paths from one rule.
+-- of the SAME physical press. Two paths reach BeginSearch: the interaction path
+-- sends exactly one message per press (cl_interaction swallows the matching
+-- release), and the engine's own +use fallback in sv_bodies reports a LEVEL
+-- rather than an edge — PlayerUse fires again every tick for as long as the key
+-- is held. Both ends of that are covered here: a short lock after a deliberate
+-- stop, so a stop cannot be followed by a restart, and a matching lock after a
+-- start, so a start cannot be followed by a stop.
 Omerta.Injury.SEARCH_RESTART_SECONDS = 0.5
 
 -- What a press of E over a body means right now. Pure, so the rule is pinned
@@ -479,19 +480,55 @@ Omerta.Injury.SEARCH_RESTART_SECONDS = 0.5
 --   current      what this actor is in the middle of, or nil: { characterId }
 --   characterId  whose pockets the key was pressed over
 --   sinceStop    seconds since this actor last deliberately stopped, or nil
+--   sinceStart   seconds the current action has been running, or nil if unknown
 --
 -- Returns "cancel", "search" or "ignore". Being busy with somebody ELSE still
 -- answers "search": the refusal for that belongs to Perform, which owns the
 -- sentence the player reads.
-function Omerta.Injury.SearchIntent(current, characterId, sinceStop)
+function Omerta.Injury.SearchIntent(current, characterId, sinceStop, sinceStart)
     if not characterId then return "ignore" end
-    if current and current.characterId == characterId then return "cancel" end
+
+    if current and current.characterId == characterId then
+        -- A STOP THAT ARRIVES WITH THE START IS NOT A DECISION.
+        --
+        -- The plate takes 200ms to fade in, so a cancel landing before that has
+        -- elapsed cannot be an answer to anything the player has seen — it is
+        -- one press being counted twice, which is exactly what the two entry
+        -- paths are capable of producing. Symmetrical with the restart lock
+        -- below and deliberately the same number: one press, one meaning.
+        sinceStart = tonumber(sinceStart)
+        if sinceStart and sinceStart < Omerta.Injury.SEARCH_RESTART_SECONDS then
+            return "ignore"
+        end
+        return "cancel"
+    end
+
     sinceStop = tonumber(sinceStop)
     if not current and sinceStop
             and sinceStop < Omerta.Injury.SEARCH_RESTART_SECONDS then
         return "ignore"
     end
     return "search"
+end
+
+-- Turning the engine's +use into a press.
+--
+-- GM:PlayerUse is a level, not an edge: it fires again on every tick the key is
+-- held, and each call is indistinguishable from a fresh press at the call site.
+-- The only signal that the key came UP is the absence of the next call, so the
+-- edge has to be recovered from the gap between two of them — anything closer
+-- together than a couple of ticks is the same key still down.
+--
+-- Wide enough to survive a slow tickrate (a 22-tick server is 45ms between
+-- calls), narrow enough that a deliberate second press is never eaten.
+Omerta.Injury.USE_EDGE_SECONDS = 0.2
+
+-- `sinceLastUse` is the seconds since this actor's last +use on this body, or
+-- nil if there has not been one. Pure.
+function Omerta.Injury.IsFreshUse(sinceLastUse)
+    sinceLastUse = tonumber(sinceLastUse)
+    if not sinceLastUse then return true end
+    return sinceLastUse >= Omerta.Injury.USE_EDGE_SECONDS
 end
 
 --------------------------------------------------------------------------------
@@ -523,15 +560,34 @@ Omerta.Injury.PROMPT_SOUND = {
     RUSTLE = 1, -- going through pockets
 }
 
+-- MILLISECONDS, not whole seconds.
+--
+-- This carried a floored `seconds` and it was the wrong unit for the same
+-- reason the weapon draw already gives (sh_weapons): a duration that is not a
+-- whole number is a bar that finishes at the wrong moment, and a duration below
+-- one second floors to ZERO — which reaches the client as a prompt whose window
+-- has already closed, so the plate is never drawn at all while everything else
+-- the action does still happens. `injury.search_seconds` is configurable down
+-- to 0, so that was a live setting away rather than hypothetical. 16 bits
+-- carries just over a minute, which is the longest action the registry allows.
+function Omerta.Injury.PromptMillis(seconds)
+    seconds = tonumber(seconds) or 0
+    if seconds <= 0 then return 0 end
+    return math.min(65535, math.floor(seconds * 1000 + 0.5))
+end
+
 Omerta.Net.Register("injury.prompt", {
     realm = "server_to_client",
     schema = {
-        { name = "text",    type = "string", maxlen = 72 },
-        { name = "seconds", type = "uint", bits = 8 },
-        { name = "sound",   type = "uint", bits = 2 },
+        { name = "text",   type = "string", maxlen = 72 },
+        { name = "millis", type = "uint", bits = 16 },
+        { name = "sound",  type = "uint", bits = 2 },
     },
     handler = function(payload)
-        hook.Run("Omerta.InjuryPrompt", payload.text, payload.seconds, payload.sound)
+        -- Handed on in seconds: the client counts against a clock, and every
+        -- other clock it holds is in seconds.
+        hook.Run("Omerta.InjuryPrompt", payload.text,
+            (payload.millis or 0) / 1000, payload.sound)
     end,
 })
 

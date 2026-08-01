@@ -15,6 +15,20 @@ C.bodyIndex = 0    -- resolved lazily; see C.Body()
 local prompt, promptUntil = nil, 0
 local promptStart, promptTotal = 0, 0
 
+-- WHETHER A PROMPT IS WANTED, HELD APART FROM WHAT IT SAYS.
+--
+-- The controller calls `draw` on every frame an element's alpha is above zero,
+-- which includes the frames it is fading OUT — after `visible` has already gone
+-- false. So an element that throws away the thing it draws the moment it stops
+-- being wanted gets asked to draw nothing, errors, and is removed by the
+-- controller. That is what turned a cancelled search into a client with no
+-- timed-action plate at all for the rest of the session: the search was
+-- cancelled server-side within a tick, this cleared `prompt` to nil while the
+-- plate was still two frames into its fade, and string.upper(nil) took the
+-- element off the screen permanently. The text and its clock now survive the
+-- fade and only this flag is cleared.
+local promptShown = false
+
 -- The server sends the clock ONCE, when the state changes. It is not a stream
 -- and must not become one — so the client is given a deadline and counts down
 -- against it locally. That is also smooth, where a once-per-second push would
@@ -55,11 +69,12 @@ end
 -- once, and two copies of a sound player is how one of them keeps playing.
 hook.Add("Omerta.InjuryPrompt", "omerta.injury.prompt", function(text, duration, soundKind)
     if not text or text == "" then
-        prompt = nil
+        promptShown = false
         Omerta.HUD.StopRustle()
         return
     end
     prompt = text
+    promptShown = true
     promptStart = CurTime()
     promptTotal = duration or 0
     promptUntil = CurTime() + (duration or 4)
@@ -74,7 +89,7 @@ end)
 hook.Add("Omerta.CharactersState", "omerta.injury.reset", function()
     C.state = Omerta.Injury.STATE.HEALTHY
     C.deadline, C.total, C.bodyIndex = nil, 0, 0
-    prompt = nil
+    promptShown = false
     Omerta.HUD.StopRustle()
 end)
 
@@ -264,8 +279,13 @@ Omerta.HUD.Register("injury.prompt", {
     -- number for the same reason, and must keep doing so: the two are
     -- deliberately the same object in two modules' hands.
     rise = 12,
-    visible = function() return prompt ~= nil and CurTime() < promptUntil end,
+    visible = function() return promptShown and CurTime() < promptUntil end,
     draw = function(alpha, rise)
+        -- Belt and braces on top of keeping the text through the fade: this
+        -- runs on frames `visible` has already said no to, so it can never
+        -- assume the state `visible` guards. The weapon-draw plate makes the
+        -- same check for the same reason.
+        if not prompt then return end
         local scale = Omerta.HUD.Scale()
 
         -- The guide's §08 timed-action plate: a 320px scrim above the bottom

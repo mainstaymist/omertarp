@@ -190,6 +190,72 @@ check("the offset is the travel remaining, and zero at rest", function()
 end)
 
 --------------------------------------------------------------------------------
+suite("hud.async_sound")
+--------------------------------------------------------------------------------
+
+-- sound.PlayFile hands the channel back some milliseconds after it is asked
+-- for, and until then there is nothing for a stop to act on. So a cancel that
+-- lands inside that window used to do nothing at all: the load finished, found
+-- its own deadline still in the future, and played — which is how a search
+-- cancelled a tick after it began was still audible for four seconds with no
+-- plate on screen to explain it.
+
+check("a sound cancelled while it was loading does not play when it lands", function()
+    loadModules()
+    local W = Omerta.HUD.SoundStillWanted
+    -- Asked for at t=0 with a four-second window, still the current request.
+    assert(W(1, 1, 0.05, 4) == true, "the ordinary case: it landed and is wanted")
+
+    -- Stopped while in flight. The stop bumps the token, so the callback
+    -- carrying the old one knows it was disowned — even though its own
+    -- deadline has not passed and there was no channel to stop at the time.
+    assert(W(1, 2, 0.05, 4) == false, "a stale request is not played")
+
+    -- Superseded rather than stopped: a second rummage began before the first
+    -- had finished loading. Only the newest may install itself.
+    assert(W(1, 3, 0.05, 4) == false, "nor is one that was overtaken")
+    assert(W(3, 3, 0.05, 4) == true, "the newest still plays")
+end)
+
+check("a sound that lands after its own window has closed does not play", function()
+    loadModules()
+    local W = Omerta.HUD.SoundStillWanted
+    assert(W(1, 1, 5, 4) == false, "a very slow load is simply too late")
+    assert(W(1, 1, 4, 4) == true, "the last instant of the window still counts")
+    -- A stop zeroes the deadline, so even the matching token cannot revive it.
+    assert(W(1, 1, 0.05, 0) == false)
+    assert(W(1, 1, nil, nil) == false, "garbage is not a reason to make a noise")
+end)
+
+--------------------------------------------------------------------------------
+suite("hud.draw_failures")
+--------------------------------------------------------------------------------
+
+-- The controller calls draw on every frame an element's alpha is above zero,
+-- which includes the frames after `visible` has gone false and it is fading
+-- out. An element that assumes otherwise throws — and removing it on that first
+-- bad frame cost the player the element for the whole session.
+
+check("one bad frame is survivable; a broken element is still removed", function()
+    loadModules()
+    local F = Omerta.HUD.DrawFailureIsFatal
+    assert(F(0) == false and F(1) == false, "a race is not a broken element")
+    assert(F(Omerta.HUD.DRAW_FAILURES_ALLOWED) == true, "erroring every frame is")
+    assert(F(99) == true)
+    assert(F(nil) == false, "no failures is not a failure")
+end)
+
+check("the allowance is frames, not seconds", function()
+    loadModules()
+    local allowed = Omerta.HUD.DRAW_FAILURES_ALLOWED
+    assert(allowed >= 2, "one frame of tolerance is no tolerance at all")
+    -- Counted in CONSECUTIVE frames and reset by any clean one, so this is a
+    -- fraction of a second for something genuinely broken. Anything larger
+    -- would be a broken element left erroring on screen instead.
+    assert(allowed <= 10, "a broken element must still go, and quickly")
+end)
+
+--------------------------------------------------------------------------------
 suite("hud.scale")
 --------------------------------------------------------------------------------
 
