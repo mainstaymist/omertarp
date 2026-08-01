@@ -94,7 +94,15 @@ local function giveOne(ply, row, def)
         wep.OmertaId = def.id
         -- Given EMPTY, always. Rounds are items; the clip is filled by
         -- reloading from what the character actually carries.
-        wep:SetClip1(0)
+        --
+        -- Through the bridge's setter rather than straight, because a base we
+        -- have never read is entitled to have opinions about SetClip1 and an
+        -- addon's opinion must not be able to error out of a give.
+        if Internal.SetClipSafely then
+            Internal.SetClipSafely(wep, 0)
+        else
+            wep:SetClip1(0)
+        end
         if Internal.ExternalAfterGive then
             Internal.ExternalAfterGive(ply, wep, def)
         end
@@ -114,13 +122,21 @@ end
 -- read is a number we did not write, and refunding a number we did not write
 -- is how strip-and-re-equip mints ammunition.
 local function refundClip(ply, wep, def)
-    if not (IsValid(ply) and IsValid(wep)) then return end
+    if not (IsValid(ply) and IsValid(wep) and def) then return end
+    -- Puts the projected pool down. Harmless for our own weapons, which have
+    -- no engine ammo type at all (D-004: `Ammo = "none"`), so there is one
+    -- path here rather than two.
     if Internal.ExternalBeforeStrip then
         Internal.ExternalBeforeStrip(ply, wep, def)
     end
-    local rounds = Omerta.Weapons.RefundableClip(wep:Clip1(), wep.OmertaCommitted,
+    local held = select(2, pcall(wep.Clip1, wep))
+    local rounds = Omerta.Weapons.RefundableClip(held, wep.OmertaCommitted,
         Omerta.Weapons.IsExternal(def))
-    wep:SetClip1(0)
+    if Internal.SetClipSafely then
+        Internal.SetClipSafely(wep, 0)
+    else
+        wep:SetClip1(0)
+    end
     wep.OmertaClipSeen, wep.OmertaCommitted = 0, 0
     if rounds <= 0 then return end
     Omerta.Inventory.Add(ply, def.ammo, rounds, { force = true }, function(ok, err)

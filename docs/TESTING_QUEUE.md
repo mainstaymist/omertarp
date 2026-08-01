@@ -2,8 +2,8 @@
 
 **What this is:** everything built but not yet confirmed working in-engine, in the order worth doing it. Kept current as work lands — when you report results, the statuses here get updated and anything that fails becomes a fix before new work starts.
 
-**Last updated:** 2026-08-01, after the field report on section 1.
-**Headless suite:** 422 checks passing. `luac -p` clean across the tree. 19 modules resolving.
+**Last updated:** 2026-08-01, after the third-party weapon pass.
+**Headless suite:** 455 checks passing. `luac -p` clean across the tree. 19 modules resolving.
 
 Status key: **☐ untested** · **☑ passed** · **☒ failed** (details inline) · **◐ partly**
 
@@ -21,7 +21,56 @@ If migrations fail, stop and send me the error — everything below depends on t
 
 ---
 
-## 1. The fourteen-item pass (2026-08-01)
+## 1. Third-party weapons, the period models, and three search bugs (2026-08-01)
+
+### Install these server-side first
+
+Nothing in this section works until the server's own collection carries
+them — `resource.AddWorkshop` only feeds clients:
+
+- the **ARC9 base** plus the **BO2** and **WaW** packs (`arc9_bo2_thompson`, `arc9_waw_m1911`)
+- the **TFA base** plus the **Insurgency 2** pack (`tfa_ins2_wpn_38revolver`)
+- the **playermodel pack** those six mafia models come from
+
+**A missing pack is not a crash.** Each weapon independently falls back to our
+own base and logs it. `omerta_weapons_list` prints what each gun is actually
+running, and `(wanted <class>)` when it fell back — run that first.
+
+| | Check | How | Expect |
+|---|---|---|---|
+| ☐ | **What is actually running** | `omerta_weapons_list` | Three weapons on their external classes, no `(wanted …)` |
+| ☐ | **The names** | Same, and in a shop | Model 10, M1921 AC Thompson, M1911 |
+| ☐ | **The M1911 exists and can be bought** | Treasury/procurement | `supply.m1911` at $125 |
+| ☐ | **They fire and kill sensibly** | Shoot a second character | Revolver 3 body shots, M1911 4, Thompson 8. **Our numbers, not the addon's** |
+| ☐ | **Reload comes out of your pockets** | Carry rounds, fire, reload | Rounds leave the inventory. The reserve readout tracks it |
+| ☐ | **You cannot mint ammunition** | **Try to break this.** Equip, unequip, re-equip, drop mid-reload, reload with a full magazine, swap guns mid-reload | Your total rounds must never go **up**. Fewer than you expected is a known and accepted failure direction; more is a bug and I want to hear about it immediately |
+| ☐ | **Fallback works** | Rename or remove one pack | That weapon reverts to our base, the others keep theirs, nothing errors |
+| ☐ | **Playermodels** | Create a character | Six appearances, no error models |
+
+**The accounting risk, stated plainly.** ARC9 may keep ammunition in state that
+`Clip1()` does not report. If it does, the bridge is blind on that gun — it can
+never hand out more than a character owns, but it may not see everything. This
+is the one thing that needs a real session before it is trusted, which is why
+"try to break the ammo" is the check that matters most in this section.
+
+Also: the arsenal's world models are still HL2 placeholders, so a **holstered**
+gun on somebody's back or hip will look wrong until they are pointed at the
+addons' own models. Firing and holding will look right.
+
+### The search bug was three bugs
+
+| | Check | How | Expect |
+|---|---|---|---|
+| ☐ | **Holding E searches to completion** | Hold E on a body without releasing | One search that finishes and opens the pockets. It used to cancel itself a tick after starting |
+| ☐ | **Aim badly on purpose** | Search a ragdoll aiming at the gap between a limb and the floor | Works the same. That mis-aim is what chose the broken path |
+| ☐ | **Cancelling silences the rustle** | Start a search, press E again | Sound stops **immediately**. It could not be cancelled at all before |
+| ☐ | **The plate survives a cancel** | Cancel a search, then search again. Then have somebody treat you | Everything still draws. One cancel used to permanently unregister the plate for the rest of the session |
+| ☐ | **The settings toggles change at once** | Settings → Black and white, watch the button | It flips on the click, not on the next visit |
+| ☐ | **The season number** | Bottom of the menu | Your existing season now shows a number — it takes its ordinal, since its label is a name |
+
+---
+
+## 1b. The fourteen-item pass (2026-08-01)
 
 Two of these were the same bug, and two more were not what they looked like.
 
@@ -122,7 +171,7 @@ Also unseen: whether IBM Plex Mono renders `·` at the drawn size.
 
 ---
 
-## 1b. Motion, and the world outside (2026-07-31)
+## 1c. Motion, and the world outside (2026-07-31)
 
 ### Every window now arrives and leaves
 
@@ -188,7 +237,7 @@ document for you to rule on.
 
 ---
 
-## 1c. The four-item follow-up (2026-07-31)
+## 1d. The four-item follow-up (2026-07-31)
 
 All four were real, and two of them were bugs I had already "fixed" twice by
 changing a number that was never being used.
@@ -236,7 +285,7 @@ a popup panel, with the line still drawn over the world in our own type.
 
 ---
 
-## 1d. The nine-item pass (2026-07-31)
+## 1e. The nine-item pass (2026-07-31)
 
 Your notes after the city let you in. Everything here is new or changed since
 that session, so it is all first-time verification.

@@ -81,6 +81,10 @@ local MODULE_FILES = {
     "gamemodes/omertarp/gamemode/modules/weapons/sh_module.lua",
     "gamemodes/omertarp/gamemode/modules/weapons/sh_weapons.lua",
     "gamemodes/omertarp/gamemode/modules/weapons/sh_weapons_arsenal.lua",
+    -- Listed before sv_weapons for the same reason the engine includes it
+    -- first (alphabetical within a realm): it is the file sv_weapons' OnEnable
+    -- calls into, and it must never grow a lifecycle method of its own.
+    "gamemodes/omertarp/gamemode/modules/weapons/sv_external.lua",
     "gamemodes/omertarp/gamemode/modules/weapons/sv_weapons.lua",
 }
 
@@ -326,6 +330,68 @@ check("the Thompson trades damage per round for rate", function()
     assert(thompson.automatic == true and not revolver.automatic)
 end)
 
+-- The M1911 is the first weapon to sit ON the line the other two draw rather
+-- than at an end of it, so what is pinned is its POSITION between them rather
+-- than any number on its own — a retune that keeps the ordering is free, and
+-- one that collapses the three guns into two fails here.
+check("the M1911 exists, is carried as a sidearm, and feeds off the Thompson's box", function()
+    loadModules()
+    local def = Omerta.Weapons.Get("weapon.m1911")
+    assert(def, "no M1911 definition")
+    assert(def.class == "weapon_omerta_m1911", "wrong class: " .. tostring(def.class))
+
+    local item = Omerta.Items.Get("weapon.m1911")
+    assert(item, "the item half was not created")
+    assert(item.slot == "sidearm", "a sidearm lives in the sidearm slot")
+    assert(item.concealable == true, "a .45 automatic goes under a coat")
+    assert(item.bulk < Omerta.Config.Get("inventory.base_capacity"),
+        "and it fits in a pocket, unlike the Thompson")
+
+    assert(def.ammo == Omerta.Weapons.Get("weapon.thompson").ammo,
+        "the M1911 and the Thompson share a caliber, so a crew has one supply line")
+    assert(Omerta.Items.Get(def.ammo), "its ammunition has no item")
+end)
+
+check("the M1911 takes four body shots, between the revolver's three and the Thompson's eight", function()
+    loadModules()
+    local m1911 = Omerta.Weapons.Get("weapon.m1911")
+
+    -- M19's bands: below 70 is injured, below 35 critical, 0 is down.
+    assert(m1911.damage * 3 < 100, "three shots must NOT be enough")
+    assert(m1911.damage * 4 >= 100, "four must be")
+    assert(100 - m1911.damage * 3 < 35, "and the third must leave him critical")
+    -- Not on the boundary: a gun whose lethality turns on how a comparison
+    -- rounds is a gun that gets reported as a bug.
+    assert(m1911.damage * 4 > 100, "four shots must clear 100, not land on it")
+
+    local function shotsToDown(def) return math.ceil(100 / def.damage) end
+    assert(shotsToDown(Omerta.Weapons.Get("weapon.revolver")) < shotsToDown(m1911),
+        "the revolver must still hit harder per round")
+    assert(shotsToDown(m1911) < shotsToDown(Omerta.Weapons.Get("weapon.thompson")),
+        "and the Thompson must still hit softer")
+end)
+
+-- The price of the slot, stated as an assertion: a gun you can wear into a
+-- room where nobody can wear a Thompson does not also win the fight fastest.
+check("the concealable .45 is the slowest of the three to put a man down", function()
+    loadModules()
+    local function secondsToDown(def)
+        return (math.ceil(100 / def.damage) - 1) * Omerta.Weapons.CycleDelay(def.rpm)
+    end
+    local m1911 = secondsToDown(Omerta.Weapons.Get("weapon.m1911"))
+    assert(m1911 > secondsToDown(Omerta.Weapons.Get("weapon.revolver")),
+        "it must not out-kill the revolver it is easier to keep shooting")
+    assert(m1911 > secondsToDown(Omerta.Weapons.Get("weapon.thompson")),
+        "and it must certainly not out-kill the gun nobody can hide")
+
+    -- What it buys instead.
+    local revolver = Omerta.Weapons.Get("weapon.revolver")
+    assert(Omerta.Weapons.Get("weapon.m1911").clip > revolver.clip,
+        "a magazine holds more than a cylinder")
+    assert(Omerta.Weapons.Get("weapon.m1911").reloadTime < revolver.reloadTime,
+        "and changes faster than one is loaded by hand")
+end)
+
 --------------------------------------------------------------------------------
 suite("weapons.supply")
 --------------------------------------------------------------------------------
@@ -350,7 +416,7 @@ end)
 check("the arsenal is buyable, and priced in coins that exist", function()
     loadModules()
     Omerta.Module.FinishLoading()
-    for _, id in ipairs({ "supply.revolver", "supply.thompson",
+    for _, id in ipairs({ "supply.revolver", "supply.m1911", "supply.thompson",
                           "supply.ammo_38", "supply.ammo_45" }) do
         local entry = Omerta.Procurement.Get(id)
         assert(entry, id .. " is not in the catalogue")
@@ -358,4 +424,282 @@ check("the arsenal is buyable, and priced in coins that exist", function()
             id .. " is priced in coins that do not exist")
         assert(Omerta.Items.Get(entry.item), id .. " delivers an item that does not exist")
     end
+end)
+
+--------------------------------------------------------------------------------
+suite("weapons.external")
+--------------------------------------------------------------------------------
+-- A weapon may name a SWEP somebody else wrote, and D-039 says that line is the
+-- whole edit. Neither the ARC9 pack nor the TFA pack is installed on any
+-- machine this suite runs on and neither ever will be, which is exactly the
+-- state these checks exist to pin: the DEGRADATION is the load-bearing half,
+-- and it is the half that would otherwise only be discovered by an operator.
+
+check("naming a third party's SWEP is a line in the arsenal and nothing else", function()
+    loadModules()
+    for id, class in pairs({
+        ["weapon.thompson"] = "arc9_bo2_thompson",
+        ["weapon.revolver"] = "tfa_ins2_wpn_38revolver",
+        ["weapon.m1911"]    = "arc9_waw_m1911",
+    }) do
+        local def = Omerta.Weapons.Get(id)
+        assert(def, id .. " is missing")
+        assert(def.external == class,
+            id .. " should name '" .. class .. "', names " .. tostring(def.external))
+        -- Our own class is generated REGARDLESS. It is the fallback, and a
+        -- fallback that is only built when it turns out to be needed is a
+        -- fallback nobody has ever run.
+        assert(def.class == Omerta.Weapons.ClassFor(id),
+            id .. " lost its own class to the external one")
+    end
+end)
+
+check("with the addon absent every weapon falls back to our own base", function()
+    loadModules()
+    -- Nothing conjured: the default detector answers "not in the engine, so
+    -- nothing is installed", which is the honest answer for this machine and
+    -- for a server that never mounted the packs.
+    local count, fellBack = Omerta.Weapons.ResolveExternal()
+    assert(count == 3, "three weapons name an external; " .. count .. " fell back")
+
+    for _, def in ipairs(fellBack) do
+        assert(Omerta.Weapons.ClassOf(def) == def.class,
+            def.id .. " fell back to " .. tostring(Omerta.Weapons.ClassOf(def)))
+        assert(not Omerta.Weapons.IsExternal(def))
+        -- The report is what the log line is built from, so it has to carry
+        -- the class the operator has to go and install.
+        assert(def.external and def.external ~= "", def.id .. " cannot say what is missing")
+    end
+
+    -- And the player is handed something. This is the whole point: a missing
+    -- addon is our own gun and one line in the log, never an empty hand.
+    assert(Omerta.Weapons.ClassOf(Omerta.Weapons.Get("weapon.thompson"))
+        == "weapon_omerta_thompson")
+end)
+
+check("with the addon present the third party's class is what gets given", function()
+    loadModules()
+    -- The detector is injectable for the same reason ResolveModel's validator
+    -- is: an addon can be conjured and taken away again on a machine that has
+    -- neither, which is the only way this path is ever exercised.
+    local installed = {
+        arc9_bo2_thompson = true,
+        arc9_waw_m1911 = true,
+    }
+    local count = Omerta.Weapons.ResolveExternal(function(class) return installed[class] end)
+    assert(count == 1, "only the TFA revolver should have fallen back, " .. count .. " did")
+
+    local thompson = Omerta.Weapons.Get("weapon.thompson")
+    assert(Omerta.Weapons.ClassOf(thompson) == "arc9_bo2_thompson",
+        "gave " .. tostring(Omerta.Weapons.ClassOf(thompson)))
+    assert(Omerta.Weapons.IsExternal(thompson))
+
+    -- Mixed, per weapon, with no ceremony: half an installed pack is a normal
+    -- state and must not be an all-or-nothing decision.
+    local revolver = Omerta.Weapons.Get("weapon.revolver")
+    assert(Omerta.Weapons.ClassOf(revolver) == "weapon_omerta_revolver")
+    assert(not Omerta.Weapons.IsExternal(revolver))
+end)
+
+check("a detector that errors means the class is not there, not that the boot is", function()
+    loadModules()
+    local count = Omerta.Weapons.ResolveExternal(function() error("addon exploded") end)
+    assert(count == 3, "an exploding lookup must read as absent for every weapon")
+    assert(Omerta.Weapons.ClassOf(Omerta.Weapons.Get("weapon.m1911"))
+        == "weapon_omerta_m1911")
+end)
+
+check("the operator can refuse the third-party classes outright", function()
+    loadModules()
+    -- weapons.external = false. The recourse when an addon misbehaves on a
+    -- live server and nobody is available to patch anything.
+    local count = Omerta.Weapons.ResolveExternal(function() return true end, false)
+    assert(count == 0, "a deliberate refusal is not a fallback and must not be reported as one")
+    for _, def in ipairs(Omerta.Weapons.All()) do
+        assert(Omerta.Weapons.ClassOf(def) == def.class,
+            def.id .. " ignored the switch")
+    end
+end)
+
+check("both halves of the pair answer to the same weapon", function()
+    loadModules()
+    local thompson = Omerta.Weapons.Get("weapon.thompson")
+    -- The hotbar, the round readout, the reserve and the holster props all ask
+    -- this one question, and none of them should have to know which class won.
+    assert(Omerta.Weapons.ForClass("weapon_omerta_thompson") == thompson)
+    assert(Omerta.Weapons.ForClass("arc9_bo2_thompson") == thompson)
+    assert(Omerta.Weapons.ForClass("weapon_physgun") == nil,
+        "a gun the arsenal does not know is not ours to reconcile")
+    assert(Omerta.Weapons.ForClass(nil) == nil)
+end)
+
+expectError("an external must be somebody else's SWEP, not one of ours",
+    "weapon_omerta_* is ours", function()
+    loadModules()
+    Omerta.Weapons.Register("weapon.pretender", {
+        name = "Pretender", slot = "sidearm", bulk = 3,
+        damage = 20, rpm = 100, clip = 5, ammo = "ammo.38",
+        -- Claiming our own class would make the fallback point at itself, so a
+        -- missing addon would resolve to "present" and the degradation would
+        -- never fire.
+        external = "weapon_omerta_revolver",
+    })
+end)
+
+expectError("an external must look like a class name", "is not a class name", function()
+    loadModules()
+    Omerta.Weapons.Register("weapon.shouty", {
+        name = "Shouty", slot = "sidearm", bulk = 3,
+        damage = 20, rpm = 100, clip = 5, ammo = "ammo.38",
+        external = "ARC9 Thompson",
+    })
+end)
+
+expectError("two weapons cannot claim the same third-party class", "already claims", function()
+    loadModules()
+    Omerta.Weapons.Register("weapon.copycat", {
+        name = "Copycat", slot = "sidearm", bulk = 3,
+        damage = 20, rpm = 100, clip = 5, ammo = "ammo.38",
+        external = "arc9_bo2_thompson",
+    })
+end)
+
+--------------------------------------------------------------------------------
+suite("weapons.ammunition_bridge")
+--------------------------------------------------------------------------------
+-- D-004 across a SWEP we did not write. The inventory stays the truth and the
+-- engine's ammo pool becomes a projection of it; this is the arithmetic that
+-- makes that sentence enforceable, and it is pure so the suite can pin it
+-- rather than an in-engine session having to.
+--
+-- The rule under every one of these: where the accounting is ambiguous the
+-- player ends up with FEWER rounds than they might have had, never more.
+
+check("nothing happening costs nothing and re-projects the pocket", function()
+    loadModules()
+    local plan = Omerta.Weapons.PlanPoolSync(10, 6, 10, 6, 10)
+    assert(plan.spend == 0, "an idle gun charges nothing")
+    assert(plan.clip == 6, "and keeps its magazine")
+    assert(plan.pool == 10, "the pool is the pocket, always")
+end)
+
+check("a reload charges the inventory for exactly what left the pool", function()
+    loadModules()
+    -- Empty gun, ten rounds in a pocket. The addon reloads itself: seven out
+    -- of the pool, seven into the magazine.
+    local plan = Omerta.Weapons.PlanPoolSync(10, 0, 10, 7, 3)
+    assert(plan.spend == 7, "seven rounds left the pool and seven leave the pocket")
+    assert(plan.clip == 7, "the magazine is honest and stands")
+    assert(plan.pool == 3, "and the pool is what is left")
+end)
+
+check("firing costs nothing extra, because the reload already paid", function()
+    loadModules()
+    -- Three rounds in a pocket, seven in the magazine, three fired.
+    local plan = Omerta.Weapons.PlanPoolSync(3, 7, 3, 4, 3)
+    assert(plan.spend == 0, "the round was charged when it went into the gun")
+    assert(plan.clip == 4)
+    assert(plan.pool == 3)
+end)
+
+check("a weapon that eats the pool directly is charged just the same", function()
+    loadModules()
+    -- Some bases take the shot straight off the reserve without a magazine
+    -- ever changing. The rounds are gone either way and the bill is the same.
+    local plan = Omerta.Weapons.PlanPoolSync(20, 0, 20, 0, 17)
+    assert(plan.spend == 3, "three rounds left the pool")
+    assert(plan.pool == 17)
+end)
+
+check("a pool the addon inflated is clamped back to the pocket", function()
+    loadModules()
+    -- The single most important line in the bridge: an addon handing the
+    -- player ammunition cannot make ammunition, because the next projection
+    -- overwrites the pool with what the inventory actually holds.
+    local plan = Omerta.Weapons.PlanPoolSync(3, 6, 3, 6, 999)
+    assert(plan.spend == 0, "nothing left the pool, so nothing is charged")
+    assert(plan.pool == 3, "and the pool goes back to being the pocket")
+end)
+
+check("a magazine filled out of nowhere is charged for", function()
+    loadModules()
+    -- Rounds appeared in the magazine without leaving the pool: the addon
+    -- keeps ammunition somewhere we cannot see, or refilled itself. Same
+    -- problem, same answer — the pocket pays.
+    local plan = Omerta.Weapons.PlanPoolSync(10, 0, 5, 7, 5)
+    assert(plan.spend == 7, "seven unbacked rounds, seven charged")
+    assert(plan.clip == 7, "the pocket could afford them, so they stay in the gun")
+    assert(plan.pool == 3)
+end)
+
+check("a magazine nobody can pay for comes straight back out of the gun", function()
+    loadModules()
+    -- Empty pockets, empty pool, thirty rounds in the magazine. This is the
+    -- shape of every cheat the bridge cannot see coming, and it resolves to
+    -- the same place: the character holds what the character owns.
+    local plan = Omerta.Weapons.PlanPoolSync(0, 0, 0, 30, 0)
+    assert(plan.spend == 0, "there is nothing to charge")
+    assert(plan.clip == 0, "so there is nothing in the gun")
+    assert(plan.pool == 0)
+end)
+
+check("a half-affordable magazine is cut down to what was owned", function()
+    loadModules()
+    -- Five rounds owned, five drawn from the pool, thirty somehow in the
+    -- magazine. The five real ones stay; the twenty-five invented ones do not.
+    local plan = Omerta.Weapons.PlanPoolSync(5, 0, 5, 30, 0)
+    assert(plan.spend == 5, "everything that was owned is charged")
+    assert(plan.clip == 5, "and the magazine holds exactly that")
+    assert(plan.pool == 0)
+end)
+
+check("rounds arriving in a pocket reach the pool, and rounds leaving it do not strand the magazine", function()
+    loadModules()
+    -- Bought a box: thirty more rounds, nothing else changed.
+    local bought = Omerta.Weapons.PlanPoolSync(33, 4, 3, 4, 3)
+    assert(bought.spend == 0 and bought.pool == 33,
+        "the projection follows the pocket without a hook to be told")
+
+    -- Dropped every loose round while the gun is loaded. The four in the
+    -- magazine were already charged for and stay where they are.
+    local dropped = Omerta.Weapons.PlanPoolSync(0, 4, 3, 4, 3)
+    assert(dropped.spend == 0 and dropped.pool == 0 and dropped.clip == 4)
+end)
+
+check("the arithmetic survives what an unread addon might hand it", function()
+    loadModules()
+    local P = Omerta.Weapons.PlanPoolSync
+    for _, plan in ipairs({
+        P(nil, nil, nil, nil, nil),
+        P(-5, -5, -5, -5, -5),
+        P(10, 0, 0, 6.7, 3.2),
+        P(0 / 0, 0 / 0, 0 / 0, 0 / 0, 0 / 0),   -- NaN
+        P(math.huge, 0, 0, math.huge, math.huge),
+    }) do
+        for _, field in ipairs({ "spend", "clip", "pool" }) do
+            local value = plan[field]
+            assert(type(value) == "number", field .. " stopped being a number")
+            assert(value == value, field .. " came back NaN")
+            assert(value >= 0, field .. " came back negative")
+            assert(value % 1 == 0, field .. " came back fractional: " .. value)
+        end
+    end
+end)
+
+check("a refund puts back the magazine, and never more than we vouched for", function()
+    loadModules()
+    local R = Omerta.Weapons.RefundableClip
+    -- Our own weapon: the clip is ours, we wrote every round of it.
+    assert(R(6, 0, false) == 6, "our own gun refunds its magazine")
+    assert(R(0, 0, false) == 0)
+
+    -- A third party's: capped by what the bridge last settled. Clip1 on a
+    -- magazine model we have never read is a number we did not write, and
+    -- refunding a number we did not write is how strip-and-re-equip mints
+    -- ammunition.
+    assert(R(7, 7, true) == 7, "an honest magazine refunds honestly")
+    assert(R(30, 7, true) == 7, "an inflated one refunds what was vouched for")
+    assert(R(3, 7, true) == 3, "and a spent one refunds what is actually left")
+    assert(R(7, nil, true) == 0, "vouched for nothing, refund nothing")
+    assert(R(-4, 7, true) == 0 and R(7, -4, true) == 0, "and nonsense refunds nothing")
 end)

@@ -92,6 +92,27 @@ Resolves Q-4. Ending a season automatically retires every living character ("lea
 
 ---
 
+## D-044 — A weapon may name somebody else's SWEP; the ammo pool becomes a projection (DECIDED, 2026-08-01; extends D-039, preserves D-004)
+
+The arsenal may say `external = "arc9_bo2_thompson"`, and that line is the whole edit. D-039 promised that adding a gun is one `Register` call; this extends the promise to cover *whose SWEP fires it*. The generated `weapon_omerta_*` class is still built for every weapon, because it is the fallback — a server without the pack gets our own base and a log line, never an empty hand.
+
+**D-004 does not bend.** Rounds are items; the engine's ammo pool is never the truth. An ARC9 or TFA weapon reloads from that pool, so the pool becomes **server-written state derived from the M9 rows** — re-projected continuously, with every round that leaves it charged to the inventory that backed it. The inventory remains the only place ammunition exists; the pool is a rendering of it.
+
+The load-bearing constraint is that **neither addon could be read**: they are not installed on the machine this was built on and Steam is unreachable from it. The integration is therefore written entirely against Garry's Mod base API, and nothing is guessed about either addon except the three class strings the project lead supplied — where a wrong string merely fails to detect, which is a state the seam already handles. That is D-043's asymmetry applied to a behavioural dependency of a different kind: a wrong guess about a *name* is silently wrong forever, a wrong guess about a *function* simply does not match.
+
+Two things are given up, recorded here rather than discovered later:
+
+- **The addon's ballistics** — falloff, penetration, limb multipliers. The arsenal's `damage` is imposed on the bullet instead, so M19's calibration and `weapons.damage_scale` keep meaning something.
+- **Our fire feel** — spread, recoil, cycle rate, sound, the dry click, reload timing. Those belong to whoever owns the trigger.
+
+`Omerta.WeaponFired` is bridged through `EntityFireBullets`, which fires once per trigger pull and before damage exists, so M14's design review remains valid and M19's damage filters still see our number.
+
+**One rule governs every case that could not be verified:** ambiguity resolves toward the player having FEWER rounds than they might have, never more. A bridge that guesses generously is a duplication bug with extra steps, and duplication is the single failure M9 was built to make impossible.
+
+**Accepted risk, on the record.** If ARC9 keeps ammunition in state that `Clip1()` does not reflect, accounting on that weapon is blind. The conservative-failure rule bounds the damage — the pool can never exceed what a character owns — but this needs one in-engine session with the pack installed before it is trusted.
+
+**Affects:** D-039 (extended, not amended — a weapon is still data); D-004 (preserved by construction); `modules/weapons/sv_external.lua`; `docs/design-reviews/W0_weapons_base.md` §7 (new, tabulating what survives).
+
 ## D-043 — The world's map and weather come from the Workshop, behind a seam (DECIDED, 2026-07-31)
 
 The city runs on a Workshop map (`1656078410`) and its sky is driven by a Workshop weather system (`1132466603`), both chosen by the project lead. Clients receive them through `resource.AddWorkshop`; the server must carry both in its own collection.

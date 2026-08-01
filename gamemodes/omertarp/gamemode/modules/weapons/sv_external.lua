@@ -103,19 +103,33 @@ local function activeExternal(ply)
     return wep, def
 end
 
--- Every pool read and write goes through these two, because a SWEP whose
--- source we have not read is entitled to have opinions about its own ammo type
--- and we are not entitled to error over them.
-local function ammoTypeOf(wep)
+-- Which engine pool this weapon eats from.
+--
+-- Ammo indices are 1-based in Source and -1 means "this weapon has no pool".
+-- Our own generated classes declare `Ammo = "none"` (D-004: the pool is never
+-- used), so this answers nil for them and every call below becomes a no-op —
+-- which is why the give and strip paths can hand OUR weapons through here
+-- without a second branch.
+function Internal.ExternalAmmoType(wep)
+    if not IsValid(wep) then return nil end
     local ok, id = pcall(wep.GetPrimaryAmmoType, wep)
-    if not ok or type(id) ~= "number" or id < 0 then return nil end
+    if not ok or type(id) ~= "number" or id ~= id or id <= 0 then return nil end
     return id
 end
+local ammoTypeOf = Internal.ExternalAmmoType
 
+-- Reading and writing a magazine we did not model. Both are Garry's Mod base
+-- API and every weapon has them — but a base we have never read is entitled to
+-- override either, and an addon's opinion must not be able to error out of the
+-- reconcile sweep and take the holster props and the round readout with it.
 local function clipOf(wep)
     local ok, count = pcall(wep.Clip1, wep)
-    if not ok or type(count) ~= "number" then return 0 end
+    if not ok or type(count) ~= "number" or count ~= count then return 0 end
     return count
+end
+
+function Internal.SetClipSafely(wep, count)
+    if IsValid(wep) then pcall(wep.SetClip1, wep, count) end
 end
 
 --------------------------------------------------------------------------------
@@ -177,7 +191,7 @@ function Internal.SyncExternal(ply)
     -- The magazine first: whatever the inventory could not pay for comes back
     -- out of it before anything else is written anywhere.
     if plan.clip ~= clip then
-        pcall(wep.SetClip1, wep, plan.clip)
+        Internal.SetClipSafely(wep, plan.clip)
     end
     wep.OmertaClipSeen = plan.clip
     wep.OmertaCommitted = plan.clip
@@ -219,7 +233,7 @@ function Internal.ExternalAfterGive(ply, wep, def)
 
     local function settle()
         if not (IsValid(ply) and IsValid(wep)) then return end
-        pcall(wep.SetClip1, wep, 0)
+        Internal.SetClipSafely(wep, 0)
         local ammoType = ammoTypeOf(wep)
         if ammoType then ply:SetAmmo(0, ammoType) end
         wep.OmertaClipSeen = 0

@@ -47,3 +47,30 @@ In-engine (see `TESTING_QUEUE.md` §1): equip → fire → reload → down → s
 ## 6. What this deliberately is not
 
 No melee base (the crowbar stays an object until M14 wants it swung), no holster worldmodels (Track E's feel pass), no ironsights, no weapon condition/jamming, and only two guns — BA §27's remaining arsenal is data, added when M14's design review knows what each gun is *for*.
+
+## 7. Third-party SWEPs (added 2026-08-01; awaiting a decision-log entry)
+
+The project lead installed an ARC9 pack and a TFA pack and named three classes: `arc9_bo2_thompson` (the M1921 AC Thompson), `tfa_ins2_wpn_38revolver` (the Model 10), `arc9_waw_m1911` (the new M1911). A weapon definition may now name one, and per D-039 that line is the whole edit:
+
+```lua
+external = "arc9_bo2_thompson",
+```
+
+The module gives, strips, holsters and reconciles that class instead of `weapon_omerta_*`. **The generated class is still built for every weapon**, because it is the fallback — a server without the addon gets our own gun and one warning naming the missing class, never an empty hand. Resolution is `weapons.Get(class)`, re-run at `InitPostEntity`, and `weapons.external = false` turns the whole thing off for an operator whose addon misbehaves mid-season.
+
+**Nothing in this integration calls an ARC9 or a TFA function.** Neither addon was readable from the machine this was built on, so the shape was chosen to make that unnecessary: every call the bridge makes against a third-party weapon is Garry's Mod base API, enumerated in `Omerta.Weapons.EXTERNAL_CALLS`. That is D-043's rule — detect by what you intend to call, never by a name — arrived at from the other direction.
+
+### D-004 survives, as a projection
+
+Rounds are still items and the inventory is still the truth. An addon reloads from the **engine ammo pool**, so the pool becomes a server-written projection of the M9 rows: re-written at give, at strip, on every shot fired, and four times a second from the reconcile sweep (which is what makes it follow a pocket that changed for any other reason). Every round that leaves the pool is charged to the inventory that backed it; a pool the addon inflates is overwritten with what the character actually owns; a magazine that fills from nowhere is charged for and, if it cannot be paid for, **clamped back down**. The arithmetic is one pure function, `Omerta.Weapons.PlanPoolSync`, pinned by the headless suite. Where it is ambiguous it always resolves the same way: the player ends up with fewer rounds than they might have had, never more.
+
+### What survives, and what does not
+
+| Seam | With an external SWEP |
+|---|---|
+| `Omerta.WeaponFired` | **Bridged**, via `EntityFireBullets` — once per trigger pull, before any damage exists. M14 needs no change. Lost only for a gun that damages without `FireBullets`. |
+| `weapons.damage_scale` and the arsenal's `damage` | **Bridged**, same hook, imposed on the bullet before M19 sees it. The addon's own ballistics — range falloff, penetration, per-limb multipliers — are **lost**. |
+| Holster props, the draw ceremony, concealment, bulk, the item, procurement, `Serial`, `InstanceOf`, the hotbar, the round readout | **Survive unchanged.** The draw is M9's equip path, not the SWEP; the props use the arsenal's own `worldModel`, which is still an HL2 placeholder until somebody points it at the addon's. |
+| `spread` / `SpreadFactor` / `recoil` / `CycleDelay` / `def.sound` / the dry click / `reloadTime` | **Lost.** The addon owns firing and reloading; those numbers describe a gun that is not being fired. They stay in the arsenal because they are what the fallback runs on. |
+| `Internal.Reload` and its transactional `Remove` | **Not used.** The bridge's accounting replaces it — same guarantee, arrived at by observation instead of by control. |
+| Attachments, extended magazines | The addon's business. Bounded: they can change how much a gun holds, never how much a character owns. |
