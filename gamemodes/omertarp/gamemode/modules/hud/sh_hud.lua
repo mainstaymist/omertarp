@@ -35,6 +35,26 @@ Omerta.HUD.SCALE_BASE = 1.75
 Omerta.HUD.SCALE_MIN, Omerta.HUD.SCALE_MAX = 0.6, 1.4
 Omerta.HUD.SCALE_STEPS = { 0.6, 0.7, 0.8, 0.9, 1, 1.2, 1.4 }
 
+-- Perceived brightness of a colour, 0..255, for the black-and-white setting.
+--
+-- Rec. 601 weights, and the weights are the whole point: a straight average of
+-- the channels renders the brass accent and the danger red at almost exactly
+-- the same grey, because 200-169-106 and 142-43-34 average within a few points
+-- of each other. The eye does not see those two as equally bright and neither
+-- does this. Same coefficients the chat box uses to map a channel's declared
+-- colour onto the palette, deliberately — two different answers to "how bright
+-- is this" in one interface is one too many.
+--
+-- Here rather than in cl_hud so the suite can pin it without an engine.
+function Omerta.HUD.Luma(r, g, b)
+    local value = 0.299 * (tonumber(r) or 0)
+        + 0.587 * (tonumber(g) or 0)
+        + 0.114 * (tonumber(b) or 0)
+    if value < 0 then return 0 end
+    if value > 255 then return 255 end
+    return math.floor(value + 0.5)
+end
+
 -- The stored multiple, clamped. NOT the effective scale — Omerta.HUD.Scale()
 -- multiplies this by the base.
 function Omerta.HUD.ClampScale(value)

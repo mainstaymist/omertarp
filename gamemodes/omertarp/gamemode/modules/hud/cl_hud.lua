@@ -122,13 +122,28 @@ function Omerta.HUD.Font(role)
     return "Omerta.HUD." .. (THEME.TYPE[role] and role or "body")
 end
 
+-- Whether the interface is being drawn in black and white. Declared here
+-- because Colour is the chokepoint that has to honour it; the convar and the
+-- change callback that maintain it live in the black-and-white section below,
+-- next to the screen pass they belong with.
+local monochrome = false
+
 -- A themed colour as a drawable Color, with optional alpha (0..1 or 0..255).
 -- Every call site names a ROLE — "brass", "rule" — so a re-theme is sh_theme,
 -- never a search for hex values.
+--
+-- This is also the ONE place the black-and-white setting reaches the
+-- interface. Every token in the game comes through here, so desaturating at
+-- this point takes the HUD, the widget kit and every window together and
+-- cannot be forgotten by a screen written next year.
 function Omerta.HUD.Colour(token, alpha)
     local rgb = THEME.COLOUR[token] or THEME.COLOUR.text
     alpha = alpha or 255
     if alpha <= 1 then alpha = alpha * 255 end
+    if monochrome then
+        local luma = Omerta.HUD.Luma(rgb[1], rgb[2], rgb[3])
+        return Color(luma, luma, luma, alpha)
+    end
     return Color(rgb[1], rgb[2], rgb[3], alpha)
 end
 
@@ -151,6 +166,31 @@ function Omerta.HUD.Fit(width, height, margin)
     margin = margin or Omerta.HUD.Space(5)
     return math.min(width, ScrW() - margin * 2),
         math.min(height, ScrH() - margin * 2)
+end
+
+-- A filled circle, as a polygon.
+--
+-- The engine has no circle primitive, and draw.RoundedBox is not one: its
+-- corners come from a texture, so below about a dozen pixels across it cannot
+-- resolve the curve and renders a rounded square. Everything round in this
+-- interface is small — a crosshair, a status pip — which is precisely the size
+-- band where that fails, so the polygon is not an optimisation, it is the only
+-- version that is actually round.
+--
+-- Segments scale with the radius: a 2px dot needs nothing like the vertices a
+-- 40px ring does, and a fixed count is either wasteful at the bottom or
+-- visibly faceted at the top.
+function Omerta.HUD.Disc(cx, cy, radius, colour, segments)
+    segments = segments or math.Clamp(math.ceil(radius * 4), 8, 64)
+    local poly = {}
+    for i = 1, segments do
+        local angle = (i - 1) / segments * math.pi * 2
+        poly[i] = { x = cx + math.cos(angle) * radius,
+            y = cy + math.sin(angle) * radius }
+    end
+    draw.NoTexture()
+    surface.SetDrawColor(colour)
+    surface.DrawPoly(poly)
 end
 
 -- Every piece of text drawn over the WORLD goes through this. The guide's
@@ -211,20 +251,22 @@ end)
 hook.Add("HUDDrawTargetID", "omerta.hud.no_targetid", function() return false end)
 
 --------------------------------------------------------------------------------
--- The body below the eyes
+-- The body below the eyes — REMOVED, deliberately
 --------------------------------------------------------------------------------
--- Look down far enough and your own feet are there. The engine's first person
--- draws no body at all; rendering the local player once the pitch is steep
--- keeps the camera out of the head geometry while giving the downward glance
--- something to land on.
-
-hook.Add("ShouldDrawLocalPlayer", "omerta.hud.feet", function()
-    if Omerta.Menu and Omerta.Menu.IsShowing and Omerta.Menu.IsShowing() then return end
-    local C = Omerta.Injury and Omerta.Injury.Client
-    if C and (C.death or C.leaving or Omerta.Injury.IsDown(C.state)) then return end
-    local ply = LocalPlayer()
-    if IsValid(ply) and ply:EyeAngles().p > 42 then return true end
-end)
+-- There used to be a ShouldDrawLocalPlayer hook here that drew the player's own
+-- model once the pitch went past 42 degrees, so looking down found feet.
+--
+-- It does not work and it cannot be made to. ShouldDrawLocalPlayer draws the
+-- WHOLE model at its world position, head included, and the first-person camera
+-- sits inside that head — so looking down put the camera through the model's
+-- own geometry and the reported result was "the playermodel appears and you
+-- look through it". A real first-person body needs a separate rig with the head
+-- bone scaled away and the arms driven off the viewmodel, which is an art and
+-- animation job, not a hook.
+--
+-- The project lead has an addon that does it properly. This is left as a
+-- comment rather than deleted silently so nobody re-adds the one-liner in good
+-- faith six months from now.
 
 --------------------------------------------------------------------------------
 -- Black and white (a settings option, default off)
@@ -234,8 +276,28 @@ end)
 
 CreateClientConVar("omerta_blackwhite", "0", true, false)
 
+-- The interface goes grey with the world.
+--
+-- RenderScreenspaceEffects runs on the 3D scene only — the HUD and every VGUI
+-- panel are drawn afterwards and are untouched by it, which is why the world
+-- went monochrome and the brass in the menus stayed gold. The fix belongs in
+-- Omerta.HUD.Colour rather than in a second screen pass: every token in the
+-- interface already goes through that one function, so desaturating there
+-- catches the HUD, the widget kit and every window at once, and a screen pass
+-- over the top would also flatten the model preview and any future portrait,
+-- which are photographs of a world that is already grey.
+--
+-- Cached against a change callback rather than read per call: this runs
+-- several hundred times a frame and a convar lookup in that path is a real
+-- cost for a value that changes when somebody clicks a button.
+local function readMonochrome()
+    monochrome = GetConVar("omerta_blackwhite"):GetBool()
+end
+readMonochrome()
+cvars.AddChangeCallback("omerta_blackwhite", readMonochrome, "omerta.hud.mono")
+
 hook.Add("RenderScreenspaceEffects", "omerta.hud.blackwhite", function()
-    if not GetConVar("omerta_blackwhite"):GetBool() then return end
+    if not monochrome then return end
     DrawColorModify({
         ["$pp_colour_addr"] = 0, ["$pp_colour_addg"] = 0, ["$pp_colour_addb"] = 0,
         ["$pp_colour_mulr"] = 0, ["$pp_colour_mulg"] = 0, ["$pp_colour_mulb"] = 0,
@@ -542,15 +604,23 @@ Omerta.HUD.Register("interactable", {
         -- where you are looking, and anything bigger starts reading as an
         -- aiming reticle — which is a promise about gunplay this game does
         -- not make.
-        local radius = 1.5 * scale
+        -- A REAL circle, drawn as a polygon.
+        --
+        -- The first version used draw.RoundedBox with the corner radius set to
+        -- half the box, on the assumption that a fully rounded square is a
+        -- circle. It is not: RoundedBox builds its corners from a corner
+        -- TEXTURE, and at a handful of pixels across the texture cannot
+        -- resolve the curve — so it rendered as a rounded square, which is
+        -- exactly what was reported. A polygon has no such floor and is
+        -- honest at any size.
+        local radius = 1.2 * scale
         local cx, cy = ScrW() * 0.5, ScrH() * 0.5
         -- Faint with nothing in reach, full when there is.
         local presence = interactableTarget() and 1 or 0.45
-        draw.RoundedBox(radius + 1, cx - radius - 1, cy - radius - 1,
-            (radius + 1) * 2, (radius + 1) * 2,
-            Color(0, 0, 0, 230 * alpha * presence))
-        draw.RoundedBox(radius, cx - radius, cy - radius,
-            radius * 2, radius * 2,
+        -- The ink ring first, a pixel proud all round, so the dot survives
+        -- being held against bone-coloured wall as well as against grass.
+        Omerta.HUD.Disc(cx, cy, radius + 1, Color(0, 0, 0, 230 * alpha * presence))
+        Omerta.HUD.Disc(cx, cy, radius,
             Omerta.HUD.Colour("text", 235 * alpha * presence))
 
         -- The ladder: one centred column under the dot. The SUBJECT anchor is

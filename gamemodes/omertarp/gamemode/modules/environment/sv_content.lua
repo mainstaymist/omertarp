@@ -28,12 +28,16 @@ Omerta.Environment.WORKSHOP = {
     {
         id = "1656078410",
         believed = "the city map",
-        -- UNVERIFIED. Supplied by the project lead as the map to run. The map's
-        -- FILENAME — what game.GetMap() returns, what changelevel takes, what a
-        -- front-end vantage is keyed by — is not known to this repository and
-        -- is deliberately not guessed anywhere in it. sh_environment.lua logs
-        -- the running map name at boot so it can be read off a console once.
-        unverified = "name and map filename unconfirmed (Steam unreachable)",
+        -- The map's FILENAME is CONFIRMED: the project lead read it off a
+        -- running server. That is what game.GetMap() returns, what changelevel
+        -- takes, and what a front-end vantage is keyed by.
+        --
+        -- The Workshop TITLE is still unknown and does not matter — nothing
+        -- keys off it, and the id is exact. Recorded as a fact only because a
+        -- map filename is the one thing here that other code legitimately
+        -- compares against.
+        map = "rp_unioncity",
+        unverified = "workshop title unconfirmed (Steam unreachable); filename confirmed in the field",
     },
     {
         id = "1132466603",

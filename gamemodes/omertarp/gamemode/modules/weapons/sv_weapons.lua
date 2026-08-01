@@ -208,13 +208,32 @@ function Internal.Reload(ply, wep)
 
     local take = Omerta.Weapons.PlanReload(def.clip, wep:Clip1(), available)
     if take <= 0 then
-        if wep:Clip1() < def.clip then
+        -- ONE refusal per press, not one per frame.
+        --
+        -- The engine calls SWEP:Reload every tick for as long as +reload is
+        -- held, and a successful reload is throttled by its own animation
+        -- lockout — but this path returns before that lockout is set, so
+        -- holding R with empty pockets filled the chat with the same sentence
+        -- sixty times a second.
+        --
+        -- The press edge is derived from the CALL PATTERN rather than from the
+        -- key, because there is nowhere server-side that sees the key go up: a
+        -- SWEP has no Think here, and adding a per-frame sweep over every
+        -- player to watch one bit would cost more than the message it is
+        -- suppressing. Held, the calls arrive a tick apart; released and
+        -- pressed again, there is a gap. A gap wider than several ticks is a
+        -- new press, and tapping R twice deliberately still says it twice.
+        local now = CurTime()
+        local fresh = now - (wep.OmertaLastReloadCall or 0) > 0.2
+        wep.OmertaLastReloadCall = now
+        if fresh and wep:Clip1() < def.clip then
             local ammoDef = Omerta.Items.Get(def.ammo)
             Omerta.Chat.Notice(ply, "You are out of "
                 .. string.lower(ammoDef and ammoDef.name or "ammunition") .. ".")
         end
         return
     end
+    wep.OmertaLastReloadCall = CurTime()
 
     wep.OmertaReloadUntil = CurTime() + def.reloadTime
     wep:SetNextPrimaryFire(CurTime() + def.reloadTime)

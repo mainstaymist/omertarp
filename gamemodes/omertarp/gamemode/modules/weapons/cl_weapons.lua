@@ -68,19 +68,29 @@ Omerta.HUD.Register("weapons.rounds", {
         local x = ScrW() - margin
         local y = ScrH() - margin
 
-        -- LOADED / reserve. The loaded count is the big tabular number and
-        -- the reserve trails it, smaller and dimmer — a glance answers "can I
-        -- keep firing", a longer look answers "can I keep going".
+        -- LOADED / reserve, and in that order — loaded on the LEFT.
+        --
+        -- The first version had them the wrong way round. Both are
+        -- right-aligned against the screen margin, so drawing the loaded count
+        -- there and hanging the reserve off its left edge put the big number
+        -- last and read as "/ 0  6" — a magazine of nothing beside a number
+        -- with no label. It is one phrase and it reads left to right: what is
+        -- in the gun, then what is left for it.
+        --
+        -- The reserve keeps the right-hand anchor because it is the piece that
+        -- changes width least often; growing the loaded count pushes leftward,
+        -- away from the edge, instead of shoving the whole block about.
         local loaded = tostring(clip)
-        surface.SetFont(Omerta.HUD.Font("count"))
-        local loadedWide = surface.GetTextSize(loaded)
+        local trailing = "/ " .. reserve
+        surface.SetFont(Omerta.HUD.Font("label"))
+        local trailingWide = surface.GetTextSize(trailing)
 
-        Omerta.HUD.Text(loaded, "count", x, y,
-            Omerta.HUD.Colour("text", 245 * alpha),
-            TEXT_ALIGN_RIGHT, TEXT_ALIGN_BOTTOM)
-        Omerta.HUD.Text("/ " .. reserve, "label",
-            x - loadedWide - 6 * scale, y - 2 * scale,
+        Omerta.HUD.Text(trailing, "label", x, y - 2 * scale,
             Omerta.HUD.Colour("secondary", 150 * alpha),
+            TEXT_ALIGN_RIGHT, TEXT_ALIGN_BOTTOM)
+        Omerta.HUD.Text(loaded, "count",
+            x - trailingWide - 6 * scale, y,
+            Omerta.HUD.Colour("text", 245 * alpha),
             TEXT_ALIGN_RIGHT, TEXT_ALIGN_BOTTOM)
 
         -- The line under it only speaks when it has something to say: an

@@ -34,21 +34,29 @@ Omerta.Environment = Omerta.Environment or {}
 --   fov     number                                (menu default: ORBIT.FOV)
 --
 -- ============================================================================
--- THE LEAD'S MAP (workshop 1656078410) HAS NO ROW HERE, ON PURPOSE.
+-- rp_unioncity — the map, now named, and STILL WITHOUT A POSITION.
 --
--- Its filename is not known to this repository. Steam was unreachable from the
--- machine this was written on, so the map was never opened and never named,
--- and a guessed filename is worse than none: a wrong key is a row that is
--- silently never used, which looks exactly like a vantage that was authored
--- and then ignored. The empty table below is honest and the menu's fallback
--- orbit is correct behaviour for a map nobody has framed a shot on yet.
+-- The filename is confirmed (the lead read it off a running server). The shot
+-- is not, and cannot be from here: `pos` is a point in a world nobody working
+-- on this file has stood in, and there is no way to pick one by reasoning. A
+-- guessed vector is worse than none — it puts the opening camera inside a wall
+-- or under the map, which is a bug that looks like the menu being broken,
+-- where no row at all is the fallback orbit doing exactly what it was written
+-- for.
 --
--- To fill it in: read the map name off the boot log ("[Omerta][INFO]
--- [environment] map: …", or run omerta_env), stand where the shot should be,
--- and add ONE row:
+-- The fallback is not a placeholder, either: it orbits the player's own
+-- position, and a player at the menu is standing on the map's spawn — which on
+-- a city map is a deliberately chosen, deliberately presentable place. It will
+-- look fine. Authoring a row buys a BETTER shot, not a working one.
 --
---     ["that_map_name"] = { pos = Vector(-1200, 640, 320), radius = 260,
---                           height = 90, pitch = 8, speed = 4 },
+-- To author it: stand where the camera should orbit, `getpos` in console, and
+-- add ONE row —
+--
+--     ["rp_unioncity"] = { pos = Vector(-1200, 640, 320), radius = 260,
+--                          height = 90, pitch = 8, speed = 4 },
+--
+-- The framing fields are all optional; the menu's ORBIT defaults are sane and
+-- worth trying before tuning any of them.
 -- ============================================================================
 
 local VANTAGES = {

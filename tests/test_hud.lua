@@ -22,6 +22,10 @@ local MODULE_FILES = {
     "gamemodes/omertarp/gamemode/modules/characters/sv_characters.lua",
     "gamemodes/omertarp/gamemode/modules/hud/sh_module.lua",
     "gamemodes/omertarp/gamemode/modules/hud/sh_hud.lua",
+    -- The design tokens. Needed here because the black-and-white maths is
+    -- checked against the real palette rather than against invented colours —
+    -- the assertion that matters is about THESE six hex, not about arithmetic.
+    "gamemodes/omertarp/gamemode/modules/hud/sh_theme.lua",
     "gamemodes/omertarp/gamemode/modules/hud/sv_stamina.lua",
 }
 
@@ -215,6 +219,33 @@ check("scale is clamped and garbage-proof", function()
     assert(C("nonsense") == 1, "unparseable falls back to 1")
     assert(C(nil) == 1, "nil falls back to 1")
     assert(C(0 / 0) == 1, "NaN falls back to 1")
+end)
+
+check("black and white separates the accent from the warning", function()
+    loadModules()
+    local L = Omerta.HUD.Luma
+    local palette = Omerta.HUD.Theme.COLOUR
+
+    assert(L(0, 0, 0) == 0)
+    assert(L(255, 255, 255) == 255)
+
+    -- The whole reason for weighted luma rather than a channel average. Brass
+    -- is the accent and danger is the warning, and a straight mean renders
+    -- them within a few points of each other — an interface where "this is
+    -- selected" and "this cannot be undone" are the same grey.
+    local brass = L(palette.brass[1], palette.brass[2], palette.brass[3])
+    local danger = L(palette.danger[1], palette.danger[2], palette.danger[3])
+    assert(brass - danger > 40,
+        "the accent and the warning must stay tellable apart in monochrome")
+
+    -- The reading has to survive being drawn: text over plate is the contrast
+    -- every screen depends on, and it must not collapse.
+    local text = L(palette.text[1], palette.text[2], palette.text[3])
+    local plate = L(palette.plate[1], palette.plate[2], palette.plate[3])
+    assert(text - plate > 150, "type must stay readable against its plate")
+
+    assert(L(nil, nil, nil) == 0, "garbage reads as black, never as an error")
+    assert(L(9999, 9999, 9999) == 255, "and never above the channel ceiling")
 end)
 
 check("1x is the size that was signed off, not the engine's 1", function()
