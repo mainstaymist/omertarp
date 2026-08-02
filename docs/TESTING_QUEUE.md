@@ -2,10 +2,38 @@
 
 **What this is:** everything built but not yet confirmed working in-engine, in the order worth doing it. Kept current as work lands — when you report results, the statuses here get updated and anything that fails becomes a fix before new work starts.
 
-**Last updated:** 2026-08-02, after knocking and falling.
-**Headless suite:** 500 checks passing. `luac -p` clean across the tree. 19 modules resolving.
+**Last updated:** 2026-08-02, after M14 landed.
+**Headless suite:** 619 checks passing. `luac -p` clean across the tree. 21 modules resolving.
 
 Status key: **☐ untested** · **☑ passed** · **☒ failed** (details inline) · **◐ partly**
+
+---
+
+## M14 — crime, robbery and the clerk (NEW, untested in engine)
+
+Everything here is fresh and none of it has been run in a server. **Start with
+`omerta_crime_selftest`** — it builds an unowned store with a clerk and a full
+register, drives the loop, and takes it all back out again. It needs you to be
+in-game with a character: a robbery needs a robber.
+
+| | Check | How |
+|---|---|---|
+| ☐ | **Migration 15 applies on MySQL** | Three tables: `crime_operations`, `crime_participants`, `crime_alarms`. This is the one that matters most — D-008 makes MySQL the backend of record and these have only ever run against SQLite |
+| ☐ | **`omerta_crime_selftest` passes** | The arithmetic step is the one to read: *the till is lighter by what the robber is heavier by*. If those two numbers disagree, money is being created or destroyed and everything else can wait |
+| ☐ | **The clerk is visible and shootable** | `omerta_business_place store nobody The Corner Grocer`, then stand at the counter and `omerta_clerk_place`. He is a `base_anim` with a physics box — if he is invisible, the model list in `omerta_clerk.lua` needs a fourth entry |
+| ☐ | **The dot lights up on him and E holds him up** | He should get an action hint and **no name**, permanently, to everybody |
+| ☐ | **He reacts** | Hands up, or backing away, or a hand going under the counter. Nothing about his decision reaches your screen — that is the design, not a missing feature |
+| ☐ | **The register empties a handful at a time** | The promoted timed-action plate, repeated. Interrupting it mid-grab must take nothing |
+| ☐ | **A full coat stops you** | Carry a Thompson and try to empty a full register. You should get what fits and be told you cannot carry more (D-020) |
+| ☐ | **The crowbar levers a register he would not open** | Buy one from the auto shop; the interaction should only appear when he has refused |
+| ☐ | **A mask makes you Unknown to your own crew** | **This is D-014 demonstrated for the first time since M5 cut the seam.** Buy one through procurement (`disguises`), equip it, and have somebody who knows your name look at you |
+| ☐ | **The float fills an unowned register and stops at the ceiling** | Place a store as `nobody`, wait, and watch the till. An owned store must accrue nothing beyond D-032's trickle |
+| ☐ | **A restart abandons rather than resumes** | Start a robbery, take some money, restart the server. The operation should be `failed`/`abandoned`, the event should still exist, and **the money should still be in your pockets** |
+| ☐ | **Killing the clerk does not seal the register** | It should still empty, and it should be much worse for you afterwards |
+
+**What cannot be tested alone**, and is the milestone's actual definition of
+done: two players, both masked, one holding the clerk and one working the
+register, both reading as Unknown to each other and to anybody who walks in.
 
 ---
 
@@ -688,22 +716,9 @@ the word and it flips.
 These are not tests — they are decisions that block work. Nothing here has been
 built, and none of it will be until you rule.
 
-### M14 — crime events, store robbery, NPC victims
-
-`docs/design-reviews/M14_crime_events.md` is written and waiting. **Five
-rulings** in §13, each with the options and my recommendation:
-
-1. Does a store's register refill, and from what? *(recommend: capped, unowned premises only, paused around a robbery)*
-2. What is the victim NPC physically? *(recommend: a scripted entity that does not navigate)*
-3. What does an in-flight robbery become across a restart or map change? *(recommend: Failed)*
-4. Does a mask cut both ways? *(recommend: yes — compliance now, an alarm behind your back)*
-5. Can the clerk be killed, and what does it do to the operation? *(recommend: yes, the take continues, and it is the loudest thing in the game)*
-
-Plus **two scope decisions to overrule if you disagree** (§2): M14 promoting
-M19's timed-action machinery into a shared primitive, and M14 shipping one mask
-— because nothing in the game can currently conceal a face, no milestone owns
-disguises, and without it M14's own "masked store robbery" acceptance test
-cannot be run.
+*(M14's five rulings and two scope decisions were decided on 2026-08-02 —
+D-046 through D-052 — and the milestone is built. It has moved to the queue
+below.)*
 
 ### M21 — newspaper
 

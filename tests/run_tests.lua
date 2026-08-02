@@ -54,6 +54,7 @@ local TEST_FILES = {
     "tests/test_injury.lua",
     "tests/test_death.lua",
     "tests/test_weapons.lua",
+    "tests/test_crime.lua",
     "tests/test_knock.lua",
     "tests/test_environment.lua",
     "tests/test_lint.lua",

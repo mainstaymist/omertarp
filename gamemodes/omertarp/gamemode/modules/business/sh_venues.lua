@@ -32,6 +32,56 @@ Define("speakeasy", {
     -- Declared now, read by M21 and M15.
     newspaperSpawn = true,
     surveillance = true,
+    -- AND THE REASON THE ROBBERY BLOCK IS WORTH HAVING AT ALL (M14). A
+    -- speakeasy is robbable the day it is placed, like everywhere else with a
+    -- till — but its barman does not telephone the police, because the bar is
+    -- illegal and its owner would rather tell his family. One line of data, and
+    -- a per-type consequence falls out of it.
+    robbery = {
+        clerk = { personalities = { "clerk.old_hand" } },
+        alarm = { kind = "none", telephone = false, button = false },
+        register = { openSeconds = 4, forceSeconds = 26, forceTool = "tool.crowbar" },
+        float = { perHour = 0, ceiling = 0 },
+    },
+})
+
+--------------------------------------------------------------------------------
+-- The store — the place that exists to be robbed (M14)
+--------------------------------------------------------------------------------
+-- ROBBABILITY IS NOT A FLAG ON A SPECIAL KIND OF BUILDING. Every business with
+-- a till is robbable and the type declares the terms; the `robbery` block below
+-- is data on the type exactly as `sells` is, and a type that declares none gets
+-- a conservative default from Omerta.Crime.RobberyBlock.
+--
+-- Adding a KIND of robbable place is one table, in version control, reviewable
+-- and revertable. Adding AN INSTANCE of one is `omerta_business_place store —
+-- The Corner Grocer` at the console, with no code change at all. Those are the
+-- two different things "data-driven" has to mean here and they have two
+-- different answers.
+
+Define("store", {
+    name = "General Store",
+    order = 15,
+    tillCapacity = 600,
+    stockCapacity = 900,
+    services = { "shop" },
+    sells = {
+        { item = "food.bread",      price = 90 },
+        { item = "food.sandwich",   price = 150 },
+        { item = "misc.cigarettes", price = 100 },
+        { item = "misc.newspaper",  price = 25 },
+    },
+    newspaperSpawn = true,
+    robbery = {
+        clerk = { personalities = { "clerk.old_hand", "clerk.kid", "clerk.ex_soldier" } },
+        -- A legitimate shop has a telephone and a button under the counter.
+        alarm = { kind = "silent", telephone = true, button = true },
+        register = { openSeconds = 4, forceSeconds = 22, forceTool = "tool.crowbar" },
+        -- D-048: unowned only. The moment a player buys this shop, D-032
+        -- governs its income and these two numbers stop being consulted.
+        float = { perHour = 1200, ceiling = 4000 },
+        fleeTo = "back",
+    },
 })
 
 --------------------------------------------------------------------------------

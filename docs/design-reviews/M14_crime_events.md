@@ -372,4 +372,22 @@ Two consequences recorded with the ruling, both now implemented:
 
 ---
 
-**Implementation proceeded on these rulings. See §14 for what shipped and what deliberately did not.**
+**Implementation proceeded on these rulings. §14 records what shipped, including three places the review above turned out to be wrong.**
+
+## 14. What Shipped
+
+`modules/crime/` — twelve files, plus `entities/entities/omerta_clerk.lua` and the promoted `modules/action/`.
+
+**The pure half, which is where the design actually lives.** `sh_crime.lua` holds the transition table, the robbability predicate, the robbery-block merge, the escape and abandonment arithmetic, the take planner and the rumour builder. `sh_reactions.lua` holds `Pressure`, `Drives`, `Reaction`, `AlarmOpportunity`, `ReportChance` and the three clerks. Both are driven headlessly, and between them they carry every ruling: 33 tests in `tests/test_crime.lua`, plus 9 in `tests/test_action.lua` for the promoted primitive.
+
+**Three things the design review got wrong, found by building it.**
+
+- **`ThreatClass` replaced a per-weapon pressure category.** The review's `situation.weaponClass = "smg"` implied a new field on every arsenal entry. W0 had already written the distinction down — `concealable = false` is a long gun — so the mapping is one pure function over the fields that exist, and adding a weapon still costs one `Register` call.
+- **The robbery block's merge dropped undeclared keys.** `DEFAULT_ROBBERY.fleeTo = nil` is not a key in Lua, so a merge iterating the defaults never visited it and the store's declared flee point was silently discarded. The failure would have looked like a design choice — the clerk backs away from the counter instead of running for the back room. It now walks the declared keys too, which is also what lets C4 add `vaultSeconds` without editing this file.
+- **An unowned business could not be created.** §7 assumed M13's `IsForceable` handling of the no-owner case meant unowned premises existed; only `IsForceable` contemplated them, and `Create` refused. Rather than weaken `ValidateOwner` — which refuses "neither" because a premises with no owner has no access control — placement gained an explicit `unowned` opt-in and `omerta_business_place <type> nobody <name>`. The rule is unchanged for everything that will ever be placed after it.
+
+**What was cut against the review, and why.** Nothing. The one thing knowingly left thin is the clerk's flee: `Omerta.Business.PointFor` does not exist, so `fleeTo = "back"` currently falls through to "behind him, away from the counter". The declaration is read, the seam is called, and the day M13 gains named points the line starts meaning what it says. That is a worse flee than a declared one and better than none, which is the trade §13.2 already accepted.
+
+**What is still empty on purpose.** `RegisterResponder` (M16), `RegisterObserverSink` (M15), and `RegisterReactionInput` (the disguise milestone) all ship with nothing registered, and `tests/test_crime.lua` asserts they are empty — because the point of the seams is that the next milestone is a registration rather than an edit here. If M16 has to open `modules/crime/`, the seam was cut wrong.
+
+**The two-player lived test is not run.** It needs two people in a server and it is the milestone's real definition of done; `omerta_crime_selftest` covers everything one machine can check, including the arithmetic that matters — the till lighter by precisely what the robber is heavier by.

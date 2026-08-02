@@ -222,8 +222,19 @@ function Omerta.Business.Create(typeKey, name, owner, pos, opts, cb)
     local typeDef = Omerta.Business.GetType(typeKey)
     if not typeDef then cb(nil, "there is no such kind of business") return end
 
-    local ok, why = Internal.ValidateOwner(owner.organizationId, owner.characterId)
-    if not ok then cb(nil, why) return end
+    -- `opts.unowned` is M14's, and it is deliberately an EXPLICIT OPT-IN rather
+    -- than a relaxation of the rule. ValidateOwner refuses "neither" because a
+    -- premises with no owner has no access control, and that was right for
+    -- every business M13 could place. A store that exists to be robbed is the
+    -- first one that genuinely has no owner (D-048), and the honest way to say
+    -- so is to say so at the call site — not to weaken the check for
+    -- everything that will ever be placed after it.
+    if not opts.unowned then
+        local ok, why = Internal.ValidateOwner(owner.organizationId, owner.characterId)
+        if not ok then cb(nil, why) return end
+    elseif owner.organizationId or owner.characterId then
+        cb(nil, "an unowned business cannot have an owner") return
+    end
 
     local season = Omerta.Seasons.GetActive()
     if not season then cb(nil, "no active season") return end
@@ -353,7 +364,7 @@ function Omerta.Business.CollectTill(ply, business, cb)
     local amount = Omerta.Money.Count(till)
     if amount <= 0 then cb(false, "the register is empty") return end
 
-    Omerta.Money.Pay(till, ply, amount, function(ok, err)
+    Omerta.Business.EmptyTill(business.id, ply, amount, function(ok, err)
         if not ok then cb(false, err) return end
         Omerta.Log.Audit("business.collected", {
             actor = ply:SteamID64(), character_id = character.id,
@@ -363,6 +374,32 @@ function Omerta.Business.CollectTill(ply, business, cb)
             " out of the register.")
         cb(true, nil, amount)
     end)
+end
+
+-- THE UNAUTHORISED HALF, and the one function M14 needed M13 to gain.
+--
+-- CollectTill above is now a role-checked caller of this; a robbery is an
+-- unchecked one. That split is M20's RecordDeath shape exactly, and it is the
+-- third time that shape has been the right answer: the same transactional path,
+-- a different reason for being allowed to walk it.
+--
+-- The alternative was to make M9's MayOpen grant access to a robber, and MayOpen
+-- is refusal-only by design — a registered predicate can veto and none can
+-- grant. Forcing a grant through it would mean teaching M9's access model about
+-- crime.
+--
+-- No mint: this moves money that was already in the register, through the same
+-- function a sale uses, so M9's duplication protections cover it unchanged.
+-- cb(ok, err)
+function Omerta.Business.EmptyTill(businessId, toOwner, cents, cb)
+    cb = cb or function() end
+    local business = Omerta.Business.Get(businessId)
+    if not business then cb(false, "there is nothing here") return end
+
+    cents = Omerta.Money.Round(cents or 0)
+    if cents <= 0 then cb(false, "there is nothing in it") return end
+
+    Omerta.Money.Pay(Omerta.Business.Till(businessId), toOwner, cents, cb)
 end
 
 --------------------------------------------------------------------------------
@@ -461,7 +498,7 @@ function Internal.RegisterCommands()
         local name = table.concat(args, " ", 3)
         if not (typeKey and ownerArg and name ~= "") then
             Omerta.Log.Error("business",
-                "usage: omerta_business_place <type> <orgKey|me> <name>")
+                "usage: omerta_business_place <type> <orgKey|me|nobody> <name>")
             return
         end
         if not Omerta.Business.GetType(typeKey) then
@@ -470,7 +507,13 @@ function Internal.RegisterCommands()
         end
 
         local owner = {}
-        if ownerArg == "me" then
+        local unowned = ownerArg == "nobody"
+        if unowned then
+            -- M14's store. An unowned premises has no access control and no
+            -- D-030 protection, which is exactly what makes it worth walking
+            -- into with a gun.
+            owner = {}
+        elseif ownerArg == "me" then
             local character = Omerta.Characters.Get(caller)
             if not character then Omerta.Log.Error("business", "you have no character") return end
             owner.characterId = character.id
@@ -488,6 +531,7 @@ function Internal.RegisterCommands()
             angle = Angle(0, caller:EyeAngles().y, 0),
             restOnGround = true,
             actor = caller:SteamID64(),
+            unowned = unowned,
         }, function(business, err)
             if not business then Omerta.Log.Error("business", "%s", tostring(err)) return end
             Omerta.Log.Info("business", "#%d %s (%s) placed — now put the stock room down " ..

@@ -64,9 +64,13 @@ local COMMANDS = {
     ["omerta_treasury_books"] = { usage = "<orgKey>", what = "Print a treasury's ledger.", area = "Treasury" },
 
     -- Business
-    ["omerta_business_place"] = { usage = "<typeKey>", what = "Place a business where you stand (e.g. clinic, speakeasy).", area = "Business" },
+    ["omerta_business_place"] = { usage = "<typeKey> <orgKey|me|nobody> <name>", what = "Place a business where you stand (e.g. clinic, speakeasy, store). 'nobody' places it UNOWNED — no access control, no D-030 protection, and an accruing register: that is M14's robbable store.", area = "Business" },
     ["omerta_business_list"] = { usage = "", what = "List placed businesses.", area = "Business" },
     ["omerta_business_stockroom"] = { usage = "<businessId>", what = "Spawn a business's stock container.", area = "Business" },
+
+    -- Crime
+    ["omerta_clerk_place"] = { usage = "", what = "Put a clerk where you are looking, for the business whose counter you are standing at. Which of the type's personalities he has is derived from the business id, so the same shop keeps the same man across restarts.", area = "Crime" },
+    ["omerta_crime_operations"] = { usage = "", what = "Robberies currently under way: state, premises and what has left the register so far. Nothing about this reaches a player's screen, which is why it needs a console command to be visible at all.", area = "Crime" },
 
     -- Phone
     ["omerta_phone_place"] = { usage = "", what = "Place a payphone in front of you.", area = "Phone" },
@@ -111,6 +115,7 @@ local COMMANDS = {
     ["omerta_phone_selftest"] = { usage = "", what = "Phone self-test.", area = "Selftests" },
     ["omerta_injury_selftest"] = { usage = "", what = "Injury self-test.", area = "Selftests" },
     ["omerta_death_selftest"] = { usage = "", what = "Confirmed-death self-test.", area = "Selftests" },
+    ["omerta_crime_selftest"] = { usage = "", what = "Robbery self-test: builds an unowned store with a clerk and a full register, then checks the till is lighter by exactly what your pockets are heavier by. Needs a live character — a robbery needs a robber.", area = "Selftests" },
 }
 
 -- Exposed for the lint test: the suite compares this against every
