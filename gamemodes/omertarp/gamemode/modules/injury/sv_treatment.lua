@@ -12,7 +12,6 @@ local S = Omerta.Injury.STATE
 
 local treatments = {}    -- id -> definition
 local downedActions = {} -- id -> definition (M17's arrest, M20's confirm kill)
-local inProgress = {}    -- actor SteamID64 -> { until, characterId, id }
 
 Internal.Treatments = treatments
 Internal.DownedActions = downedActions
@@ -56,98 +55,18 @@ function Omerta.Injury.RegisterDownedAction(id, def)
 end
 
 --------------------------------------------------------------------------------
--- Timed actions
+-- Going down stops your hands
 --------------------------------------------------------------------------------
--- Everything done to a body takes time and can be interrupted, which is what
--- makes standing over someone a commitment rather than a click. Tech §18 will
--- require exactly this of M20's confirm kill; building it here means M20
--- inherits it instead of reinventing it.
+-- The machinery that used to live here is now Omerta.Action (D-046). What
+-- survived the move is the one rule that was genuinely injury's: a man who goes
+-- down mid-bandage has stopped bandaging. It is registered rather than built
+-- in, so the primitive never learns that this module exists.
 
--- What this player is in the middle of, or nil. Read by anything that has to
--- tell "do it again" from "stop doing it" — E over a body being the first.
-function Internal.InProgress(ply)
-    if not IsValid(ply) then return nil end
-    local entry = inProgress[ply:SteamID64() or ""]
-    if not (entry and entry.finishAt > CurTime()) then return nil end
-    return entry
-end
-
-function Internal.IsBusy(ply)
-    return Internal.InProgress(ply) ~= nil
-end
-
-function Internal.Begin(ply, def, characterId, cb)
-    local sid = ply:SteamID64() or ""
-    local now = CurTime()
-    inProgress[sid] = {
-        -- Kept alongside finishAt because "how long has this been running" is a
-        -- question the E-over-a-body rule has to answer, and deriving it from
-        -- the deadline would mean re-reading the definition's duration at a
-        -- call site that has no business knowing it.
-        startedAt = now,
-        finishAt = now + def.duration,
-        characterId = characterId,
-        id = def.id,
-        startPos = ply:GetPos(),
-        cb = cb,
-    }
-    local millis = Omerta.Injury.PromptMillis(def.duration)
-    Omerta.Net.Send("injury.prompt", {
-        text = def.label .. "…",
-        millis = millis,
-        sound = def.sound or Omerta.Injury.PROMPT_SOUND.NONE,
-    }, ply)
-
-    -- The person it is being done to is told too. Being operated on without
-    -- knowing it is happening is the one thing worse than being operated on.
-    local target = Internal.PlayerFor(characterId)
-    if IsValid(target) then
-        Omerta.Net.Send("injury.prompt", {
-            text = "Somebody is working on you.",
-            millis = millis,
-            sound = Omerta.Injury.PROMPT_SOUND.NONE,
-        }, target)
-    end
-end
-
-function Internal.Cancel(ply, reason)
-    local sid = ply:SteamID64() or ""
-    local entry = inProgress[sid]
-    if not entry then return end
-    inProgress[sid] = nil
-    if entry.cb then entry.cb(false, reason or "interrupted") end
-    if IsValid(ply) then
-        Omerta.Net.Send("injury.prompt",
-            { text = "", millis = 0, sound = Omerta.Injury.PROMPT_SOUND.NONE }, ply)
-    end
-end
-
--- Called every tick from the module's timer.
-function Internal.TickActions()
-    local now = CurTime()
-    for sid, entry in pairs(inProgress) do
-        local ply = nil
-        for _, candidate in ipairs(player.GetAll()) do
-            if candidate:SteamID64() == sid then ply = candidate break end
-        end
-
-        if not IsValid(ply) then
-            inProgress[sid] = nil
-        elseif ply:GetPos():Distance(entry.startPos) > 64 then
-            -- Walking away is how you interrupt yourself.
-            Internal.Cancel(ply, "you moved away")
-        elseif Omerta.Injury.IsPlayerDown(ply) then
-            Internal.Cancel(ply, "you went down")
-        elseif now >= entry.finishAt then
-            inProgress[sid] = nil
-            local def = treatments[entry.id] or downedActions[entry.id]
-            if def then
-                def.onComplete(ply, entry.characterId, function(ok, err)
-                    if entry.cb then entry.cb(ok, err) end
-                end)
-            end
-        end
-    end
+function Internal.RegisterInterrupt()
+    Omerta.Action.RegisterInterrupt("injury.down", function(ply)
+        if Omerta.Injury.IsPlayerDown(ply) then return "you went down" end
+        return nil
+    end)
 end
 
 --------------------------------------------------------------------------------
@@ -158,7 +77,7 @@ end
 function Omerta.Injury.Perform(ply, characterId, actionId, cb)
     cb = cb or function() end
     if not IsValid(ply) then cb(false, "no actor") return end
-    if Internal.IsBusy(ply) then cb(false, "you are busy") return end
+    if Omerta.Action.IsBusy(ply) then cb(false, "you are busy") return end
 
     local def = treatments[actionId] or downedActions[actionId]
     if not def then cb(false, "there is nothing you can do") return end
@@ -178,7 +97,25 @@ function Omerta.Injury.Perform(ply, characterId, actionId, cb)
         if not ok then cb(false, why or "not now") return end
     end
 
-    Internal.Begin(ply, def, characterId, cb)
+    -- The definitions did not change shape when the machinery moved: a
+    -- treatment still declares a label, a duration, a predicate and an
+    -- onComplete, and still receives `(ply, characterId, cb)`. Everything below
+    -- is the adapter between that shape and the primitive's, and it is
+    -- deliberately the only place in the module that knows Omerta.Action's
+    -- vocabulary.
+    local target = Internal.PlayerFor(characterId)
+    Omerta.Action.Begin(ply, {
+        id = def.id,
+        label = def.label,
+        duration = def.duration,
+        sound = def.sound,
+        data = { characterId = characterId },
+        notify = IsValid(target)
+            and { ply = target, text = "Somebody is working on you." } or nil,
+        onComplete = function(actor, entry, done)
+            def.onComplete(actor, entry.data.characterId, done)
+        end,
+    }, cb)
 end
 
 -- What this player may do to this body, right now. Server-side truth; the

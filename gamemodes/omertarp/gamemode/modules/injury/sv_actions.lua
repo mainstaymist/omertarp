@@ -169,7 +169,18 @@ function Internal.BeginSearch(ply, characterId)
     -- "I pressed E on that", exactly as it did before.
     local sid = ply:SteamID64() or ""
     local last = stoppedAt[sid]
-    local current = Internal.InProgress(ply)
+
+    -- SearchIntent is a pure rule about SEARCHING, not about the action
+    -- registry, so it keeps asking what it always asked — which body, and how
+    -- long ago. The primitive's entry carries the body in its caller bag, so
+    -- the view is built here rather than teaching a pure function the shape of
+    -- Omerta.Action's tables.
+    local running = Omerta.Action.InProgress(ply)
+    local current = running and {
+        characterId = running.data and running.data.characterId,
+        startedAt = running.startedAt,
+    } or nil
+
     local intent = Omerta.Injury.SearchIntent(current, characterId,
         last and (CurTime() - last) or nil,
         current and current.startedAt and (CurTime() - current.startedAt) or nil)
@@ -179,7 +190,7 @@ function Internal.BeginSearch(ply, characterId)
         stoppedAt[sid] = CurTime()
         -- The same path walking away takes: the action is dropped before its
         -- clock runs out, so onComplete never fires and nothing was written.
-        Internal.Cancel(ply, "you stop searching")
+        Omerta.Action.Cancel(ply, "you stop searching")
         return
     end
 
@@ -198,7 +209,7 @@ function Internal.RegisterSearchAction()
         label = "Searching", range = 96,
         -- The rummage is audible to the one doing it: the prompt carries a
         -- sound code and the client plays a stretch of the rustle bed.
-        sound = Omerta.Injury.PROMPT_SOUND.RUSTLE,
+        sound = Omerta.Action.PROMPT_SOUND.RUSTLE,
         duration = Omerta.Config.Get("injury.search_seconds"), order = 44,
         predicate = function(ply, characterId)
             local actor = Omerta.Characters.Get(ply)

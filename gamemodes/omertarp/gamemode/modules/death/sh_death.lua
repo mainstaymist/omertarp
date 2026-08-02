@@ -63,6 +63,6 @@ Omerta.Net.Register("death.progress", {
         { name = "seconds", type = "uint", bits = 8 },
     },
     handler = function(payload)
-        hook.Run("Omerta.InjuryPrompt", payload.text, payload.seconds)
+        hook.Run("Omerta.ActionPrompt", payload.text, payload.seconds)
     end,
 })

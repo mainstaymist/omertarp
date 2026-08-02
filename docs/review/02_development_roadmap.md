@@ -73,7 +73,8 @@ Business framework (Tech §11): ownership, manager rosters, inventory, ledgers, 
 Robbery operation state machine (Tech §16) built on **M20's EventService** (review improvement #1 — the dependency inverted once M20 turned out to need durable EventIDs first); NPC victim reaction model (weapon/mask/aggression/personality → comply/stall/alarm/flee — GDD §12); store robbery end-to-end with proceeds as physical cash.
 **Depends on:** M9, M13; ~~weapons decision Q-10~~ **Q-10 resolved (D-039) and the weapon foundation is built** — M14 consumes `Omerta.WeaponFired` and the arsenal. **Testable when:** a two-player masked store robbery produces an event, an alarm path, physical proceeds, and correct state transitions through Escaped/Failed.
 **Note (C4):** bank robbery is a fast-follow content milestone on this framework — after M16/M17 prove the loop — rather than Phase 5 (pending approval of review improvement #3).
-**Design review:** `docs/design-reviews/M14_crime_events.md` (delivered, awaiting approval — five rulings and two scope decisions).
+**Design review:** `docs/design-reviews/M14_crime_events.md` (**approved 2026-08-02** — five rulings decided and both scope decisions confirmed, D-046…D-052).
+**Two things M14 built that are not M14's:** the timed action became `Omerta.Action` (D-046), a primitive M15's evidence collection, M17's arrest and C4's drilling now inherit rather than reimplement; and the project's first concealment provider shipped (D-047), so D-014's mask rule bites for the first time since M5 cut the seam. **This unblocks M15, M16 and M17.**
 
 ### M15 — Witnesses and evidence
 Witness records with descriptor generation from actual appearance, confidence, decay (Tech §12); evidence entities with type, integrity, chain of custody (Tech §13); collection interactions for police; concealment interplay (masks vs. descriptors, gloves vs. fingerprints).

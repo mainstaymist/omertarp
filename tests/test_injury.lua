@@ -71,6 +71,9 @@ local MODULE_FILES = {
     "gamemodes/omertarp/gamemode/modules/business/sv_repository.lua",
     "gamemodes/omertarp/gamemode/modules/business/sv_rumours.lua",
     "gamemodes/omertarp/gamemode/modules/business/sv_trade.lua",
+    "gamemodes/omertarp/gamemode/modules/action/sh_module.lua",
+    "gamemodes/omertarp/gamemode/modules/action/sh_action.lua",
+    "gamemodes/omertarp/gamemode/modules/action/sv_action.lua",
     "gamemodes/omertarp/gamemode/modules/injury/sh_module.lua",
     "gamemodes/omertarp/gamemode/modules/injury/sh_injury.lua",
     "gamemodes/omertarp/gamemode/modules/injury/sh_injury_falls.lua",
@@ -337,52 +340,6 @@ check("state codes round-trip and are frozen", function()
     -- is stabilized while it bleeds out.
     assert(Omerta.Injury.STATE_INDEX[S.HEALTHY] == 1)
     assert(Omerta.Injury.STATE_INDEX[S.DEAD] == 7)
-end)
-
-check("prompt sound codes are frozen", function()
-    loadModules()
-    -- The prompt carries a sound CODE; the client owns which file it means.
-    -- Renumbering would make a stale client rustle at the wrong moments.
-    assert(Omerta.Injury.PROMPT_SOUND.NONE == 0)
-    assert(Omerta.Injury.PROMPT_SOUND.RUSTLE == 1)
-end)
-
--- A timed action's clock reaches the client as a DURATION, and the unit it is
--- sent in decides whether the plate can be drawn at all. Floored whole seconds
--- rounded a fractional action to the wrong length and rounded a sub-second one
--- to nothing — a prompt whose window has already closed, which the controller
--- correctly never draws while the action itself runs and makes its noise.
-check("the prompt clock is milliseconds, so no action rounds away", function()
-    loadModules()
-    local M = Omerta.Injury.PromptMillis
-    assert(M(4) == 4000, "the search")
-    assert(M(6) == 6000 and M(10) == 10000, "the two treatments")
-
-    -- The weapon draw's own reason (D-039, sh_weapons), applied here: a 1.66s
-    -- action floored to 1 leaves the bar still filling after it finished, and
-    -- rounded to 2 leaves it filling after the action is over.
-    assert(M(1.66) == 1660)
-
-    -- The one that produced a plate nobody ever saw. injury.search_seconds is
-    -- configurable down to 0, so a half-second search was a setting away.
-    assert(M(0.5) == 500, "half a second is half a second, not none")
-
-    assert(M(0) == 0, "an instant action asks for no plate, honestly")
-    assert(M(nil) == 0 and M(-3) == 0, "and never a negative window")
-    assert(M(120) == 65535, "clamped to the 16 bits it is sent in")
-end)
-
-check("the prompt carries its clock in milliseconds on the wire", function()
-    loadModules()
-    local schema = Omerta.Net.GetRegistry()["injury.prompt"].schema
-    local field = nil
-    for _, entry in ipairs(schema) do
-        assert(entry.name ~= "seconds",
-            "whole seconds is the unit that made a short action invisible")
-        if entry.name == "millis" then field = entry end
-    end
-    assert(field, "the prompt has to carry a clock")
-    assert(field.bits >= 16, "8 bits cannot hold a duration in milliseconds")
 end)
 
 check("a condition is prose, never a number", function()

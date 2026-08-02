@@ -50,6 +50,7 @@ local TEST_FILES = {
     "tests/test_phone.lua",
     "tests/test_business.lua",
     "tests/test_population.lua",
+    "tests/test_action.lua",
     "tests/test_injury.lua",
     "tests/test_death.lua",
     "tests/test_weapons.lua",

@@ -578,6 +578,7 @@ function MODULE:OnEnable()
     Internal.RegisterTreatments()
     Internal.RegisterSearch()
     Internal.RegisterSearchAction()
+    Internal.RegisterInterrupt()
     Internal.RegisterBodyCleanup()
     Internal.RegisterIdentity()
     Internal.RegisterDisconnect()
@@ -591,7 +592,6 @@ function MODULE:OnEnable()
     -- body hauled at one update per second lurches.
     hook.Add("Think", "omerta.injury.drag", function()
         Internal.TickDrags()
-        Internal.TickActions()
         -- A gait is physics too: the stride phase is measured from movement,
         -- so it is sampled at the rate the movement happens at.
         Internal.TickGait()

@@ -1,11 +1,11 @@
 # Design Review — M14: Crime Events, Store Robbery, NPC Victims
 
-Status: **AWAITING RULINGS**
+Status: **APPROVED — rulings decided 2026-08-02 (D-046…D-052), implementation landed**
 Milestone: M14 (roadmap Track C). Depends on: M20 (the EventService — this is the second reader and the first *writer* other than death), M13 (the premises, the till, `IsForceable`, the rumour pool), M9 (the proceeds are items, the money is real, bulk is the pacing), W0 (`Omerta.WeaponFired`, and a gun that takes time to draw), M19 (a robbery that goes wrong puts somebody on the floor), M5 (every player action here is an interaction), M12 (a store with a line is a store where the clerk can telephone). Consumed by: M15 (witnesses and evidence hang off the event), M16 (the alarm is the thing it responds to), M17 (the operation is what a case is about), M21 (a robbery is a story), C4 (the bank is this framework with a bigger safe).
 
-> **Five rulings** (§13): whether a register refills, what the victim NPC physically is, what an in-flight robbery becomes across a restart, whether a mask cuts both ways, and whether the clerk can be killed.
+> **Five rulings, all decided** (§13): the register refills for unowned stores only and under a cap (D-048); the victim is a scripted animation entity that does not navigate (D-049); an in-flight robbery is abandoned across a restart with everything physical preserved (D-050); a mask buys compliance and costs a call (D-051); and the clerk can be killed, which is the loudest thing in the game (D-052).
 >
-> **Two scope decisions** you should overrule if you disagree (§2): M14 promotes M19's timed-action machinery into a shared primitive, and M14 registers the project's first concealment provider — one mask — because without it this milestone's own acceptance test is unreachable.
+> **Both scope decisions confirmed** (§2): M14 promoted M19's timed-action machinery into `Omerta.Action` (D-046), and M14 registered the project's first concealment provider — one mask (D-047).
 
 ## 1. Purpose
 
@@ -313,77 +313,63 @@ New event types: `crime.robbery.begun`, `crime.robbery.escaped`, `crime.robbery.
 
 ---
 
-## 13. Open Questions / Rulings Requested
+## 13. Rulings (decided 2026-08-02)
 
-### 13.1 — Does a store's register refill, and from what?
+All five questions were ruled on and both scope decisions confirmed. Each option below is recorded as decided, with the reasoning that survived the ruling; the canonical entries are D-046 through D-052.
 
-D-032 ruled that a business earns from sales plus a small trickle *only while a real person is behind the counter*. A store with an NPC clerk has no real person behind the counter, so under the rule as written it earns nothing, and there is nothing in the register to rob. The milestone's own acceptance test cannot run.
+### 13.1 — Does a store's register refill, and from what? → **(a)**, D-048
 
-- **(a) An unowned store accrues an NPC-custom float** — a small per-hour credit into its till, capped at a declared ceiling per type, paused while an operation is live and for a cooldown afterwards. Every cent is minted through `Money.Give` into a container, config-capped and audited. **Player-owned premises are excluded: if somebody owns it, D-032 governs its income unchanged.**
-- **(b) Player-owned premises only.** Nothing accrues; the only thing worth robbing is what a player put there. Purest reading of D-032, and it means the first robbery in the season's history cannot happen until somebody has bought a shop and sold things in it.
-- **(c) Seeded once at placement, never refilled.** A store is worth robbing exactly once per season.
+**An unowned store accrues a capped NPC float.** A small per-hour credit into its till, ceilinged per business type, minted through `Money.Give` into the container and audited per credit. Accrual **pauses while an operation is live and for a cooldown afterwards**, so the same store cannot be farmed efficiently.
 
-**Recommendation: (a).** The float is what makes a place *nobody plays* worth walking into, and the exclusion is what stops a family buying a store and farming it. (b) makes the entire crime system dependent on the economy being busy, which inverts the causality — robbery is supposed to be what makes the economy tense, not a reward for it already being lively. (c) is a one-shot content item dressed as a system.
+**Player-owned premises are excluded.** D-032 governs their income unchanged — sales plus the staffed trickle. That exclusion is what stops a family buying a store and farming its own register.
 
-The honest cost of (a): it is a new source of money, and I would rather name that plainly than bury it. It is bounded by a ceiling, paused by a cooldown, audited per credit, and turned off entirely with one config value.
+The rejected alternative was to make the only robbable place one a player had already stocked, which inverts the causality: robbery is what makes the economy tense, not a reward for it already being lively.
 
-### 13.2 — What is the victim NPC, physically?
+**The cost, on the record: this is a new source of money.** Bounded by a ceiling, paused by a cooldown, audited per credit, and turned off entirely with `crime.float_per_hour = 0`.
 
-The project has never shipped an NPC. The design's own first one — M13's rumour NPC, "the barman" — was implemented as an *action on a counter* with no entity at all, which is the tell that this decision has been avoided rather than made.
+### 13.2 — What is the victim NPC, physically? → **(a)**, D-049
 
-- **(a) A scripted `base_anim` entity that does not navigate.** It stands where it was placed, plays reactions, opens the register, and flees to a **declared point** (the type declares one, exactly as M13 already declares `newspaperSpawn` and `surveillance` points) by a straight-line move with a stuck timeout. If it cannot get there it cowers.
-- **(b) A `base_ai` NPC.** Real HL2 AI: it will path, it will take cover, it will react to sound for free.
-- **(c) A nextbot.** Modern, flexible, and it navigates properly.
-- **(d) No entity — an interaction on the counter**, the barman's precedent taken to its conclusion.
+**A scripted `base_anim` entity that does not navigate.** It stands where it was placed, plays reactions, opens the register, and flees to a **declared point** — the business type declares one, exactly as it already declares `newspaperSpawn` and `surveillance` — by a straight-line move with a stuck timeout. If it cannot get there, it cowers.
 
-**Recommendation: (a).**
+No HL2 AI: `base_ai` brings its own health, its own death and its own faction relationships, which is a second lethality model beside D-037's and three systems' worth of behaviour to suppress rather than use. No NextBot: it would make `nav_generate` a hard requirement of the map (Q-9), and a robbery on an unmeshed map produces a clerk who stands still forever — the failure mode that looks like success.
 
-(b) brings the whole HL2 AI, including its own health, its own death and its own faction relationships — a second lethality model sitting beside the one D-037 spent a milestone building, and three systems' worth of behaviour we would spend M14 suppressing rather than using. (c) makes `nav_generate` a hard requirement of the map (Q-9), and a robbery on an unmeshed map produces a clerk who stands still forever, which is the failure mode that looks like success. (d) is honest about how little a victim needs to *do* and dishonest about what a robbery *is*: pointing a gun at a counter is not the same scene as pointing one at a man, and the reaction model has nowhere to be read from.
+**The cost: no pathfinding.** The clerk cannot dodge, cannot take cover, and cannot chase. Tech §15 already requires NPCs to avoid advanced tactics, and this is the victim rather than the police.
 
-The cost of (a), named rather than discovered: no pathfinding, so the clerk cannot dodge, cannot take cover, and cannot chase. Tech §15 already requires NPCs to "avoid advanced tactics", and this is the victim rather than the police.
+### 13.3 — What does an in-flight robbery become across a restart? → **(a)**, D-050
 
-### 13.3 — What does an in-flight robbery become across a restart or a map change?
+**It resolves to `failed`, resolution `abandoned`, at boot.** The event, the alarm, the participants, the evidence and every physical proceed already moved are preserved. The live scene is not restored.
 
-- **(a) It resolves to `failed`, resolution `abandoned`, at boot.** The crime is still on the record — the event was written at the demand — and the proceeds are physically wherever they physically are. The *operation* is over.
-- **(b) It resumes.** State, clerk and timers restored.
-- **(c) Frozen and resumable within a window**, failing if nobody returns.
+This is safe for one specific reason, and it is the design paying off: **physical proceeds mean there is nothing to reconcile.** If the take were a balance change, an abandoned operation would need a rollback and a rollback would need a rule about half-completed thefts. Because the money is items, an interrupted robbery is just some notes that moved. Nothing is owed to anybody.
 
-**Recommendation: (a).**
+M19's precedent cuts the same way — a restart must not heal anybody, and it must not launder anything either.
 
-(b) means respawning a clerk in the right reaction state, re-attaching a deadline, and re-deriving who was in the room — for a situation every participant has just been disconnected from. It restores a hostage scene with nobody in it. (c) is (b) with an extra state to test.
+### 13.4 — Does a mask cut both ways? → **(a)**, D-051, with the rationale simplified
 
-(a) is safe for one specific reason that is worth stating, because it is the design paying off: **physical proceeds mean there is nothing to reconcile.** If the take were a balance change, an abandoned operation would need a rollback and a rollback would need a rule about half-completed thefts. Because the money is items, an interrupted robbery is just some notes that moved. Nothing is owed to anybody.
+**A mask lowers resistance now and raises the odds of an alarm afterwards.** A masked robber plainly intends to leave anonymous, which reads to the man behind the counter as somebody who does not need him dead — so he complies more readily. Once the crew is out of the door he has nothing left to fear, so he is likelier to reach for the telephone.
 
-M19's precedent cuts the same way — a restart must not heal anybody, and it likewise must not launder anything. Under (a) it does neither: the event, the alarm, the participants and the money all survive; only the live scene ends.
+**The ruling trimmed the rationale, and the trim is worth keeping visible.** This review's original framing had the unmasked robber read as *intending murder*. That is speculative interior reasoning about an NPC, and the mechanical trade stands without it: the clerk complies more readily and calls sooner. Nothing needs to be modelled about what he thinks the robber came to do. The implementation follows the ruling — `sh_reactions.lua` computes compliance and report-chance from concealment directly, and there is no "he thinks you mean to kill him" term anywhere in it.
 
-### 13.4 — Does a mask cut both ways?
+The mask is therefore a genuine trade — **it buys compliance in the room and buys an alarm behind your back** — which gives a crew a reason to argue about it and gives the quiet unmasked job a reason to exist.
 
-- **(a) A mask lowers resistance now and raises the odds of an alarm afterwards.** A masked robber plainly intends to leave anonymous, which reads to the man behind the counter as "he does not need me dead" — so he complies more readily. And once you are out of the door he has nothing left to fear, so he is more likely to reach for the telephone. An unmasked robber is either an amateur or means to kill you, which reads as more dangerous to *defy* but also as more dangerous to obey.
-- **(b) A mask is a strict benefit** — less resistance, no change to the alarm.
-- **(c) The mask affects only M15's descriptors** and is invisible to the reaction model.
+**The cost, accepted:** the reaction model needs a post-resolution evaluation and a delayed alarm path.
 
-**Recommendation: (a).**
+### 13.5 — Can the clerk be killed? → **(a)**, D-052
 
-Under (b) masking is a free upgrade and there is no decision in it. Under (c) the milestone's own headline feature does nothing observable until M15 exists.
+**Yes.** Ordinary damage, an entity death, a body. **His death does not stop the crew emptying the register** — a rule that sealed the money because the man beside it is dead would exist to punish rather than to model. The operation continues and resolves normally.
 
-(a) makes the mask a genuine trade — **it buys compliance in the room and buys an alarm behind your back** — which gives a crew a real reason to argue about it, and gives the quiet unmasked job a reason to exist. It also makes M15's descriptor work matter *forward* rather than only backward: the whole point of covering your face is that the call the clerk makes afterwards is worth less.
+What it costs is everything else: its own murder event, a guaranteed alarm or discovery on a fixed timer regardless of what he did or did not reach for, major evidence, strong newspaper eligibility, and substantially worse legal consequences.
 
-The cost, which is why this is a ruling and not a paragraph: (a) requires the reaction model to have a **post-resolution evaluation** and a delayed alarm path, which is real work and a real gameplay shape. Under (b) the alarm is only ever raised during the act.
+Two consequences recorded with the ruling, both now implemented:
 
-### 13.5 — Can the clerk be killed, and what does that do to the operation?
+- **He is not a character and does not enter M19's state machine.** Engine health, an entity death, a ragdoll M15 can gather evidence around. Allowing him to be *downed* rather than killed would import D-037's second lethality model through the back door, which is exactly what §13.2 refused.
+- **Killing him is worse than the money is good.** A tuning statement made now rather than discovered when somebody works out that a dead witness is a cheap witness.
 
-- **(a) Yes.** He takes ordinary damage, dies as an entity, and leaves a body. His death does **not** stop the crew emptying the register — but it is the single loudest thing in the game: its own event type, an alarm on a fixed timer regardless of what he did or did not reach for, a rumour, and front-page eligibility. The operation continues and resolves normally.
-- **(b) Killing him fails the operation immediately.** No take.
-- **(c) He cannot be killed** — reduced to fleeing at zero health.
+### Scope decisions — both confirmed
 
-**Recommendation: (a).**
+**Scope decision 1 (D-046): the timed action is promoted.** `Omerta.Action` is a primitive beside `Omerta.Interaction`. M19's treatments and downed actions are its first callers and their definitions did not change. M17's arrest, M15's evidence collection and C4's drilling inherit it. The second copy was refused on the grounds that the second copy is always the one that forgets to cancel on disconnect.
 
-(b) is a rule that exists to punish rather than to model, and it produces the absurd scene of a register full of money that nobody may touch because the man beside it is dead. (c) is a bullet that does not work, which is the kind of exception a player finds in ten minutes and never trusts the world again after.
-
-(a) is also the only option that gives M15, M16 and M17 the case they are being built for. A murder committed during a robbery is the canonical thing this whole track exists to investigate, and under (b) it would be a mechanical dead end rather than the worst night of somebody's season.
-
-Two consequences I would want recorded with the ruling: the clerk is **not** a character and does not enter M19's state machine — he has engine health, dies as an entity, and leaves a ragdoll M15 can gather evidence around; and killing him should be *worse* than the money is good, which is a tuning statement I would rather make explicit now than discover when somebody works out that a dead witness is a cheap witness.
+**Scope decision 2 (D-047): M14 ships one mask.** One `face` slot, one `clothing.mask` item, and the first registration into the concealment seam D-014 shipped empty in M5. Not a disguise system, not descriptors, not partial concealment — a mask is on or it is off, and while it is on the wearer is Unknown to everybody including their own crew.
 
 ---
 
-**Awaiting rulings on §13.1–§13.5, and confirmation or reversal of the two scope decisions in §2, before implementation begins.**
+**Implementation proceeded on these rulings. See §14 for what shipped and what deliberately did not.**

@@ -92,6 +92,80 @@ Resolves Q-4. Ending a season automatically retires every living character ("lea
 
 ---
 
+## D-052 — The clerk can be killed, and it is the loudest thing in the game (DECIDED, 2026-08-02; resolves M14 §13.5)
+
+He takes ordinary damage, dies as an entity, and leaves a body. **Killing him does not stop the crew emptying the register** — a rule that sealed the money because the man beside it is dead would exist to punish rather than to model, and it produces a scene nobody believes. The operation continues and resolves normally.
+
+What it costs is everything else: its own murder event, a guaranteed alarm or discovery on a fixed timer regardless of what he did or did not reach for, major evidence, strong newspaper eligibility, and substantially worse legal consequences. **Killing him is worse than the money is good**, and that is a tuning statement made now rather than discovered when somebody works out that a dead witness is a cheap witness.
+
+**He is not a character and does not enter M19's state machine.** Engine health, an entity death, a ragdoll for M15 to gather evidence around. A second lethality model beside D-037's is exactly what §13.2 refused, and it would arrive through the back door if the clerk could be downed rather than killed.
+
+**Affects:** M14 §7, §13.5; M15 (the body is a scene); M16 (the fixed-timer alarm path); M17 (the canonical case); M21 (front-page eligibility).
+
+## D-051 — A mask buys compliance in the room and costs a call behind your back (DECIDED, 2026-08-02; resolves M14 §13.4; first exercise of D-014)
+
+A mask **lowers resistance during the robbery and raises the odds of an alarm after it**. A masked robber plainly intends to leave anonymous, which reads to the man behind the counter as somebody who does not need him dead — so he complies more readily. Once the crew is out of the door he has nothing left to fear, so he is likelier to reach for the telephone.
+
+**The rationale stops there.** The rejected framing had the unmasked robber read as intending murder; that is speculative interior reasoning about an NPC and the mechanical trade stands without it. The clerk complies more readily and calls sooner. Nothing needs to be modelled about what he thinks the robber came to do.
+
+This is what makes the mask a decision rather than an upgrade, and it makes M15's descriptor work matter *forward* rather than only backward — the point of covering your face is that the call afterwards is worth less.
+
+The cost, accepted: the reaction model needs a **post-resolution evaluation** and a delayed alarm path, which is real work and a real gameplay shape.
+
+**Affects:** M14 §6, §13.4; D-014 (first registered concealment provider, see D-047); M15 (descriptor quality); M16 (the delayed alarm arrives after the crew has gone).
+
+## D-050 — An in-flight operation does not survive a restart (DECIDED, 2026-08-02; resolves M14 §13.3)
+
+At boot, any operation still live resolves to `failed` with resolution `abandoned`. **The event, the alarm, the participants, the evidence and every physical proceed already moved are preserved.** The live scene is not restored: no clerk is respawned into a reaction state, no deadline is re-attached, nobody is re-derived into a room they have all been disconnected from.
+
+**This is safe for one specific reason, and it is the design paying off: physical proceeds mean there is nothing to reconcile.** If the take were a balance change, an abandoned operation would need a rollback and a rollback would need a rule about half-completed thefts. Because the money is items, an interrupted robbery is just some notes that moved.
+
+M19's precedent cuts the same way — a restart must not heal anybody, and it must not launder anything either.
+
+**Affects:** M14 §8, §13.3; the crime module's boot path.
+
+## D-049 — The victim NPC is a scripted animation entity that does not navigate (DECIDED, 2026-08-02; resolves M14 §13.2)
+
+The clerk is a `base_anim` entity. It stands where it was placed, plays reactions, opens the register, and flees to a **declared point** — the business type declares one, exactly as it already declares `newspaperSpawn` and `surveillance` — by a straight-line move with a stuck timeout. If it cannot get there, it cowers.
+
+**No HL2 AI and no NextBot dependency.** `base_ai` brings its own health, its own death and its own faction relationships: a second lethality model beside the one D-037 spent a milestone building, and three systems' worth of behaviour M14 would spend itself suppressing rather than using. A NextBot makes `nav_generate` a hard requirement of the map (Q-9), and a robbery on an unmeshed map produces a clerk who stands still forever — the failure mode that looks like success.
+
+The cost, named rather than discovered: **no pathfinding.** The clerk cannot dodge, cannot take cover, and cannot chase. Tech §15 already requires NPCs to avoid advanced tactics, and this is the victim rather than the police.
+
+**Affects:** M14 §5, §13.2; the business type definition gains a declared flee point; Q-9 (no navmesh requirement is introduced).
+
+## D-048 — An unowned store accrues a capped NPC float; owned premises stay under D-032 (DECIDED, 2026-08-02; resolves M14 §13.1, extends D-032)
+
+An **unowned** store accrues a small per-hour credit into its till, capped at a ceiling declared per business type, minted through `Money.Give` into the container and audited per credit. **Accrual pauses while an operation is live and for a meaningful cooldown afterwards**, so the same store cannot be farmed efficiently.
+
+**Player-owned premises are excluded entirely.** If somebody owns it, D-032 governs its income unchanged — sales plus the staffed trickle, and nothing else. That exclusion is what stops a family buying a store and farming its own register.
+
+The alternative was to make the only robbable place one a player had already stocked, which inverts the causality: robbery is supposed to be what makes the economy tense, not a reward for it already being lively.
+
+**The honest cost, named rather than buried: this is a new source of money.** It is bounded by a ceiling, paused by a cooldown, audited per credit, and turned off entirely with one config value.
+
+**Affects:** D-032 (extended to the unowned case, unchanged for the owned one); M13 business types gain a float ceiling; M14 §4, §13.1.
+
+## D-047 — M14 registers the project's first concealment provider (DECIDED, 2026-08-02; scope decision 2 confirmed; first implementation of D-014)
+
+M14 ships **one** `face` equipment slot, **one** `clothing.mask` item, and the first registration into `Omerta.Identity.RegisterConcealmentProvider` — a seam M5 shipped empty in D-014 and no milestone has ever filled.
+
+The milestone's own definition of done is a two-player *masked* store robbery, and nothing in the game could conceal a face. The roadmap puts disguises in the content workstream, which owns models rather than mechanics, so no milestone owned this.
+
+**What it explicitly does not ship:** a disguise system, appearance descriptors, partial concealment, gloves, or anything M15 will want. A mask is on or it is off, and while it is on the wearer is Unknown to everybody including their own crew — which is what D-014 already says and has never been able to demonstrate.
+
+**Affects:** D-014 (implemented rather than amended); M9's slot registry gains `face`; the disguise milestone inherits a working seam instead of an empty one.
+
+## D-046 — The timed action is a shared primitive (DECIDED, 2026-08-02; scope decision 1 confirmed; generalizes D-037's machinery)
+
+`Omerta.Action.Begin/Cancel/IsBusy` is promoted out of `modules/injury/sv_treatment.lua` and becomes a primitive of its own, beside `Omerta.Interaction`. **M19's treatments and downed actions become its first callers and change nothing about their own definitions.**
+
+M19 built the timed, interruptible, range-checked action and wrote in the comment that M20 would require exactly this shape. That reasoning was right and it applies a third time: opening a register, levering one, and going through a till are a predicate, a duration, an interruption and one prompt. M17's arrest, M15's evidence collection and C4's drilling all inherit it.
+
+The alternative was a second copy in `modules/crime/`, and **the second copy is always the one that forgets to cancel on disconnect.**
+
+**Affects:** `modules/injury/sv_treatment.lua` (machinery removed, registrations kept); `modules/death` (confirm kill runs on the promoted primitive); M14, M15, M17, C4 (inherit rather than reimplement).
+
 ## D-045 — A broken leg is a condition with a row, not an eighth state (DECIDED, 2026-08-02; amends M19 §9)
 
 Falling far enough breaks a leg, and a broken leg is **not** an injury state. M19's seven states describe how close a character is to dying; a limp is not a step on that ladder and a man can be perfectly healthy with a broken leg. It gets its own table — `character_impairments`, migration 14 — keyed by character with an absolute expiry.
