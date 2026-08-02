@@ -846,6 +846,45 @@ function MODULE:OnEnable()
     -- The class column answers the question an operator who has just installed
     -- an addon actually has, which is "did it take" — so it prints what each
     -- weapon is RUNNING, and says when that is not what the arsenal asked for.
+
+    -- Which weapon classes this server actually has.
+    --
+    -- "That class is not registered" has two completely different causes and
+    -- they need completely different work: the addon is missing from the
+    -- server, or the addon is there and the class is spelled differently from
+    -- what somebody typed. A Workshop page title is not a class name, and a
+    -- pack's guns are rarely named the way its description names them.
+    --
+    -- Listing what IS here tells the two apart in one command. No matches on
+    -- "arc9" means the pack is genuinely absent; a list of arc9_* classes that
+    -- does not include the one we asked for means the arsenal has a typo, and
+    -- the fix is one data edit rather than a server rebuild.
+    concommand.Add("omerta_weapon_classes", function(caller, _, args)
+        if IsValid(caller) and not caller:IsSuperAdmin() then return end
+
+        local filter = string.lower(args[1] or "")
+        local found = 0
+        for _, swep in ipairs(weapons.GetList() or {}) do
+            local class = swep.ClassName or ""
+            -- Ours are listed by omerta_weapons_list and would only bury the
+            -- answer; this command exists to look at everybody else's.
+            if class ~= "" and not class:find("^weapon_omerta_")
+                and (filter == "" or string.lower(class):find(filter, 1, true)) then
+                found = found + 1
+                Omerta.Log.Info("weapons", "  %-40s %s",
+                    class, tostring(swep.PrintName or ""))
+            end
+        end
+
+        if found == 0 then
+            Omerta.Log.Info("weapons", "no third-party weapon class matches '%s' " ..
+                "— that pack is not mounted on this server", args[1] or "")
+        else
+            Omerta.Log.Info("weapons", "%d class(es) matching '%s'",
+                found, args[1] or "")
+        end
+    end)
+
     -- What is actually inside somebody else's viewmodel.
     --
     -- The port plan (docs/review/06_weapon_art_port.md) turns on one question
