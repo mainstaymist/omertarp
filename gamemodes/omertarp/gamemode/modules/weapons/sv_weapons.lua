@@ -285,7 +285,35 @@ function Internal.Reload(ply, wep)
 
     wep.OmertaReloadUntil = CurTime() + def.reloadTime
     wep:SetNextPrimaryFire(CurTime() + def.reloadTime)
+
+    -- The activity first, exactly as before, so a weapon with no animation
+    -- block is byte-for-byte the weapon it was. Then the named sequence, which
+    -- overrides it and only exists for a weapon that asked.
+    --
+    -- SERVER-SIDE, and it has to be: the client presses R, but whether a reload
+    -- HAPPENS is decided here, against rows in a pocket. A client that animated
+    -- its own reload would animate the ones that were refused.
+    --
+    -- `fit` is where the two clocks meet. `def.reloadTime` wins — it is a
+    -- balance number argued for in the arsenal and it gates real inventory work
+    -- — and the animation is stretched to it with SetPlaybackRate. The full
+    -- defence, and what I would rather do once the real durations are known, is
+    -- in sh_weapons_anim.lua's ANIM_RATE header.
+    --
+    -- The clip is still the PRE-reload one on this line, which is what makes
+    -- the distinction meaningful: an empty gun reloads differently from a
+    -- topped-up one on a model that says so, and inherits `reload` on one that
+    -- does not.
+    local event = wep:Clip1() <= 0 and "reload_empty" or "reload"
     wep:SendWeaponAnim(ACT_VM_RELOAD)
+    Internal.PlayAnim(wep, def, event, { fit = def.reloadTime })
+    -- The foley is a WORLD sound on the weapon entity, so everybody in earshot
+    -- gets it. Nothing today declares one, and a weapon that declares none is
+    -- silent here exactly as it is now.
+    Internal.PlayAnimSound(wep, def, event)
+
+    -- The public half, and the only thing an observer sees of a reload: the
+    -- gesture on the player model. Unchanged.
     ply:SetAnimation(PLAYER_RELOAD)
 
     Internal.ConsumeItems(ply, def.ammo, take, function(ok, err)

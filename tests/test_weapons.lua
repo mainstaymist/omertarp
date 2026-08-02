@@ -82,6 +82,11 @@ local MODULE_FILES = {
     "gamemodes/omertarp/gamemode/modules/injury/sv_actions.lua",
     "gamemodes/omertarp/gamemode/modules/weapons/sh_module.lua",
     "gamemodes/omertarp/gamemode/modules/weapons/sh_weapons.lua",
+    -- Between sh_weapons and the arsenal, exactly where the engine's own
+    -- alphabetical-within-realm ordering puts it ('.' < '_' < 'r'): the
+    -- arsenal's Register calls validate their animation blocks against rules
+    -- this file defines, so it must be loaded before the first one runs.
+    "gamemodes/omertarp/gamemode/modules/weapons/sh_weapons_anim.lua",
     "gamemodes/omertarp/gamemode/modules/weapons/sh_weapons_arsenal.lua",
     -- Listed before sv_weapons for the same reason the engine includes it
     -- first (alphabetical within a realm): it is the file sv_weapons' OnEnable
@@ -704,4 +709,370 @@ check("a refund puts back the magazine, and never more than we vouched for", fun
     assert(R(3, 7, true) == 3, "and a spent one refunds what is actually left")
     assert(R(7, nil, true) == 0, "vouched for nothing, refund nothing")
     assert(R(-4, 7, true) == 0 and R(7, -4, true) == 0, "and nonsense refunds nothing")
+end)
+
+--------------------------------------------------------------------------------
+suite("weapons.animation")
+--------------------------------------------------------------------------------
+-- Phase 2 of docs/review/06_weapon_art_port.md: the base learns which SEQUENCE
+-- belongs to each event, by name.
+--
+-- Two things are pinned hardest, and they are the two that would otherwise
+-- only be discovered on a live server. The first is that a weapon which
+-- declares NOTHING is the weapon it was yesterday — every gun in the arsenal is
+-- in that state today and will be until a dump exists. The second is the
+-- failure: a name the model does not carry must produce one line naming the
+-- weapon, the event and the name, and then play the activity the base has
+-- always played, rather than playing nothing and looking like a broken gun.
+
+-- A model, as far as the resolver is concerned: names in, indices out, -1 for
+-- a name that is not there. Which is exactly what Entity:LookupSequence is, and
+-- the reason the resolver takes it as an argument — an addon can be conjured
+-- and taken away again on a machine that has never had one.
+local function fakeModel(sequences)
+    return function(name)
+        local index = sequences[name]
+        if index == nil then return -1 end
+        return index
+    end
+end
+
+check("a weapon that declares no animation block resolves to exactly what the base did before", function()
+    loadModules()
+    -- The whole arsenal, because this is the promise being made to it.
+    for _, def in ipairs(Omerta.Weapons.All()) do
+        assert(def.anim == nil, def.id ..
+            " grew an animation block — no sequence name may be typed before a dump exists")
+
+        local fire = Omerta.Weapons.AnimEntry(def, "fire")
+        assert(fire.sequence == nil, def.id .. " invented a firing sequence")
+        assert(fire.activity == "ACT_VM_PRIMARYATTACK",
+            def.id .. " lost the activity the base falls back to")
+        assert(fire.sound == def.sound,
+            def.id .. " stopped using its own gunshot: " .. tostring(fire.sound))
+
+        -- The dry click is NOT the weapon's `sound` field and never was: an
+        -- empty gun clicks, it does not fire quietly.
+        local dry = Omerta.Weapons.AnimEntry(def, "dry")
+        assert(dry.sound == "Weapon_Pistol.Empty",
+            def.id .. "'s dry click changed to " .. tostring(dry.sound))
+        assert(dry.sequence == nil)
+
+        -- Reloading emits nothing in this base and must keep emitting nothing:
+        -- inventing foley for a placeholder is a change to a gun nobody asked
+        -- to change.
+        local reload = Omerta.Weapons.AnimEntry(def, "reload")
+        assert(reload.sound == nil, def.id .. " grew a reload sound")
+        assert(reload.activity == "ACT_VM_RELOAD")
+    end
+end)
+
+check("a weapon with no block asks the model nothing at all", function()
+    loadModules()
+    local def = Omerta.Weapons.Get("weapon.revolver")
+    -- A model that would happily answer for every name in the world. The
+    -- weapon declares none, so nothing is looked up and the activity stands.
+    local asked = 0
+    local plan = Omerta.Weapons.ResolveAnim(def, "fire", function(name)
+        asked = asked + 1
+        return 3
+    end)
+    assert(asked == 0, "a weapon with no block asked the model " .. asked .. " question(s)")
+    assert(plan.sequence == nil, "and must not have been given a sequence anyway")
+    assert(plan.missing == nil, "nothing was wanted, so nothing is missing")
+    assert(plan.activity == "ACT_VM_PRIMARYATTACK")
+    assert(plan.sound == def.sound)
+end)
+
+check("a declared sequence is resolved by NAME, against the model", function()
+    loadModules()
+    Omerta.Weapons.Register("weapon.ported", {
+        name = "Ported", slot = "sidearm", bulk = 4,
+        damage = 20, rpm = 120, clip = 6, ammo = "ammo.38",
+        sound = "some/gun/fire.wav",
+        anim = {
+            draw    = "draw",
+            idle    = "idle",
+            fire    = "shoot",
+            reload  = { sequence = "reload_full", sound = "some/gun/reload.wav" },
+            holster = "holster",
+        },
+    })
+    local def = Omerta.Weapons.Get("weapon.ported")
+    local model = fakeModel({
+        draw = 0, idle = 1, shoot = 2, reload_full = 3, holster = 4,
+    })
+
+    -- Index 0 is a perfectly ordinary sequence — the FIRST one in the model.
+    -- A base that read 0 as "absent" would refuse the opening animation of
+    -- every model ever made, which is why the miss test is `< 0`.
+    local draw = Omerta.Weapons.ResolveAnim(def, "draw", model)
+    assert(draw.sequence == 0, "index 0 read as missing: " .. tostring(draw.sequence))
+    assert(draw.missing == nil)
+
+    assert(Omerta.Weapons.ResolveAnim(def, "fire", model).sequence == 2)
+    assert(Omerta.Weapons.ResolveAnim(def, "reload", model).sequence == 3)
+    assert(Omerta.Weapons.ResolveAnim(def, "holster", model).sequence == 4)
+
+    -- The name asked for is carried through whether or not it was found, so
+    -- the log line can quote what the arsenal actually says.
+    assert(Omerta.Weapons.ResolveAnim(def, "fire", model).wanted == "shoot")
+end)
+
+check("a sequence the model does not have is reported, and the activity plays instead", function()
+    loadModules()
+    Omerta.Weapons.Register("weapon.stale", {
+        name = "Stale", slot = "sidearm", bulk = 4,
+        damage = 20, rpm = 120, clip = 6, ammo = "ammo.38",
+        -- The failure this whole design exists for: the artist renamed it, or
+        -- somebody typed it from memory. An INDEX would have silently played
+        -- whatever moved into that slot.
+        anim = { fire = "shoot_v2" },
+    })
+    local def = Omerta.Weapons.Get("weapon.stale")
+    local plan = Omerta.Weapons.ResolveAnim(def, "fire", fakeModel({ shoot = 2 }))
+
+    assert(plan.missing == "shoot_v2",
+        "a missing sequence must be nameable: " .. tostring(plan.missing))
+    assert(plan.sequence == nil, "and must not play something else by accident")
+    assert(plan.activity == "ACT_VM_PRIMARYATTACK",
+        "and must fall back to the activity the base uses today")
+    -- Still audible. A gun whose animation is wrong is not a gun that stops
+    -- making a noise.
+    assert(plan.sound == "Weapon_Pistol.Single")
+end)
+
+check("every way a model can fail to answer reads as missing, not as a crash", function()
+    loadModules()
+    Omerta.Weapons.Register("weapon.brittle", {
+        name = "Brittle", slot = "sidearm", bulk = 4,
+        damage = 20, rpm = 120, clip = 6, ammo = "ammo.38",
+        anim = { fire = "shoot" },
+    })
+    local def = Omerta.Weapons.Get("weapon.brittle")
+
+    for label, lookup in pairs({
+        ["minus one"]     = function() return -1 end,
+        ["nil"]           = function() return nil end,
+        ["not a number"]  = function() return "sequence" end,
+        ["NaN"]           = function() return 0 / 0 end,
+        -- A lookup that errors has ANSWERED: the sequence is not there.
+        -- Anything else lets one bad model take a trigger pull down with it.
+        ["an error"]      = function() error("model exploded") end,
+    }) do
+        local plan = Omerta.Weapons.ResolveAnim(def, "fire", lookup)
+        assert(plan.missing == "shoot", label .. " did not read as missing")
+        assert(plan.sequence == nil, label .. " produced a sequence anyway")
+        assert(plan.activity == "ACT_VM_PRIMARYATTACK", label .. " lost the fallback")
+    end
+
+    -- No model at all — the state of this machine, and of any realm that has
+    -- not spawned a viewmodel yet. The activity, silently.
+    local none = Omerta.Weapons.ResolveAnim(def, "fire", nil)
+    assert(none.sequence == nil and none.missing == nil,
+        "no model to ask is not the same as a model that said no")
+end)
+
+check("a model that does not distinguish the empty cases inherits the full ones", function()
+    loadModules()
+    Omerta.Weapons.Register("weapon.plain", {
+        name = "Plain", slot = "sidearm", bulk = 4,
+        damage = 20, rpm = 120, clip = 6, ammo = "ammo.38",
+        anim = {
+            fire   = { sequence = "shoot",  sound = "gun/fire.wav" },
+            reload = { sequence = "reload", sound = "gun/reload.wav" },
+        },
+    })
+    local def = Omerta.Weapons.Get("weapon.plain")
+
+    -- One firing animation, one reload. The gun that empties itself and the
+    -- gun that reloads from empty play the same thing, and the base never has
+    -- to know which kind of model it is holding.
+    local lastShot = Omerta.Weapons.AnimEntry(def, "fire_empty")
+    assert(lastShot.sequence == "shoot", "fire_empty did not inherit fire")
+    assert(lastShot.sound == "gun/fire.wav", "nor its sound")
+
+    local fromEmpty = Omerta.Weapons.AnimEntry(def, "reload_empty")
+    assert(fromEmpty.sequence == "reload" and fromEmpty.sound == "gun/reload.wav")
+end)
+
+check("a model that does distinguish them is believed, field by field", function()
+    loadModules()
+    Omerta.Weapons.Register("weapon.fancy", {
+        name = "Fancy", slot = "sidearm", bulk = 4,
+        damage = 20, rpm = 120, clip = 6, ammo = "ammo.38",
+        anim = {
+            fire       = { sequence = "shoot", sound = "gun/fire.wav" },
+            -- A slide locking back looks different and sounds the same, which
+            -- is the ordinary case: the sequence is declared, the sound is
+            -- inherited, and neither had to be repeated.
+            fire_empty = "shoot_last",
+            reload       = "reload",
+            reload_empty = "reload_empty",
+        },
+    })
+    local def = Omerta.Weapons.Get("weapon.fancy")
+
+    local lastShot = Omerta.Weapons.AnimEntry(def, "fire_empty")
+    assert(lastShot.sequence == "shoot_last", "the declared sequence lost to the inherited one")
+    assert(lastShot.sound == "gun/fire.wav", "the sound should still have been inherited")
+
+    assert(Omerta.Weapons.AnimEntry(def, "reload_empty").sequence == "reload_empty")
+    assert(Omerta.Weapons.AnimEntry(def, "reload").sequence == "reload")
+end)
+
+check("sound falls through the arsenal in one order, and ends at today's placeholder", function()
+    loadModules()
+    local E = Omerta.Weapons.AnimEntry
+
+    -- Nothing declared anywhere: the base's own placeholders, which is what
+    -- every weapon shipped before this existed used.
+    local bare = { id = "weapon.bare" }
+    assert(E(bare, "fire").sound == "Weapon_Pistol.Single")
+    assert(E(bare, "dry").sound == "Weapon_Pistol.Empty")
+    assert(E(bare, "reload").sound == nil, "the base emits nothing on a reload today")
+
+    -- The weapon's own top-level `sound`, which is what the arsenal has said
+    -- since W0 and must keep meaning the same thing.
+    local classic = { id = "weapon.classic", sound = "Weapon_357.Single" }
+    assert(E(classic, "fire").sound == "Weapon_357.Single")
+    assert(E(classic, "fire_empty").sound == "Weapon_357.Single")
+    assert(E(classic, "dry").sound == "Weapon_Pistol.Empty",
+        "a gunshot is not a dry click")
+
+    -- And the block, which beats both.
+    local ported = {
+        id = "weapon.ported2", sound = "Weapon_357.Single",
+        anim = {
+            fire   = { sequence = "shoot", sound = "thompson/fire.wav" },
+            dry    = { sound = "thompson/dryfire.wav" },
+            reload = { sequence = "reload", sound = "thompson/reload.wav" },
+        },
+    }
+    assert(E(ported, "fire").sound == "thompson/fire.wav")
+    assert(E(ported, "dry").sound == "thompson/dryfire.wav")
+    assert(E(ported, "reload").sound == "thompson/reload.wav")
+    -- Declared with a sound and no sequence: legal, and it stays legal. Not
+    -- every model has a dryfire animation and every gun has a dry click.
+    assert(E(ported, "dry").sequence == nil)
+end)
+
+check("an event this base does not have answers nothing at all", function()
+    loadModules()
+    -- Not an empty table, and not a guess. There is no ironsight event because
+    -- there is no secondary attack to hang one on, and a base that quietly
+    -- returned a plan for one would be a base somebody wrote a call site for.
+    assert(Omerta.Weapons.AnimEntry({}, "ironsights") == nil)
+    assert(Omerta.Weapons.AnimEntry({}, "") == nil)
+    assert(Omerta.Weapons.AnimEntry({}, nil) == nil)
+    assert(Omerta.Weapons.ResolveAnim({}, "ironsights", fakeModel({})) == nil)
+
+    -- And every event it DOES have answers with an activity to fall back on,
+    -- because the fallback is the whole reason a missing sequence is survivable.
+    for _, event in ipairs(Omerta.Weapons.ANIM_EVENT_ORDER) do
+        local entry = Omerta.Weapons.AnimEntry({}, event)
+        assert(entry, "no entry for the base's own event '" .. event .. "'")
+        assert(type(entry.activity) == "string" and entry.activity:find("^ACT_VM_"),
+            event .. " has no activity to fall back to")
+    end
+end)
+
+check("a typo in an animation block is a boot error, not a gun that plays nothing", function()
+    loadModules()
+    local base = {
+        name = "Typo", slot = "sidearm", bulk = 4,
+        damage = 20, rpm = 120, clip = 6, ammo = "ammo.38",
+    }
+    local function spec(anim)
+        local out = {}
+        for k, v in pairs(base) do out[k] = v end
+        out.anim = anim
+        return out
+    end
+    local V = Omerta.Weapons.Validate
+
+    assert(V("weapon.ok", spec({ fire = "shoot" })))
+    assert(V("weapon.ok", spec({ fire = { sequence = "shoot" } })))
+    assert(V("weapon.ok", spec({ dry = { sound = "click.wav" } })))
+    assert(V("weapon.ok", spec({ fire = { sequence = "shoot", rate = 1.5 } })))
+
+    local function refused(anim, mention)
+        local ok, why = V("weapon.bad", spec(anim))
+        assert(not ok, "accepted " .. mention)
+        assert(tostring(why):find(mention, 1, true),
+            "the refusal did not mention '" .. mention .. "': " .. tostring(why))
+    end
+
+    refused({ shoot = "shoot" }, "unknown event")
+    refused({ fire = 7 }, "must be a sequence name")
+    refused({ fire = "" }, "must not be empty")
+    refused({ fire = " shoot " }, "leading or trailing whitespace")
+    refused({ fire = { sound = 3 } }, "sound must be a string")
+    refused({ fire = { sequence = "shoot", rate = 0 } }, "rate must be a playback speed")
+    -- An entry that declares neither is a line that does nothing, which is
+    -- always a mistake somebody made rather than a decision somebody took.
+    refused({ fire = {} }, "declares neither a sequence nor a sound")
+    refused("reload", "must be a table")
+end)
+
+check("an animation is fitted to OUR clock, and says so when it cannot be", function()
+    loadModules()
+    local R = Omerta.Weapons.AnimRate
+
+    -- `reloadTime` wins and the art is stretched to it: a 3.0s reload
+    -- animation inside the M1911's 2.2s magazine change plays at 1.36x. The
+    -- number is a balance position argued for in the arsenal and it gates real
+    -- inventory work; an animation's length is neither.
+    local rate, clamped = R(3.0, 2.2)
+    assert(math.abs(rate - 3.0 / 2.2) < 1e-9, "the fit is length over target")
+    assert(not clamped)
+
+    -- Already agreeing: nothing is stretched, which is the state Phase 3
+    -- should be aiming the arsenal's numbers at.
+    assert(R(2.2, 2.2) == 1)
+
+    -- A short animation in a long window slows down rather than finishing
+    -- early and leaving the hands frozen.
+    assert(R(1.1, 2.2) == 0.5)
+
+    -- Too far apart to hide. Clamped at both ends for the reason CycleDelay
+    -- and EquipDuration are — a mismatch produces a brisk reload or a languid
+    -- one, never a strobe and never a frozen hand — and it SAYS so, because
+    -- that pair is a conversation about the arsenal's number.
+    local fast, saidFast = R(60, 2)
+    assert(fast == Omerta.Weapons.ANIM_RATE.max and saidFast)
+    local slow, saidSlow = R(0.01, 10)
+    assert(slow == Omerta.Weapons.ANIM_RATE.min and saidSlow)
+
+    -- Nothing an unread model can hand us produces a frozen or a negative
+    -- viewmodel. Playing at its own speed is always defensible.
+    for _, pair in ipairs({
+        { nil, nil }, { 0, 2 }, { 2, 0 }, { -3, 2 }, { 2, -3 },
+        { 0 / 0, 2 }, { 2, 0 / 0 }, { math.huge, math.huge },
+    }) do
+        local value = R(pair[1], pair[2])
+        assert(type(value) == "number" and value == value and value > 0,
+            "a degenerate pair produced " .. tostring(value))
+        assert(value >= Omerta.Weapons.ANIM_RATE.min
+            and value <= Omerta.Weapons.ANIM_RATE.max)
+    end
+end)
+
+check("the three ported weapons are still waiting for their dump", function()
+    loadModules()
+    -- The gate the port plan set, made into something a machine checks. These
+    -- three name a third party's SWEP class, which means their art is the
+    -- whole point of the exercise — and NOT ONE sequence name may be typed for
+    -- them until `omerta_weapon_dump` has been run on a server that has the
+    -- packs. A guessed name is silently wrong forever (D-044's asymmetry); a
+    -- weapon with no block plays the activities it always has.
+    local waiting = 0
+    for _, def in ipairs(Omerta.Weapons.All()) do
+        if def.external then
+            waiting = waiting + 1
+            assert(def.anim == nil, def.id ..
+                " has an animation block but its sequences have never been read")
+        end
+    end
+    assert(waiting == 3, "expected three weapons awaiting a dump, found " .. waiting)
 end)

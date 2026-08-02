@@ -26,6 +26,28 @@
 -- "Somebody else's SWEP" section of sh_weapons.lua for why that is the only
 -- claim this file is allowed to make about an addon nobody here has read.
 --
+-- WHERE THE ANIMATION BLOCKS ARE. Nowhere, on purpose.
+--
+-- A weapon may declare `anim = { fire = "…", reload = "…", … }` naming the
+-- sequence in its viewmodel that belongs to each event the base knows about —
+-- that is Phase 2 of docs/review/06_weapon_art_port.md, and the rules for
+-- reading one are in sh_weapons_anim.lua. NOT ONE WEAPON BELOW DECLARES ONE,
+-- and none may until a sequence dump from a real server exists.
+--
+-- The reason is the one this whole file already lives under: neither pack is
+-- installed on any machine this was written on, so a sequence name typed here
+-- would be a GUESS. D-044's asymmetry decides what to do about that — a wrong
+-- guess about a name is silently wrong forever, where a wrong guess about a
+-- function simply does not match — and a sequence name is the first kind. A
+-- weapon with no block plays exactly the ACT_VM_* activities it has always
+-- played, which is the correct behaviour for a placeholder HL2 model and the
+-- correct behaviour for a ported one nobody has read yet.
+--
+-- What fills them in is `omerta_weapon_dump <class>` run on a server that has
+-- the packs mounted: it prints every sequence in the viewmodel with its name
+-- and its duration, which is both halves of what an entry needs. That is
+-- Phase 3, one gun at a time, and it is data in this file and nowhere else.
+--
 -- The item ids are DELIBERATELY UNCHANGED by the renaming. `weapon.revolver`
 -- and `weapon.thompson` are what is sitting in pockets, safes and procurement
 -- rows already; a gun's display name is data and its id is a key, and renaming

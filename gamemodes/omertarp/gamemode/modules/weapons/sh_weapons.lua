@@ -336,6 +336,19 @@ function Omerta.Weapons.Validate(id, def)
                 .. "an external is somebody else's SWEP or it is nothing"
         end
     end
+    -- The animation block, if there is one. Checked here rather than at the
+    -- moment of use so a typo'd event name is a boot error naming the arsenal
+    -- line, not a gun that silently plays nothing the first time somebody
+    -- pulls a trigger in front of other people.
+    --
+    -- Safe to call unguarded: sh_weapons_anim.lua sorts between this file and
+    -- sh_weapons_arsenal.lua ('.' < '_' < 'r'), so the rules exist before the
+    -- first Register call that could need them. The include-order lint models
+    -- that same ordering.
+    if def.anim ~= nil then
+        local okAnim, whyAnim = Omerta.Weapons.ValidateAnim(id, def.anim)
+        if not okAnim then return false, whyAnim end
+    end
     return true
 end
 
