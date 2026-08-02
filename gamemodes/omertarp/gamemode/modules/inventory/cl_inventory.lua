@@ -364,6 +364,15 @@ hook.Add("Think", "omerta.inventory.loot_all", function()
         return
     end
 
+    -- Over the limit, nothing at all is going to move. The server refuses each
+    -- take on its own account — this is not a client-side capacity check
+    -- standing in for one — but sweeping every remaining row twice to be told
+    -- so twice is twenty identical notices for no information.
+    if Omerta.Inventory.IsOverloaded(state.bulkUsed, state.bulkLimit) then
+        stopLootAll()
+        return
+    end
+
     -- A row is sweeping. It is asked for when the sweep runs out, never before:
     -- the bar is the reach, not a decoration over an action already sent.
     if lootAll.instance then
@@ -512,12 +521,17 @@ local function buildRow(parent, entry, mine, wide)
                 held and Omerta.HUD.Colour("ink")
                     or Omerta.HUD.Colour(stateToken, taking and 115 or 255),
                 TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
-            -- A worn item costs no bulk while it is worn, so its row says so
-            -- with the same em dash the STATE column uses for "nothing here".
-            -- Printing its bulk anyway would put a number in the ledger that
-            -- is deliberately absent from the total underneath it, and a
-            -- ledger whose column does not add up is worse than no column.
-            draw.SimpleText(entry.slot and "—" or Omerta.Inventory.FormatBulk(
+            -- A WORN item costs no bulk, so its row says so with the same em
+            -- dash the STATE column uses for "nothing here". Printing its bulk
+            -- anyway would put a number in the ledger that is deliberately
+            -- absent from the total underneath it, and a ledger whose column
+            -- does not add up is worse than no column.
+            --
+            -- Equipped is not the test — worn is. A holstered gun is equipped
+            -- and still costs every unit of its bulk, so its row prints the
+            -- number like anything else you are carrying.
+            local worn = entry.slot ~= nil and entry.slot.worn == true
+            draw.SimpleText(worn and "—" or Omerta.Inventory.FormatBulk(
                     Omerta.Inventory.StackBulk(entry.def, entry.quantity)),
                 Omerta.HUD.Font("label"), w - pad - 96 * scale, h * 0.5,
                 faintColour, TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)

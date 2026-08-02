@@ -309,6 +309,45 @@ check("what is worn costs nothing, and pays a bonus while it does", function()
         == 300, "a map of rows sums the same as a list of them")
 end)
 
+check("a holstered gun is carried, not worn, and still costs its bulk", function()
+    loadModules()
+
+    -- THE CASE THAT PRODUCED THE RULING: a man with an overcoat and a Thompson.
+    -- Weapons occupy equipment slots too, so a rule written against
+    -- `equipped_slot` rather than against WORN would make a submachine gun
+    -- slung across a back weigh nothing — and this exact loadout, the one the
+    -- whole overload problem was reported about, would come to zero.
+    assert(Omerta.Inventory.SlotIsWorn("outerwear"), "a coat is worn")
+    assert(Omerta.Inventory.SlotIsWorn("headwear"), "so is a hat")
+    assert(not Omerta.Inventory.SlotIsWorn("primary"), "a slung gun is CARRIED")
+    assert(not Omerta.Inventory.SlotIsWorn("sidearm"), "so is a holstered one")
+    assert(not Omerta.Inventory.SlotIsWorn("melee"))
+    -- A slot that no longer exists cannot be vouched for, and the safe side of
+    -- not knowing is charging for it.
+    assert(not Omerta.Inventory.SlotIsWorn("no_such_slot"))
+    assert(not Omerta.Inventory.SlotIsWorn(nil))
+
+    -- Stood up with the crowbar rather than the Thompson: weapons are the
+    -- weapons module's items and this suite loads M9 alone. The rule under
+    -- test is the SLOT's, not the item's, so a crowbar in a weapon slot proves
+    -- exactly what a Thompson in one would.
+    local rows = {
+        { def_id = "clothing.overcoat", quantity = 1, equipped_slot = "outerwear" },
+        { def_id = "tool.crowbar",      quantity = 1, equipped_slot = "melee" },
+    }
+    -- The crowbar's 3, and NOT zero — which is what it would be if being
+    -- equipped were the test.
+    assert(Omerta.Inventory.SumBulk(rows) == 300, Omerta.Inventory.SumBulk(rows))
+    assert(Omerta.Inventory.WornCapacityBonus(rows) == 12,
+        "and a tool grants no capacity however it is carried")
+
+    -- Now take the coat off, which is the reported moment: the coat's own bulk
+    -- arrives at the same instant its 12 of capacity leaves.
+    rows[1].equipped_slot = nil
+    assert(Omerta.Inventory.SumBulk(rows) == 700, Omerta.Inventory.SumBulk(rows))
+    assert(Omerta.Inventory.WornCapacityBonus(rows) == 0)
+end)
+
 check("taking the coat off is what puts a man over, and it does both at once", function()
     loadModules()
     -- The design's own worked example. Registered here rather than reached for

@@ -93,11 +93,36 @@ function Omerta.Inventory.GetSlotByIndex(index)
     return list[index]
 end
 
+-- `worn` is what the project lead's ruling actually turns on: a thing you WEAR
+-- costs no bulk, a thing you CARRY costs its own.
+--
+-- The distinction has to be declared here rather than inferred from
+-- `equipped_slot`, because a weapon occupies a slot too. Read off the slot
+-- alone, "worn things are free" would make a Thompson slung across your back
+-- weigh nothing — and the case that produced this ruling was a man with an
+-- overcoat AND a Thompson, so a free Thompson deletes the problem instead of
+-- solving it. He could equip it, take the coat off, and be carrying nothing at
+-- all by the arithmetic while visibly carrying a submachine gun.
+--
+-- A coat is on you. A gun is on you the way a suitcase is: its weight is still
+-- yours, and it is still what stops you picking up the next thing.
+--
+-- Declared per slot rather than by naming the two clothing slots in a
+-- condition somewhere, so the sixth slot somebody adds has to answer the
+-- question at the point it is registered.
 Omerta.Inventory.RegisterSlot("primary",   { label = "Primary",   order = 10 })
 Omerta.Inventory.RegisterSlot("sidearm",   { label = "Sidearm",   order = 20 })
 Omerta.Inventory.RegisterSlot("melee",     { label = "Melee",     order = 30 })
-Omerta.Inventory.RegisterSlot("outerwear", { label = "Outerwear", order = 40 })
-Omerta.Inventory.RegisterSlot("headwear",  { label = "Headwear",  order = 50 })
+Omerta.Inventory.RegisterSlot("outerwear", { label = "Outerwear", order = 40, worn = true })
+Omerta.Inventory.RegisterSlot("headwear",  { label = "Headwear",  order = 50, worn = true })
+
+-- Whether an item in this slot is being worn rather than carried. An unknown
+-- slot answers false: a row whose slot no longer exists is a row we cannot
+-- vouch for, and the safe side of that is charging for it.
+function Omerta.Inventory.SlotIsWorn(slotId)
+    local slot = slotId and Omerta.Inventory.GetSlot(slotId)
+    return slot ~= nil and slot.worn == true
+end
 
 --------------------------------------------------------------------------------
 -- Item definitions
@@ -215,7 +240,9 @@ end
 function Omerta.Inventory.SumBulk(rows)
     local total = 0
     for _, row in pairs(rows or {}) do
-        if not row.equipped_slot then
+        -- WORN, not merely equipped. A holstered gun still costs its bulk;
+        -- see the slot table for why that distinction is the whole ruling.
+        if not Omerta.Inventory.SlotIsWorn(row.equipped_slot) then
             total = total + Omerta.Inventory.StackBulk(Omerta.Items.Get(row.def_id), row.quantity)
         end
     end
@@ -233,7 +260,11 @@ end
 function Omerta.Inventory.WornCapacityBonus(rows)
     local bonus = 0
     for _, row in pairs(rows or {}) do
-        if row.equipped_slot then
+        -- The SAME predicate SumBulk uses, and that is the point of the pair:
+        -- one test decides both "does this cost bulk" and "does this grant
+        -- capacity", so the two can never end up disagreeing about what
+        -- counts as being worn.
+        if Omerta.Inventory.SlotIsWorn(row.equipped_slot) then
             local def = Omerta.Items.Get(row.def_id)
             if def and def.capacityBonus then bonus = bonus + def.capacityBonus end
         end
