@@ -108,17 +108,67 @@ Omerta.HUD.Register("weapons.rounds", {
             Omerta.HUD.Colour("text", 245 * alpha),
             TEXT_ALIGN_RIGHT, TEXT_ALIGN_BOTTOM)
 
-        -- The line under it only speaks when it has something to say: an
-        -- empty gun, or an empty gun with nothing to feed it.
-        local note
-        if clip <= 0 and reserve <= 0 then
-            note = "NOTHING LEFT"
-        elseif clip <= 0 then
-            note = "EMPTY · PRESS R"
+        -- WHAT THE GUN EATS, on its own line above the numbers.
+        --
+        -- A caliber is a fact a character plainly has — you know what your own
+        -- gun takes — and it is the fact that decides whether the rounds in a
+        -- dead man's coat are worth lifting. It is here because that decision
+        -- is made in the street, over a body, with the gun in hand, and the
+        -- alternative is opening the pockets to compare two names.
+        --
+        -- IT IS A CAPTION, NOT A NUMBER. The mono role is the system voice this
+        -- interface uses for column captions and the timed-action verb — the
+        -- register that labels rather than reports — and `dim` is the tone that
+        -- voice is written in. Against the count's 30px bone and the reserve's
+        -- 15px secondary that puts it third in a hierarchy of three, which is
+        -- exactly where a thing that never changes belongs: the numbers are
+        -- what the player is watching, and this is what they are watching them
+        -- ABOUT.
+        --
+        -- ForClass, NOT `wep:Def()`, for the same reason Clip1 is read above:
+        -- Def is a method on our base and the external half of D-044's pair
+        -- does not have it. The lookup itself is in sh_weapons so it can be
+        -- pinned headlessly, and it answers with the AMMUNITION ITEM'S OWN
+        -- NAME — the same string the inventory row shows, so ".38 Rounds" on
+        -- the gun and ".38 Rounds" in a coat are visibly the same thing.
+        local caliber = Omerta.Weapons.CaliberName(wep:GetClass())
+        local captionY = y - 34 * scale
+        if caliber then
+            Omerta.HUD.Text(string.upper(caliber), "mono", x, captionY,
+                Omerta.HUD.Colour("dim", 220 * alpha),
+                TEXT_ALIGN_RIGHT, TEXT_ALIGN_BOTTOM)
         end
-        if note then
-            Omerta.HUD.Text(note, "mono", x, y - 34 * scale,
-                Omerta.HUD.Colour(reserve <= 0 and "danger" or "secondary", 235 * alpha),
+
+        -- And the one line that only speaks when it has something to say.
+        --
+        -- "NOTHING LEFT" IS GONE (project lead, 2026-08-02). It was drawn for
+        -- an empty gun with an empty pocket, and the two numbers directly under
+        -- it already read `0 / 0` — a line of prose restating the only two
+        -- digits on screen, in the loudest tone the palette has.
+        --
+        -- WHAT REPLACED IT IN THAT STATE IS NOTHING, WHICH IS ONE STEP FURTHER
+        -- THAN WAS ASKED FOR AND IS SAID OUT LOUD HERE RATHER THAN SLIPPED IN.
+        -- Deleting only the branch would have let the empty gun with nothing to
+        -- feed it fall through to "EMPTY · PRESS R" — an instruction to press a
+        -- key that cannot do anything, which is worse than the line that was
+        -- removed. So the remaining note is narrowed to the case where it is
+        -- TRUE: the gun is empty and there IS something to put in it.
+        --
+        -- That note keeps its place because it is the one thing here the
+        -- numbers do not say. `0 / 24` is a state; "press R" is the remedy, and
+        -- a player who has just heard a dry click in the middle of something is
+        -- exactly the player who needs telling which key ends it.
+        if clip <= 0 and reserve > 0 then
+            surface.SetFont(Omerta.HUD.Font("mono"))
+            local _, noteTall = surface.GetTextSize("H")
+            -- Stacked ABOVE the caption rather than in place of it: both lines
+            -- are right-aligned to the same edge and neither moves when the
+            -- other appears, so a gun running dry does not shift the block.
+            local noteY = captionY
+            if caliber then noteY = noteY - noteTall - Omerta.HUD.Space(1) end
+
+            Omerta.HUD.Text("EMPTY · PRESS R", "mono", x, noteY,
+                Omerta.HUD.Colour("secondary", 235 * alpha),
                 TEXT_ALIGN_RIGHT, TEXT_ALIGN_BOTTOM)
         end
     end,

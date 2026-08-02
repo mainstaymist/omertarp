@@ -321,6 +321,112 @@ check("an unreadable frame answers 'not aiming' and keeps the calibration", func
 end)
 
 --------------------------------------------------------------------------------
+-- The two signals, composed.
+--------------------------------------------------------------------------------
+-- The view reading above is the optical CONSEQUENCE of a sight. It has now been
+-- reported twice as never firing, and the second reading was structurally sound
+-- — which is the evidence that these weapons do not narrow the field of view at
+-- all, because ARC9 commonly enters sights by moving the VIEWMODEL and a
+-- viewmodel reposition is invisible to every camera reading there is.
+--
+-- So there is a second signal of a different KIND: the player's own input. A
+-- weapon in the hands and IN_ATTACK2 held. Nothing here calls into ARC9, TFA or
+-- our own base — the facts are gathered off the player in cl_hud.lua and this
+-- is the pure rule they feed, which is why the whole composition is pinnable on
+-- a machine with neither addon.
+
+check("either signal is sufficient, and neither replaces the other", function()
+    loadModules()
+    local A = Omerta.HUD.AimingFrom
+
+    -- The view half alone: a scope, a magnified optic, our own ironsights when
+    -- W0 §6's deferred pass lands. No button involved.
+    assert(A({ narrowed = true, armed = false, secondary = false }),
+        "a narrowed picture stopped counting when the input signal was added")
+
+    -- The input half alone: the case the view reading is blind to, and the
+    -- reason this pass exists. A gun that goes to the sights without zooming.
+    assert(A({ narrowed = false, armed = true, secondary = true }),
+        "a weapon and a held right mouse button is a man aiming")
+
+    -- Both, which is the ordinary case for anything that does zoom.
+    assert(A({ narrowed = true, armed = true, secondary = true }))
+
+    -- And neither.
+    assert(not A({ narrowed = false, armed = true, secondary = false }),
+        "a weapon in the hands is not by itself aiming")
+    assert(not A({ narrowed = false, armed = false, secondary = false }))
+end)
+
+check("empty hands and right-click is NOT aiming", function()
+    loadModules()
+    local A = Omerta.HUD.AimingFrom
+    -- The holster (weapon_omerta_hands) is a valid weapon entity, because the
+    -- engine has no concept of holding nothing — so "is there a weapon" would
+    -- be true all day and every right-click in the game would take D-041's dot
+    -- away. `armed` is the class comparison that excludes it, and this is the
+    -- assertion that must hold whatever else changes about the rule.
+    assert(not A({ narrowed = false, armed = false, secondary = true }),
+        "right-clicking with nothing drawn hid the crosshair")
+    -- Held down forever, still not aiming.
+    for _ = 1, 100 do
+        assert(not A({ narrowed = false, armed = false, secondary = true }))
+    end
+    -- And the moment something is drawn, it is.
+    assert(A({ narrowed = false, armed = true, secondary = true }))
+end)
+
+check("a moment no sight can be up vetoes BOTH signals", function()
+    loadModules()
+    local A = Omerta.HUD.AimingFrom
+    -- A window has the cursor, the player is dead, the player is on the floor.
+    -- `resting` is not evidence about a sight; it is the absence of anywhere
+    -- for one to be, so it overrides rather than joins. It matters most for the
+    -- input half: a right-click aimed at a window's close box is not a man
+    -- raising a gun, and nothing else gates a button.
+    assert(not A({ resting = true, narrowed = true, armed = true, secondary = true }),
+        "a state where nothing can be aimed still answered 'aiming'")
+    assert(not A({ resting = true, narrowed = false, armed = true, secondary = true }))
+    assert(not A({ resting = true, narrowed = true }))
+    -- Only a plain `true` vetoes, the same discipline InWorldFrom follows.
+    assert(A({ resting = "yes", narrowed = true }),
+        "something that is not a boolean was believed")
+end)
+
+check("default deny: a fact this rule cannot read is a fact it does not have", function()
+    loadModules()
+    local A = Omerta.HUD.AimingFrom
+    -- D-041's dot is the ONE permanent element and the expensive failure is
+    -- blanking it, so anything that is not plainly `true` reads as absent.
+    assert(not A(nil), "no facts at all")
+    assert(not A("aiming"), "something that is not a table")
+    assert(not A({}), "an empty table")
+    assert(not A({ narrowed = 1, armed = 1, secondary = 1 }), "truthy is not true")
+    assert(not A({ armed = "yes", secondary = "yes" }))
+    assert(not A({ narrowed = "yes" }))
+end)
+
+check("the input signal is momentary, which is the toggle-ADS gap", function()
+    loadModules()
+    local A = Omerta.HUD.AimingFrom
+    -- Written down as a TEST rather than only as a comment, because it is the
+    -- one thing about this rule somebody will otherwise discover in the field
+    -- and report as a bug. A player who has ARC9 set to TOGGLE sights holds the
+    -- button for a few frames and lets go while the gun stays up: the input
+    -- signal follows the button, not the gun.
+    local held = { narrowed = false, armed = true, secondary = true }
+    assert(A(held), "the toggle press registers")
+    local released = { narrowed = false, armed = true, secondary = false }
+    assert(not A(released),
+        "the input signal outlived the button — it is not, and must not be, a latch")
+
+    -- The view half covers that case ONLY IF the weapon also zooms. When it
+    -- does, the release changes nothing.
+    assert(A({ narrowed = true, armed = true, secondary = false }),
+        "a raised scope needs no button")
+end)
+
+--------------------------------------------------------------------------------
 suite("hud.reveal")
 --------------------------------------------------------------------------------
 -- The one animation every popup in the game shares. Pinned here rather than

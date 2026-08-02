@@ -93,7 +93,7 @@ local COMMANDS = {
     -- Diagnostics
     ["omerta_help"] = { usage = "[area]", what = "This list, or one area of it.", area = "Diagnostics" },
     ["omerta_env"] = { usage = "", what = "The world outside: which weather/time provider was detected, the time, whether it is night, the weather, and the map name. Runs from either console — the server's answer and a client's may differ, which is itself the useful part.", area = "Diagnostics" },
-    ["omerta_fov_watch"] = { usage = "[seconds]", what = "Print Player:GetFOV(), fov_desired and the field of view the frame was actually drawn at, ten times a second, while you aim. The reading that MOVES is the one a sight is visible in — which is how the crosshair's aiming rule is meant to be checked rather than reasoned about. Client console.", area = "Diagnostics", client = true },
+    ["omerta_fov_watch"] = { usage = "[seconds]", what = "Print Player:GetFOV(), fov_desired, the field of view the frame was actually drawn at, whether a weapon is in your hands, whether the right mouse button is held, and which of the crosshair's two aiming signals is firing — ten times a second, while you aim. The reading that MOVES is the one a sight is visible in, and the 'signal' column says whether the dot is being hidden by the view narrowing, by the trigger hand, or by neither. Client console.", area = "Diagnostics", client = true },
     ["omerta_leak_audit"] = { usage = "", what = "Scan networked state for identity leaks (M6).", area = "Diagnostics" },
     ["omerta_leak_audit_client"] = { usage = "", what = "The client half of the leak audit (client console).", area = "Diagnostics", client = true },
     ["omerta_demo_ping"] = { usage = "", what = "M0's loopback proof.", area = "Diagnostics" },

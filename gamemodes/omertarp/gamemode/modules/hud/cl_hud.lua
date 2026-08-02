@@ -627,10 +627,10 @@ end
 -- ...and where a sight takes over.
 --
 -- The rule and every number are in sh_hud.lua's "Looking down a sight"; this is
--- the two engine readings it is fed, and they are both base GMod.
+-- the engine readings it is fed, and every one of them is base GMod.
 --
 --   render.GetViewSetup().fov — the field of view the frame was ACTUALLY DRAWN
---     at. It is the one reading a narrowing cannot hide from, because the
+--     at. It is the one reading a NARROWING cannot hide from, because the
 --     renderer is set up from what CalcView answered: a base that narrows there
 --     lands here, and so does one that goes through SetFOV or a SWEP's
 --     TranslateFOV. We call none of those; we read what they produced.
@@ -640,18 +640,54 @@ end
 --     comparing them was the first attempt's bug. It is what the calibration is
 --     measured AGAINST, so moving the slider moves the baseline with it.
 --
--- WHY THE PREVIOUS READING FAILED, kept on the record because it is the reason
--- this one is trusted. It was `Player:GetFOV()` against `fov_desired`, and its
--- own header named the hole: a base that narrows only inside CalcView never
--- touches the player's field of view, so GetFOV answers the same number all the
--- way through an aim and the ratio is 1.000 forever. The field then reported the
--- dot not moving on ANY weapon, which is that blind spot exactly rather than a
--- threshold set wrong. `omerta_fov_watch` below prints all three readings side
--- by side, so nobody has to take this on faith a second time.
-local aiming = false
+--   Player:KeyDown(IN_ATTACK2) — the right mouse button, held. The player's own
+--     input, read off their own player entity. This is the reading that does
+--     not care whether the weapon zooms.
+--
+--   Player:GetActiveWeapon() — what is in the hands, compared against the
+--     HOLSTER class so that empty hands cannot pass for a gun. A class STRING
+--     compared, never a function called (D-044), and it is our own class name
+--     rather than anybody else's.
+--
+-- WHY BOTH PREVIOUS READINGS FAILED, kept on the record because it is the whole
+-- reason there are now two signals of different kinds. Attempt 1 was
+-- `Player:GetFOV()`, which a framework narrowing inside CalcView never writes.
+-- Attempt 2 was the drawn field of view above, which has no such hole — and the
+-- field still reported the dot not moving on ANY weapon, which is the evidence
+-- that these weapons are not changing the field of view at all: ARC9 ADS is
+-- frequently a viewmodel reposition, and no camera reading can see a gun move.
+-- `omerta_fov_watch` below prints every reading side by side, including which of
+-- the two signals is currently firing, so nobody has to take this on faith a
+-- third time.
+local aiming = false        -- the composed answer: either signal
+local viewAiming = false    -- the view half alone, which owns the hysteresis
+local armed, secondary = false, false -- the input half's two facts
 local sight = 1 -- 1 = the crosshair is the player's; 0 = the sight is
 local aimScale = nil -- drawn/desired at rest: measured, never assumed
 local lastW, lastH = 0, 0
+
+-- The input half's two facts, gathered.
+--
+-- Returns armed, secondary. Both plain booleans, because the rule they feed is
+-- default-deny and a nil would read as absent anyway — but a rule that is
+-- handed exactly what it expects is one fewer thing to reason about.
+--
+-- The holster is read from Omerta.Weapons.HANDS rather than spelled here: the
+-- class name for empty hands exists in exactly one place and this is not a
+-- second one. A SOFT reference, like every other cross-module read in this file
+-- — and if the weapons module is somehow absent there is no holster to be
+-- holding either, so any valid weapon counts and the fallback is harmless.
+local function sightIntent()
+    local ply = LocalPlayer()
+    if not IsValid(ply) then return false, false end
+
+    local wep = ply:GetActiveWeapon()
+    local holster = Omerta.Weapons and Omerta.Weapons.HANDS
+    local hasWeapon = IsValid(wep)
+        and (holster == nil or wep:GetClass() ~= holster)
+
+    return hasWeapon == true, ply:KeyDown(IN_ATTACK2) == true
+end
 
 -- The rendered field of view, or nil when it cannot be read.
 --
@@ -687,22 +723,42 @@ hook.Add("Think", "omerta.hud.aiming", function()
     local resized = (w ~= lastW or h ~= lastH)
     lastW, lastH = w, h
 
+    -- The one question canAim() answers, asked once and used twice. `resized`
+    -- joins it for the VIEW half only: a new resolution is a reason to re-read
+    -- the calibration, and it is not a reason to believe a held button is not
+    -- being held.
+    local grounded = canAim()
+
     local desired = GetConVar("fov_desired")
-    aiming, aimScale = Omerta.HUD.StepAiming(
+    viewAiming, aimScale = Omerta.HUD.StepAiming(
         Omerta.HUD.ViewFOV(),
         desired and desired:GetFloat(),
         aimScale,
-        resized or not canAim(),
-        aiming)
+        resized or not grounded,
+        viewAiming)
+
+    armed, secondary = sightIntent()
+
+    aiming = Omerta.HUD.AimingFrom({
+        narrowed = viewAiming,
+        armed = armed,
+        secondary = secondary,
+        resting = not grounded,
+    })
 
     sight = Omerta.HUD.StepAlpha(sight, not aiming, FrameTime(), Omerta.HUD.AIM.FADE)
 end)
 
 -- Is the player looking down a sight? Exposed because it is a fact about the
--- camera rather than about the crosshair, and the next thing that wants it
+-- player rather than about the crosshair, and the next thing that wants it
 -- (a sway, a breath, a stamina cost for holding an aim) should read the same
--- answer rather than taking its own reading of the same convar.
+-- answer rather than taking its own reading of the same button.
 function Omerta.HUD.Aiming() return aiming end
+
+-- The three parts of that answer, for the diagnostic: the view half's verdict,
+-- and the input half's two facts. Exposed together because the useful question
+-- when the dot misbehaves is never "is it aiming" — it is WHICH SIGNAL SAID SO.
+function Omerta.HUD.AimSignals() return viewAiming, armed, secondary end
 
 -- What the resting picture currently measures against fov_desired, or nil
 -- before the first readable frame. For the diagnostic, and for anybody chasing
@@ -711,18 +767,26 @@ function Omerta.HUD.Aiming() return aiming end
 function Omerta.HUD.AimCalibration() return aimScale end
 
 --------------------------------------------------------------------------------
--- omerta_fov_watch: which reading actually moves
+-- omerta_fov_watch: which reading actually moves, and which signal fires
 --------------------------------------------------------------------------------
--- The crosshair has now been asked twice to get out of the way of a sight, and
--- the first attempt failed on a reasoned guess about which number a weapon
--- framework moves. This is what makes a third guess unnecessary: it prints the
--- readings side by side while somebody aims, and the one that MOVES is the one
--- a sight is visible in. It ships permanently for that reason — it is small,
--- and the alternative is guessing again.
+-- The crosshair has now been asked three times to get out of the way of a
+-- sight, and two reasoned guesses about which number a weapon framework moves
+-- have failed. This is what stops a fourth being necessary: it prints every
+-- reading side by side while somebody aims, and it now prints WHICH OF THE TWO
+-- SIGNALS IS FIRING as well — so the next report is one line rather than a
+-- description. It ships permanently for that reason: it is small, and the
+-- alternative is guessing again.
+--
+-- The signal column is the diagnostic that matters now. `key` alone with the
+-- ratio sitting at 1.000 is the confirmation that these weapons do not touch
+-- the field of view at all; `view` alone is a weapon that zooms without the
+-- right mouse button; `-` while somebody is visibly down the sights is the
+-- toggle-ADS gap the shared header names, and nothing else looks like that.
 --
 -- Ungated, like omerta_hud_selftest and omerta_inventory beside it. It reads
--- nothing but the caller's own camera, and the person best placed to run it
--- while aiming is whoever is reporting that aiming does nothing.
+-- nothing but the caller's own camera and their own hands, and the person best
+-- placed to run it while aiming is whoever is reporting that aiming does
+-- nothing.
 local WATCH_SAMPLE = 0.1 -- seconds. 10Hz is legible in a console; 60 is not.
 
 -- Every NUMERIC field of the view setup, sorted, on one line. Printed whole
@@ -754,9 +818,10 @@ concommand.Add("omerta_fov_watch", function(_, _, args)
     local stopAt = SysTime() + seconds
     local nextAt, first = 0, true
 
-    Omerta.Log.Info("hud", "watching the camera for %.0fs — AIM NOW. The " ..
-        "reading that MOVES is the one a sight is visible in; the crosshair " ..
-        "rule reads 'view'.", seconds)
+    Omerta.Log.Info("hud", "watching the camera and the trigger hand for " ..
+        "%.0fs — AIM NOW. The reading that MOVES is the one a sight is visible " ..
+        "in (the rule reads 'view'), and 'signal' says which half is currently " ..
+        "hiding the dot.", seconds)
 
     hook.Add("Think", "omerta.hud.fov_watch", function()
         local now = SysTime()
@@ -778,13 +843,31 @@ concommand.Add("omerta_fov_watch", function(_, _, args)
             ratio = string.format("%.3f", view / (desired * scale))
         end
 
+        -- The two signals, and which of them is speaking. Read from the rule's
+        -- own state rather than sampled again here, so this line cannot agree
+        -- with itself and disagree with the screen.
+        local narrowed, hasWeapon, rmb = Omerta.HUD.AimSignals()
+        local keySignal = hasWeapon and rmb
+        local signal = "-"
+        if narrowed and keySignal then
+            signal = "view+key"
+        elseif narrowed then
+            signal = "view"
+        elseif keySignal then
+            signal = "key"
+        end
+
         Omerta.Log.Info("hud",
-            "  GetFOV %-8s fov_desired %-8s view %-8s scale %-8s ratio %-7s %s",
+            "  GetFOV %-8s fov_desired %-8s view %-8s scale %-8s ratio %-7s " ..
+            "hands %-8s rmb %-4s signal %-9s %s",
             playerFov and string.format("%.2f", playerFov) or "nil",
             desired and string.format("%.2f", desired) or "nil",
             view and string.format("%.2f", view) or "nil",
             scale and string.format("%.4f", scale) or "nil",
             ratio,
+            hasWeapon and "weapon" or "empty",
+            rmb and "down" or "up",
+            signal,
             Omerta.HUD.Aiming() and "AIMING" or "")
 
         -- The whole setup at both ends of the window: aim in between, and the
@@ -798,7 +881,9 @@ concommand.Add("omerta_fov_watch", function(_, _, args)
         if done then
             hook.Remove("Think", "omerta.hud.fov_watch")
             Omerta.Log.Info("hud", "done. A sight is anything at or under %.2f " ..
-                "of the resting picture, and it lets go past %.2f.",
+                "of the resting picture, and it lets go past %.2f. The other " ..
+                "signal needs no threshold: a weapon in the hands and the " ..
+                "right mouse button held.",
                 Omerta.HUD.AIM.ENTER, Omerta.HUD.AIM.LEAVE)
         end
     end)

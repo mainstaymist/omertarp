@@ -98,30 +98,65 @@ end
 --
 -- Nothing here asks ARC9, or TFA, or our own base, whether the player is
 -- aiming. D-044's rule is that we detect by what we intend to READ, never by a
--- name — and the reading is this: EVERY weapon system that puts a player into
--- ironsights narrows their field of view, because that is what ironsights are.
--- ARC9 does it, TFA does it, a scope nobody has written yet will do it, and our
--- own base will do it on the day W0 §6's deferred ironsights land. One reading
--- covers all of them and none of them can break it, because none of them is
--- being called.
+-- name. There are TWO readings now, and neither of them is a call into
+-- anybody's framework:
 --
--- WHICH READING, AND WHY THE FIRST ONE WAS WRONG. This is the second attempt.
+--   THE VIEW HAS NARROWED — the field of view the frame was actually drawn at,
+--     against a baseline measured off the same reading. This is the optical
+--     CONSEQUENCE of a sight, and it is correct for a scope, for a magnified
+--     optic of any kind, and for our own base on the day W0 §6's deferred
+--     ironsights land. Read off the renderer.
 --
--- The first compared `Player:GetFOV()` against `fov_desired`, and its own
--- header named the blind spot it turned out to have: "a base that narrows only
--- inside CalcView is invisible to this". That is exactly what was reported from
--- the field — the dot did not move on ANY weapon — and it is the signature of a
--- framework that leaves the player's own field of view alone and narrows the
--- picture as it hands the view to the renderer. `Player:GetFOV()` never changes,
--- so the ratio is 1.000 forever and nothing can ever trigger.
+--   THE PLAYER IS ASKING TO AIM — a weapon in the hands, and IN_ATTACK2 held.
+--     This is the player's own INPUT, read off their own player entity with
+--     `Player:KeyDown`: engine API, about them, answered by the engine. Right
+--     mouse is how essentially every weapon system in Garry's Mod is put into
+--     sights — ARC9 and TFA included — and nothing has to cooperate for a
+--     button to read as held.
 --
--- The reading now is `render.GetViewSetup().fov`: THE FIELD OF VIEW THE FRAME
--- WAS ACTUALLY DRAWN AT. It cannot have the same blind spot, and the reason is
--- structural rather than lucky — CalcView's return value IS what the renderer is
--- set up from, so a narrowing that lands there lands here by definition. So does
--- one from SetFOV, and one from a SWEP's TranslateFOV, because those reach the
--- renderer too. There is no third place for a field of view to come from: the
--- picture is drawn once, at one angle, and this is that number.
+-- EITHER IS SUFFICIENT AND NEITHER REPLACES THE OTHER. They are blind in
+-- opposite directions: the view reading cannot see a sight that does not zoom,
+-- and the input reading cannot see anything that narrows the picture without
+-- the right mouse button — a scope on a toggle, a spotting glass nobody has
+-- written yet, our own ironsights on whatever key they eventually take. An OR
+-- of two partial readings covers strictly more than either alone, and the only
+-- thing it costs is false positives, which are argued at ENTER below and amount
+-- to a 1.2px dot fading for as long as somebody holds a button.
+--
+-- THE HISTORY, ON THE RECORD, BECAUSE THIS IS THE THIRD ATTEMPT AND THE FIRST
+-- TWO WERE BOTH REASONED RATHER THAN CARELESS.
+--
+-- ATTEMPT 1 compared `Player:GetFOV()` against `fov_desired`, and its own header
+-- named the blind spot it turned out to have: "a base that narrows only inside
+-- CalcView is invisible to this". `GetFOV` is the number `SetFOV` writes, and a
+-- framework that narrows inside CalcView never writes it — so the ratio was
+-- 1.000 forever and nothing could ever trigger. The field reported the dot not
+-- moving on ANY weapon, which is that hole exactly.
+--
+-- ATTEMPT 2 was `render.GetViewSetup().fov` — THE FIELD OF VIEW THE FRAME WAS
+-- ACTUALLY DRAWN AT — against a self-measured baseline. That reading is sound
+-- and it is still here, unchanged, as the view half above: CalcView's return
+-- value IS what the renderer is set up from, so a narrowing that lands there
+-- lands here by definition, and so does one from SetFOV or from a SWEP's
+-- TranslateFOV. There is no third place a field of view can come from; the
+-- picture is drawn once, at one angle, and that is the number.
+--
+-- ATTEMPT 2 FAILED IN THE FIELD TOO, on every weapon. Because the reading was
+-- structurally sound, that failure is EVIDENCE rather than a bug, and the
+-- conclusion it forces is the uncomfortable one: THE FIELD OF VIEW IS PROBABLY
+-- NOT MOVING AT ALL. Many ARC9 configurations enter sights by moving the
+-- VIEWMODEL — the gun travels up to the eye and the camera is left exactly
+-- where it was — because a pistol at arm's length does not need magnification
+-- to be aimed with. A viewmodel reposition is invisible to every field-of-view
+-- reading there is, however good, and a fourth refinement of the same number
+-- would have been the third thing in a row that does not work.
+--
+-- So the new signal is of a different KIND, which is the whole reason it is not
+-- a fourth guess about the same mechanism. The view reading is kept in full
+-- rather than replaced, because nothing about it was ever shown to be wrong —
+-- only that there may be nothing on these weapons for it to see.
+--
+-- THE VIEW HALF, IN DETAIL.
 --
 -- THE OBJECTION THE FIRST PASS RAISED, AND THE ANSWER. It rejected this reading
 -- for being aspect-corrected — on a wide screen it hands back a horizontal
@@ -186,6 +221,48 @@ end
 -- the measurement. The dot is D-041's one permitted permanent element and the
 -- expensive failure is losing it; a broken reading must leave the interface as
 -- it was, never blank part of it.
+--
+-- THE INPUT HALF, IN DETAIL.
+--
+-- TWO FACTS, AND BOTH ARE REQUIRED. The right mouse button is held, AND there is
+-- a weapon in the hands. The second is not decoration:
+--
+--   EMPTY HANDS ARE NOT A GUN. `weapon_omerta_hands` is the holster — the
+--     engine has no concept of holding nothing, so a character with nothing
+--     drawn is holding that, and it is a VALID weapon entity. "Is a weapon
+--     valid" would therefore be true all day and every right-click in the game,
+--     including the ones that are not about a gun at all, would take the
+--     crosshair away. The holster is excluded by class, from the constant the
+--     weapons module already publishes, so there is one spelling of it.
+--
+--   AND IT IS THE FACT THE PLAYER CAN SEE. A man with his hands empty is not
+--     aiming at anything, whatever he does with the mouse, and the dot is the
+--     only thing he has to point with.
+--
+-- OUR OWN BASE HAS NO SECONDARY ATTACK. `SWEP:SecondaryAttack()` is deliberately
+-- empty (W0 §6 defers ironsights), so on the FALLBACK weapon — the one a server
+-- without the pack gets — right mouse hides the crosshair and no sight arrives.
+-- THAT IS ACCEPTED, and it is accepted on its merits rather than tolerated:
+-- a player holding right mouse is ASKING to aim, and the interface answering
+-- that request is right even when the gun does not. The alternative would be to
+-- ask the weapon whether it has a secondary, which is a call into somebody's
+-- SWEP on the external half of D-044's pair and is exactly the thing that is
+-- not allowed. The cost of being wrong is a dot fading while a button is held
+-- and returning the moment it is let go, which is a smaller thing than the bug
+-- this is here to fix.
+--
+-- TOGGLE-ADS IS A KNOWN GAP, STATED PLAINLY RATHER THAN PAPERED OVER. If a
+-- player has ARC9 configured to TOGGLE sights rather than hold them, the button
+-- is down for a few frames and up again while the gun stays up — so the input
+-- signal fires for those frames and lets go, and the crosshair comes back
+-- underneath a raised sight. The view half covers that case ONLY IF the weapon
+-- also zooms; on a toggle-configured weapon that aims by moving the viewmodel,
+-- NEITHER signal covers it and the dot stays. Nothing here can close that
+-- without either asking the weapon (forbidden) or inventing a latch of our own
+-- that would guess when the toggle ended and get it wrong in the direction that
+-- hides D-041's one permanent element indefinitely. Hold-to-aim is the default
+-- everywhere, so this is the minority of a minority; if it is ever reported,
+-- the honest fix is a player-facing setting, not a cleverer guess.
 
 Omerta.HUD.AIM = {
     -- Narrowed to 95% of the field of view this player chose: aiming.
@@ -268,7 +345,12 @@ end
 --   resting — TRUE when the player provably cannot be looking down a sight, in
 --             which case this frame's reading IS the resting picture and is
 --             taken as the new calibration.
---   aiming  — the previous answer, for the hysteresis.
+--   aiming  — the previous answer THIS HALF gave, for the hysteresis. The VIEW
+--             half's own, not the composed one: the band exists to stop a
+--             field-of-view reading chattering at its boundary, and feeding it
+--             an answer that a held button had already forced true would let a
+--             released button leave the picture latched inside the band. The
+--             caller keeps the two apart for that reason.
 --
 -- Returns: aiming, scale. The caller owns both, exactly as it owns StepAlpha's
 -- alpha and StepReveal's position, so this stays pure and the suite can drive a
@@ -294,6 +376,38 @@ function Omerta.HUD.StepAiming(view, desired, scale, resting, aiming)
     end
 
     return Omerta.HUD.IsAiming(view, desired * scale, aiming), scale
+end
+
+-- The two signals, one answer. EITHER IS SUFFICIENT.
+--
+--   narrowed  — the view half's verdict for this frame (StepAiming's return).
+--   armed     — a weapon is in the hands, and it is not the empty-handed
+--               holster. Gathered in cl_hud.lua, where the engine is.
+--   secondary — IN_ATTACK2 is held.
+--   resting   — TRUE when the player provably cannot be looking down a sight: a
+--               window has the cursor, they are dead, they are on the floor. It
+--               VETOES both signals rather than being one of them, because it
+--               is not evidence about a sight — it is the absence of anywhere
+--               for one to be. StepAiming is told the same fact for its own
+--               reason (that frame's picture is the resting picture), and the
+--               input half needs it stated separately because nothing else
+--               gates a button: a right-click aimed at a window's close box is
+--               not a man raising a gun.
+--
+-- A facts table rather than four positional booleans, and DEFAULT DENY on every
+-- one of them — the same discipline InWorldFrom follows below. A fact that is
+-- missing, or is a truthy something that is not `true`, reads as absent: a
+-- signal this rule cannot understand must not be able to hide D-041's one
+-- permanent element.
+--
+-- Pure, so the suite can pin the composition itself — including the case that
+-- has to hold no matter what else changes, which is that empty hands and a held
+-- right mouse button are NOT aiming.
+function Omerta.HUD.AimingFrom(facts)
+    if type(facts) ~= "table" then return false end
+    if facts.resting == true then return false end
+    if facts.narrowed == true then return true end
+    return facts.armed == true and facts.secondary == true
 end
 
 --------------------------------------------------------------------------------

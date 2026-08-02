@@ -766,6 +766,32 @@ check("both halves of the pair answer to the same weapon", function()
     assert(Omerta.Weapons.ForClass(nil) == nil)
 end)
 
+check("a class answers with what it eats, whichever half of the pair it is", function()
+    loadModules()
+    -- The ammunition readout puts the caliber beside the count, and it may only
+    -- ever ask by CLASS: `wep:Def()` is a method on our own base and a third
+    -- party's SWEP does not have one. So both halves have to answer, and they
+    -- have to answer the same thing.
+    assert(Omerta.Weapons.CaliberName("weapon_omerta_thompson") == ".45 Rounds")
+    assert(Omerta.Weapons.CaliberName("arc9_doi_tommy") == ".45 Rounds",
+        "the external half could not say what it eats")
+    assert(Omerta.Weapons.CaliberName("weapon_omerta_revolver") == ".38 Rounds")
+
+    -- It is the AMMUNITION ITEM'S OWN NAME, not a string invented beside it:
+    -- the whole use of a caliber on the readout is recognising the same words
+    -- on a row in a dead man's coat.
+    local revolver = Omerta.Weapons.Get("weapon.revolver")
+    assert(Omerta.Weapons.CaliberName("weapon_omerta_revolver")
+        == Omerta.Items.Get(revolver.ammo).name,
+        "the readout and the inventory would print two different names for one round")
+
+    -- And nothing to say is nil rather than a guess, because the readout draws
+    -- the line only when there is one.
+    assert(Omerta.Weapons.CaliberName("weapon_physgun") == nil)
+    assert(Omerta.Weapons.CaliberName(nil) == nil)
+    assert(Omerta.Weapons.CaliberName(42) == nil)
+end)
+
 expectError("an external must be somebody else's SWEP, not one of ours",
     "weapon_omerta_* is ours", function()
     loadModules()

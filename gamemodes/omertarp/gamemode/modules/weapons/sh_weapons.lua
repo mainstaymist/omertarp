@@ -162,6 +162,30 @@ end
 -- of them should have to know which one won.
 function Omerta.Weapons.ForClass(class) return byClass[class or ""] end
 
+-- What this class EATS, by its display name (".38 Rounds"), or nil.
+--
+-- For the ammunition readout, and written here rather than there for two
+-- reasons. It goes through ForClass, so it answers for BOTH halves of D-044's
+-- pair — the reading a HUD must use, because `wep:Def()` is a method on our own
+-- base and a third party's SWEP does not have it. And it is a lookup through
+-- two registries, which is exactly the kind of thing that is worth pinning
+-- headlessly rather than discovering on a screen.
+--
+-- The name is the AMMUNITION ITEM'S OWN, not a string derived from it. It is
+-- what the inventory row says, and a player who reads ".38 Rounds" off a dead
+-- man's coat and ".38 Rounds" off their gun has been told they match — which is
+-- the entire use of putting a caliber on the readout. A cropped or reformatted
+-- version would be a second spelling of one fact.
+function Omerta.Weapons.CaliberName(class)
+    local def = Omerta.Weapons.ForClass(class)
+    if type(def) ~= "table" then return nil end
+
+    local round = Omerta.Weapons.GetAmmo(def.ammo)
+    if type(round) ~= "table" then return nil end
+    if type(round.name) ~= "string" or round.name == "" then return nil end
+    return round.name
+end
+
 -- Chooses a class per weapon. `present` is injectable for the same reason
 -- Omerta.Util.ResolveModel's validator is: the decision is then exercisable
 -- headlessly, with an addon conjured and taken away again, on a machine that
