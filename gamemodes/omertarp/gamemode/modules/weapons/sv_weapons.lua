@@ -677,6 +677,59 @@ function Internal.RefreshHolsters(ply)
 end
 
 --------------------------------------------------------------------------------
+-- Reading somebody else's model
+--------------------------------------------------------------------------------
+
+-- Every sequence in a model, by name, with how long it runs.
+--
+-- Spawned, read and removed inside one call. A `prop_dynamic` is used rather
+-- than a ClientsideModel because this has to work from a dedicated server's
+-- console, where there is no renderer at all — and the sequence table is
+-- model data, not a rendering of it.
+--
+-- Names, not indices. An index is a position in a table that shifts the next
+-- time the artist adds an animation; a name that stops existing can be
+-- reported. Everything the port builds will be keyed by name for that reason,
+-- so the dump prints what the port will consume.
+function Internal.DumpSequences(model)
+    if not Omerta.InEngine then return end
+
+    if not util.IsValidModel(model) then
+        Omerta.Log.Info("weapons", "  model is not mounted on this server: %s", model)
+        return
+    end
+
+    local probe = ents.Create("prop_dynamic")
+    if not IsValid(probe) then return end
+    probe:SetModel(model)
+    probe:Spawn()
+
+    local count = probe:GetSequenceCount() or 0
+    if count <= 0 then
+        -- The interesting negative result, and worth saying in full: a model
+        -- with no sequences of its own is one whose motion comes from
+        -- somewhere else, which is the case the port cannot absorb cheaply.
+        Omerta.Log.Info("weapons", "  NO SEQUENCES — this model is animated " ..
+            "from outside itself (procedural bones), not from baked animation")
+        probe:Remove()
+        return
+    end
+
+    Omerta.Log.Info("weapons", "  %d sequence(s):", count)
+    for index = 0, count - 1 do
+        local name = probe:GetSequenceName(index) or "?"
+        -- Guarded: a sequence with no duration is legal and returns nil on
+        -- some models, and a nil into a format string kills the whole dump on
+        -- the one weapon somebody was trying to inspect.
+        local ok, duration = pcall(probe.SequenceDuration, probe, index)
+        Omerta.Log.Info("weapons", "    [%3d] %-32s %.3fs",
+            index, name, (ok and tonumber(duration)) or 0)
+    end
+
+    probe:Remove()
+end
+
+--------------------------------------------------------------------------------
 -- The hooks that keep hands and rows agreeing
 --------------------------------------------------------------------------------
 
@@ -793,6 +846,65 @@ function MODULE:OnEnable()
     -- The class column answers the question an operator who has just installed
     -- an addon actually has, which is "did it take" — so it prints what each
     -- weapon is RUNNING, and says when that is not what the arsenal asked for.
+    -- What is actually inside somebody else's viewmodel.
+    --
+    -- The port plan (docs/review/06_weapon_art_port.md) turns on one question
+    -- that cannot be answered by reading their Lua: are the animations BAKED
+    -- SEQUENCES we can simply play, or does the addon drive bones procedurally
+    -- every frame? A weapon whose feel is baked is a data-entry job; one whose
+    -- feel is procedural means reimplementing a chunk of somebody else's
+    -- framework, and those are different decisions.
+    --
+    -- A model spawned server-side answers it directly. `SEQUENCES` prints every
+    -- animation the model actually contains with its name, duration and frame
+    -- rate — which is also exactly what the reload timing and the equip
+    -- ceremony have to line up against, so the same output serves both the
+    -- decision and the work that follows it.
+    --
+    -- Takes a WEAPON CLASS, and reads the viewmodel off the registered SWEP
+    -- table rather than being handed a path: the point is to inspect what a
+    -- class really uses, and a path typed by hand is a path that can be wrong
+    -- in a way nobody notices.
+    concommand.Add("omerta_weapon_dump", function(caller, _, args)
+        if IsValid(caller) and not caller:IsSuperAdmin() then return end
+
+        local class = args[1]
+        if not class or class == "" then
+            Omerta.Log.Info("weapons", "usage: omerta_weapon_dump <weapon class>")
+            return
+        end
+
+        local swep = weapons.Get(class)
+        if not swep then
+            Omerta.Log.Info("weapons", "no weapon class '%s' is registered — " ..
+                "the addon is not mounted on the SERVER (resource.AddWorkshop " ..
+                "only feeds clients)", class)
+            return
+        end
+
+        -- Both, because they are frequently different models and the world one
+        -- is what a holstered gun on somebody's back will be.
+        for _, pair in ipairs({
+            { "viewmodel", swep.ViewModel },
+            { "worldmodel", swep.WorldModel },
+        }) do
+            local label, path = pair[1], pair[2]
+            if not path or path == "" then
+                Omerta.Log.Info("weapons", "%s: %s declares none", class, label)
+            else
+                Omerta.Log.Info("weapons", "%s %s: %s", class, label, path)
+                Internal.DumpSequences(path)
+            end
+        end
+
+        -- Read back and reported rather than assumed: ARC9 viewmodels usually
+        -- carry their own hands, which decides whether our base should be
+        -- drawing c_arms over the top of them.
+        Omerta.Log.Info("weapons", "%s: UseHands=%s ViewModelFOV=%s HoldType=%s",
+            class, tostring(swep.UseHands), tostring(swep.ViewModelFOV),
+            tostring(swep.HoldType))
+    end)
+
     concommand.Add("omerta_weapons_list", function(caller)
         if IsValid(caller) and not caller:IsSuperAdmin() then return end
         for _, def in ipairs(Omerta.Weapons.All()) do

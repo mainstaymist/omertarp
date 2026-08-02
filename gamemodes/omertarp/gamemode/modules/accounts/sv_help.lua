@@ -82,7 +82,8 @@ local COMMANDS = {
     ["omerta_events"] = { usage = "[count]", what = "Recent durable events (death.confirmed and the rest).", area = "Injury" },
 
     -- Weapons
-    ["omerta_weapons_list"] = { usage = "", what = "The arsenal: ids, classes, damage, calibers.", area = "Weapons" },
+    ["omerta_weapons_list"] = { usage = "", what = "The arsenal: ids, classes, damage, calibers. '(wanted X)' means that weapon fell back to our base because X is not mounted on the SERVER.", area = "Weapons" },
+    ["omerta_weapon_dump"] = { usage = "<weapon class>", what = "Every animation inside a weapon's view and world models, by name and duration. For porting somebody else's weapon onto our base — it answers whether the animations are baked or procedural.", area = "Weapons" },
 
     -- Identity
     ["omerta_identity_who_knows"] = { usage = "<characterId>", what = "Who knows this character, and as what.", area = "Identity" },
