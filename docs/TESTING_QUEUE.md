@@ -3,7 +3,7 @@
 **What this is:** everything built but not yet confirmed working in-engine, in the order worth doing it. Kept current as work lands — when you report results, the statuses here get updated and anything that fails becomes a fix before new work starts.
 
 **Last updated:** 2026-08-02, after M14 landed.
-**Headless suite:** 619 checks passing. `luac -p` clean across the tree. 21 modules resolving.
+**Headless suite:** 620 checks passing. `luac -p` clean across the tree. 21 modules resolving.
 
 Status key: **☐ untested** · **☑ passed** · **☒ failed** (details inline) · **◐ partly**
 
@@ -11,10 +11,14 @@ Status key: **☐ untested** · **☑ passed** · **☒ failed** (details inline
 
 ## M14 — crime, robbery and the clerk (NEW, untested in engine)
 
-Everything here is fresh and none of it has been run in a server. **Start with
-`omerta_crime_selftest`** — it builds an unowned store with a clerk and a full
-register, drives the loop, and takes it all back out again. It needs you to be
-in-game with a character: a robbery needs a robber.
+**First run, 2026-08-02: 4 passed, 2 failed, 7 skipped.** Four bugs came out of
+it and all four are fixed — the repository was captured before it existed (which
+killed every write and the demand with it), the self-test raced the till's
+asynchronous load, the clerk never played a sequence so he T-posed, and **E was
+dead on the counter as well**, which turned out to be a milestone-old bug of
+M13's rather than anything M14 did. Re-run `omerta_crime_selftest` from the top.
+
+It needs you to be in-game with a character: a robbery needs a robber.
 
 | | Check | How |
 |---|---|---|

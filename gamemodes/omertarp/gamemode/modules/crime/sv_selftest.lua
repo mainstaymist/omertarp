@@ -76,6 +76,22 @@ local function buildSteps()
             end)
     end }
 
+    -- Containers are loaded ASYNCHRONOUSLY by EnsureContainers, so a business
+    -- that exists is not yet a business you can put money in. The first version
+    -- of this suite tried immediately and failed with "inventory not loaded",
+    -- which is the database being honest rather than anything being wrong.
+    steps[#steps + 1] = { name = "the register is ready to hold money", required = true, fn = function(pass, fail)
+        local till = Omerta.Business.Till(business.id)
+        local waited = 0
+        local function poll()
+            if Omerta.Inventory.IsLoaded(till) then pass() return end
+            waited = waited + 0.25
+            if waited > 8 then fail("the till never loaded") return end
+            timer.Simple(0.25, poll)
+        end
+        poll()
+    end }
+
     -- D-048, in the world rather than in the pure function: the float only
     -- reaches a register nobody owns.
     steps[#steps + 1] = { name = "the float fills an unowned register", fn = function(pass, fail)

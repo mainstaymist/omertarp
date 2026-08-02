@@ -430,10 +430,33 @@ check("no file captures a table that has not been created yet", function()
         -- Pass two: every file-scope capture, checked against that.
         for index, file in ipairs(files) do
             local lineNumber = 0
+            -- ALIASES ARE RESOLVED BEFORE THE CHECK, and that omission is what
+            -- let a real bug through. Nearly every file opens with
+            -- `local Internal = Omerta.X.Internal`, so the capture that
+            -- actually breaks is `local Repo = Internal.Repo` — one dot, which
+            -- the two-dot test below reads as a plain global and waves past.
+            -- Expanding the alias turns it back into the three-dot path the
+            -- repository file creates, and the ordering rule bites again.
+            local aliases = {}
+            for line in io.lines(file.path) do
+                local code = line:gsub("%-%-.*$", "")
+                local name, path = code:match("^local%s+([%w_]+)%s*=%s*([%w_%.]+)%s*$")
+                if name and path and path:find("%.") then
+                    aliases[name] = aliases[path:match("^([%w_]+)")] and
+                        (aliases[path:match("^([%w_]+)")] .. path:gsub("^[%w_]+", "")) or path
+                end
+            end
+
             for line in io.lines(file.path) do
                 lineNumber = lineNumber + 1
                 local code = line:gsub("%-%-.*$", "")
                 local path = code:match("^local%s+[%w_]+%s*=%s*([%w_%.]+)%s*$")
+                if path then
+                    local head, rest = path:match("^([%w_]+)(%..*)$")
+                    if head and aliases[head] and aliases[head] ~= path then
+                        path = aliases[head] .. rest
+                    end
+                end
                 -- Needs at least two dots to be a module sub-table rather than
                 -- a plain global, and must not be a call.
                 if path and select(2, path:gsub("%.", "")) >= 2 then

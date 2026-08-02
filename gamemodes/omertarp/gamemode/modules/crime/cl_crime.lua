@@ -20,6 +20,24 @@
 -- him as Unknown to everybody, permanently, through the path M19's bodies
 -- already use. D-033 is not stretched here: objects name themselves and people
 -- never do, and he is a person.
-Omerta.HUD.RegisterInteractablePredicate("crime.clerk", function(ent)
+local function isClerk(ent)
     return ent:GetClass() == "omerta_clerk"
+end
+
+Omerta.HUD.RegisterInteractablePredicate("crime.clerk", isClerk)
+
+-- ONE LINE UNDER THE DOT, AND IT NAMES THE JOB RATHER THAN THE MAN.
+--
+-- Without this he lights the dot up and says nothing, which reads as a bug
+-- rather than as discretion — the counter beside him describes itself and he
+-- does not. What he is NOT given is a name: he has no character row, so M5
+-- resolves him as Unknown to everybody permanently, and D-033 is not stretched
+-- by this because "the man behind the counter" is a role, not an identity.
+--
+-- Deliberately not a state readout. It says the same thing whether he is
+-- complying, stalling or about to put his hand under the counter, because
+-- reading his mind off the HUD is the one thing this milestone refuses.
+Omerta.HUD.RegisterTargetHint("crime.clerk", function(target)
+    if not isClerk(target) then return nil end
+    return "The man behind the counter"
 end)

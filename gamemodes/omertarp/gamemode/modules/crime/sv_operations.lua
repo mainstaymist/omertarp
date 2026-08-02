@@ -9,7 +9,6 @@
 Omerta.Crime = Omerta.Crime or {}
 Omerta.Crime.Internal = Omerta.Crime.Internal or {}
 local Internal = Omerta.Crime.Internal
-local Repo = Internal.Repo
 local S = Omerta.Crime.STATE
 
 local live = {}        -- operation id -> operation (cache over the row)
@@ -169,7 +168,7 @@ function Omerta.Crime.Begin(ply, typeKey, business, clerk, cb)
             data = Omerta.DB.NULL,
         }
 
-        Repo.Insert(row, function(id, err)
+        Internal.Repo.Insert(row, function(id, err)
             if not id then cb(nil, err or "it did not happen") return end
 
             row.id = id
@@ -213,7 +212,7 @@ function Omerta.Crime.Join(operation, characterId)
     if not (operation and characterId) then return end
     if operation.participants[characterId] then return end
     operation.participants[characterId] = "unknown"
-    Repo.AddParticipant({
+    Internal.Repo.AddParticipant({
         operation_id = operation.id,
         character_id = characterId,
         joined_at = os.time(),
@@ -228,7 +227,7 @@ function Omerta.Crime.SetOutcome(operation, characterId, outcome)
     if not (operation and characterId) then return end
     if not operation.participants[characterId] then return end
     operation.participants[characterId] = outcome
-    Repo.SetOutcome(operation.id, characterId, outcome)
+    Internal.Repo.SetOutcome(operation.id, characterId, outcome)
 end
 
 --------------------------------------------------------------------------------
@@ -256,7 +255,7 @@ function Omerta.Crime.Resolve(operation, state, resolution, cb)
     operation.state_at = now
     if terminal then operation.ended_at = now end
 
-    Repo.SetState(operation.id, state, resolution, now, terminal and now or nil)
+    Internal.Repo.SetState(operation.id, state, resolution, now, terminal and now or nil)
     Omerta.Log.Audit("crime.resolved", {
         subject = operation.id,
         data = {
@@ -377,9 +376,9 @@ end
 -- M19's precedent cuts the same way: a restart must not heal anybody, and it
 -- must not launder anything either.
 function Internal.ResolveOrphans()
-    Repo.Live(function(rows)
+    Internal.Repo.Live(function(rows)
         for _, row in ipairs(rows) do
-            Repo.SetState(row.id, S.FAILED, Omerta.Crime.RESOLUTION.ABANDONED,
+            Internal.Repo.SetState(row.id, S.FAILED, Omerta.Crime.RESOLUTION.ABANDONED,
                 os.time(), os.time())
             Omerta.Log.Audit("crime.abandoned", {
                 subject = row.id,

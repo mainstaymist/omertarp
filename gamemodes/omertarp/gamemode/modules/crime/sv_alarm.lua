@@ -15,7 +15,6 @@
 Omerta.Crime = Omerta.Crime or {}
 Omerta.Crime.Internal = Omerta.Crime.Internal or {}
 local Internal = Omerta.Crime.Internal
-local Repo = Internal.Repo
 local S = Omerta.Crime.STATE
 
 Omerta.Crime.ALARM_SOURCE = {
@@ -59,7 +58,7 @@ function Omerta.Crime.RaiseAlarm(spec, cb)
     if not spec.source then cb(nil, "an alarm needs a source") return end
 
     local pos = spec.pos
-    Repo.InsertAlarm({
+    Internal.Repo.InsertAlarm({
         season_id = season.id,
         operation_id = spec.operation_id or Omerta.DB.NULL,
         source = spec.source,
@@ -91,11 +90,11 @@ function Omerta.Crime.RaiseAlarm(spec, cb)
 end
 
 function Omerta.Crime.PendingAlarms(cb)
-    Repo.PendingAlarms(50, cb)
+    Internal.Repo.PendingAlarms(50, cb)
 end
 
 function Omerta.Crime.MarkResponded(alarmId, cb)
-    Repo.MarkResponded(alarmId, os.time(), cb)
+    Internal.Repo.MarkResponded(alarmId, os.time(), cb)
 end
 
 --------------------------------------------------------------------------------

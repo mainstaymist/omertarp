@@ -54,6 +54,49 @@ ENT.POSE = {
 
 function ENT:SetupDataTables()
     self:NetworkVar("Int", 0, "Pose")
+
+    -- The pose drives the animation on BOTH realms, through the one value that
+    -- is networked. Without this the server would set a number, the clients
+    -- would receive it, and nobody would ever play a sequence — which is
+    -- exactly the T-pose this replaced.
+    self:NetworkVarNotify("Pose", function(ent, _, _, new)
+        ent:ApplyPose(new)
+    end)
+end
+
+-- What each pose looks like, best first.
+--
+-- A LIST PER POSE, for the reason the model list above already gives: these are
+-- citizen animation names and a wrong guess is an invisible failure — the
+-- sequence lookup returns -1, nothing plays, and the man stands in his bind
+-- pose looking like a scarecrow. Falling through to `idle_all_01` is a worse
+-- animation and a legible one.
+--
+-- `cower` deliberately ends the list of every panic pose: whatever else is
+-- missing from a given citizen model, something crouched and frightened is
+-- always better than a T-pose.
+local SEQUENCES = {
+    [0] = { "idle_all_01", "idle_subtle", "idle01" },                    -- IDLE
+    [1] = { "hostage_idle01", "idle_all_scared", "cower", "idle_all_01" }, -- HANDS_UP
+    [2] = { "plunger_use", "idle_all_01" },                              -- OPENING
+    [3] = { "hostage_idle01", "idle_all_scared", "idle_all_01" },        -- REACHING
+    [4] = { "run_all_panicked", "run_all", "walk_all", "idle_all_01" },  -- FLEEING
+    [5] = { "cower", "crouch_idle_all", "idle_all_scared", "idle_all_01" }, -- COWERING
+}
+
+-- Shared, because the client is the realm that actually renders him: the pose
+-- travels as one networked int and each realm resolves it against the model it
+-- has. Nothing about his MIND is sent — only what the room can see.
+function ENT:ApplyPose(pose)
+    local names = SEQUENCES[pose] or SEQUENCES[0]
+    for _, name in ipairs(names) do
+        local id = self:LookupSequence(name)
+        if id and id >= 0 then
+            self:ResetSequence(id)
+            self:SetPlaybackRate(1)
+            return
+        end
+    end
 end
 
 if SERVER then
@@ -63,10 +106,25 @@ if SERVER then
         -- deliberately not an NPC (D-049). A player-sized box is all a man
         -- standing still behind a counter needs to be shot at.
         self:PhysicsInitBox(Vector(-16, -16, 0), Vector(16, 16, 72))
-        self:SetMoveType(MOVETYPE_STEP)
-        self:SetSolid(SOLID_BBOX)
+        -- SOLID_VPHYSICS to match the box that was just created, and
+        -- MOVETYPE_NONE because nothing about him is engine-driven — the flee
+        -- is SetPos every tick, which is what "does not navigate" means. The
+        -- first version paired PhysicsInitBox with SOLID_BBOX and
+        -- MOVETYPE_STEP, which is three subsystems disagreeing about what
+        -- shape he is.
+        self:SetMoveType(MOVETYPE_NONE)
+        self:SetSolid(SOLID_VPHYSICS)
         self:SetUseType(SIMPLE_USE)
         self:SetPose(self.POSE.IDLE)
+
+        -- HE T-POSED BECAUSE NOTHING EVER PLAYED A SEQUENCE. A model with no
+        -- active sequence renders in its bind pose, and base_anim does not
+        -- advance frames on its own — both halves are needed, and either one
+        -- alone leaves him either frozen mid-stride or standing like a
+        -- scarecrow. This is the entity's whole animation system: pick a
+        -- sequence per pose, and let the engine walk it.
+        self:SetAutomaticFrameAdvance(true)
+        self:ApplyPose(self.POSE.IDLE)
 
         -- ENGINE HEALTH AND AN ENTITY DEATH (D-052). He is NOT a character and
         -- does not enter M19's state machine: allowing him to be DOWNED rather
@@ -138,6 +196,16 @@ if SERVER then
         return true
     end
 else
+    function ENT:Initialize()
+        -- The client half of the animation, and it is not optional: the server
+        -- advancing frames does not make anybody else's copy move. Whatever
+        -- pose arrived before this ran is applied once here, because
+        -- NetworkVarNotify only fires on CHANGE and the first value can land
+        -- before the entity exists on this end.
+        self:SetAutomaticFrameAdvance(true)
+        self:ApplyPose(self:GetPose())
+    end
+
     function ENT:Draw()
         self:DrawModel()
     end

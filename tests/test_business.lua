@@ -390,3 +390,28 @@ check("a customer is never told the takings", function()
             "the client must not be able to name a price")
     end
 end)
+
+--------------------------------------------------------------------------------
+suite("business.interaction")
+--------------------------------------------------------------------------------
+
+-- THE COUNTER LOST ITS E PRESS AND NOBODY NOTICED FOR A MILESTONE.
+--
+-- M13 built the counter on the engine's +use. M8 later registered
+-- `omerta_business` as an interactable class, and that makes the client swallow
+-- the E press and route it to interaction.default instead — so ENT:Use stopped
+-- being reached and pressing E on a counter did nothing at all. The two changes
+-- are individually correct and jointly broken, which is why this asserts the
+-- pairing rather than either half.
+check("the counter has a default interaction, not just an ENT:Use", function()
+    loadModules()
+    Omerta.Business.Internal.RegisterInteractions()
+
+    local def = nil
+    for _, entry in ipairs(Omerta.Interaction.GetOrdered()) do
+        if entry.id == "business.open" then def = entry end
+    end
+    assert(def, "the counter offers no interaction, so a swallowed E does nothing")
+    assert(def.default == true, "and it has to be the DEFAULT one, or E still dies")
+    assert(def.range <= Omerta.Interaction.MAX_RANGE, "out of reach of the dot")
+end)

@@ -297,6 +297,8 @@ function MODULE:OnEnable()
             Internal.Repo.InsertAudit(Internal.AuditRow(envelope, util.TableToJSON))
         end)
 
+        Internal.RegisterNoclip()
+
         hook.Add("PlayerInitialSpawn", "omerta.accounts.connect", Internal.OnPlayerConnected)
         hook.Add("PlayerDisconnected", "omerta.accounts.disconnect", Internal.OnPlayerDisconnected)
 

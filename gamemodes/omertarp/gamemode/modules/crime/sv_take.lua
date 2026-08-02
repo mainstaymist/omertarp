@@ -90,8 +90,13 @@ function Internal.RegisterInteractions()
     -- money is in the counter and a robbery where the second man works the till
     -- while the first holds the gun is the two-player scene this milestone
     -- exists to produce.
+    -- DEFAULT, and ordered ahead of business.open on purpose. Both are
+    -- registered on the counter and both are the E press; during a robbery the
+    -- obvious thing to do at a till is empty it, not ask the shop what it
+    -- sells. Their predicates are mutually exclusive with each other, so only
+    -- the ordering against business.open matters.
     Omerta.Interaction.Register("crime.take", {
-        label = "Empty the register", range = 96, order = 21,
+        label = "Empty the register", range = 96, order = 21, default = true,
         predicate = function(ply, target)
             local operation = Internal.OperationAtCounter(target)
             if not operation then return false end
@@ -107,7 +112,7 @@ function Internal.RegisterInteractions()
     -- "until M14 wants it swung" — and M14 does not want it swung, it wants it
     -- LEVERED, which is a tool in a timed action rather than a melee base.
     Omerta.Interaction.Register("crime.force", {
-        label = "Force the register", range = 96, order = 22,
+        label = "Force the register", range = 96, order = 22, default = true,
         predicate = function(ply, target)
             local operation = Internal.OperationAtCounter(target)
             if not operation then return false end

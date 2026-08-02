@@ -427,6 +427,40 @@ function Internal.SendState(ply, business)
     Internal.SendMenu(ply, business)
 end
 
+-- THE COUNTER NEEDED AN INTERACTION, NOT JUST AN ENT:Use.
+--
+-- M13 built the counter on the engine's +use and M8 later registered
+-- `omerta_business` as an interactable class. Those two are incompatible and
+-- nobody noticed until M14 put a second thing in the same room: registering the
+-- class makes the client SWALLOW the E press and route it to
+-- interaction.default, so ENT:Use stopped being reached at all and pressing E
+-- on a counter did nothing whatsoever.
+--
+-- The fix is the architecture the project already settled on — every player
+-- action is an M5 interaction — rather than un-registering the class, which
+-- would take the dot off the one object in the room you are meant to walk to.
+-- ENT:Use stays as the fallback for anyone who reaches it another way; both
+-- paths land on HandleOpen, so there is no second set of checks to drift.
+function Internal.RegisterInteractions()
+    Omerta.Interaction.Register("business.open", {
+        label = "Talk to the counter",
+        range = Omerta.Config.Get("business.range"),
+        order = 30,
+        default = true,
+        describe = function(ply, target)
+            local business = byCounter[target:EntIndex()]
+            if not business then return nil end
+            return business.is_open and "Buy something" or "Look at the counter"
+        end,
+        predicate = function(ply, target)
+            return byCounter[target:EntIndex()] ~= nil
+        end,
+        run = function(ply, target)
+            Internal.HandleOpen(ply, target:EntIndex())
+        end,
+    })
+end
+
 function Internal.HandleOpen(ply, entIndex)
     local business = byCounter[entIndex]
     if not business then return end
@@ -643,4 +677,5 @@ function MODULE:OnEnable()
     end)
 
     Internal.RegisterCommands()
+    Internal.RegisterInteractions()
 end
