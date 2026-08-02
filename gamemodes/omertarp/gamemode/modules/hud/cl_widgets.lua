@@ -314,16 +314,40 @@ end
 -- prose, the chosen one inverted in brass. A radio group that reads like a
 -- paragraph, not a form.
 
+-- THE ROW IS AS TALL AS THE TWO LINES IN IT. It used to be 52 design px with
+-- the title 8px down from the top and the prose 8px up from the bottom, which
+-- was two lines' worth of room back when the guide's px values were the sizes
+-- actually drawn. They stopped being: T.READABILITY multiplies every size by
+-- 1.3, so at 1x the two boxes met in the middle of the row and the life paths
+-- on the creation screen were drawn through each other by a few pixels —
+-- invisible on "Criminal", not invisible on anything with a descender in it.
+-- Measured, the row is a shade SHORTER than it was and cannot collide again.
 function Omerta.HUD.ProseList(parent, items, index, onChange)
     local scale = Omerta.HUD.Scale()
     local panel = vgui.Create("DPanel", parent)
     panel:SetPaintBackground(false)
     index = math.Clamp(index or 1, 1, math.max(1, #items))
 
+    surface.SetFont(Omerta.HUD.Font("label"))
+    local _, labelTall = surface.GetTextSize("H")
+    surface.SetFont(Omerta.HUD.Font("small"))
+    local _, detailTall = surface.GetTextSize("H")
+
+    -- A list of bare titles is a list of bare titles: nothing reserves room for
+    -- a second line that no item in this list has.
+    local detailed = false
+    for _, item in ipairs(items) do
+        if item.detail then detailed = true end
+    end
+
+    local padY = Omerta.HUD.Space(1)
+    local rowTall = padY * 2 + labelTall
+        + (detailed and (padY + detailTall) or 0)
+
     for i, item in ipairs(items) do
         local row = vgui.Create("DButton", panel)
         row:Dock(TOP)
-        row:SetTall(52 * scale)
+        row:SetTall(rowTall)
         row:SetText("")
         row.Paint = function(self, w, h)
             local chosen = i == index
@@ -340,11 +364,11 @@ function Omerta.HUD.ProseList(parent, items, index, onChange)
                 surface.DrawRect(0, 0, w, 1)
             end
             local pad = 14 * scale
-            draw.SimpleText(item.label, Omerta.HUD.Font("label"), pad, 8 * scale,
+            draw.SimpleText(item.label, Omerta.HUD.Font("label"), pad, padY,
                 Omerta.HUD.Colour(chosen and "ink" or "text"),
                 TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
             if item.detail then
-                draw.SimpleText(item.detail, Omerta.HUD.Font("small"), pad, h - 8 * scale,
+                draw.SimpleText(item.detail, Omerta.HUD.Font("small"), pad, h - padY,
                     chosen and Omerta.HUD.Colour("ink", 175) or Omerta.HUD.Colour("dim"),
                     TEXT_ALIGN_LEFT, TEXT_ALIGN_BOTTOM)
             end
@@ -356,7 +380,7 @@ function Omerta.HUD.ProseList(parent, items, index, onChange)
         end
     end
 
-    panel:SetTall(#items * 52 * scale)
+    panel:SetTall(#items * rowTall)
     function panel:GetSelected() return items[index], index end
     return panel
 end

@@ -450,15 +450,63 @@ local ROW_H, COLUMN_W = 52, 380
 -- Confirm went off the bottom of the screen at 1.5x. The root's own block sits
 -- lower because a list of four entries wants to be nearer the middle of the
 -- screen than the top of it.
+--
+-- EVERY GAP IN HERE IS MEASURED. The two lines used to be placed 42 design px
+-- apart, which was a fair guess at the height of the heading when the guide's
+-- px values were the sizes actually drawn. They stopped being the sizes
+-- actually drawn the moment T.READABILITY (1.3) and a scale base of 1.75
+-- landed on top of them: "WHO ARE YOU" is set in `headline`, whose box is
+-- around 105px tall at 1x, so 42 design px of separation put "NEW ARRIVAL"
+-- INSIDE it. That is the same fault, from the same cause, as the inventory's
+-- column captions sitting on the plate edge, and it takes the same fix —
+-- ask the font how tall it is rather than remembering a number.
+
+-- How tall the type in a role actually is, at this scale. "H" rather than the
+-- real string on purpose: surface.GetTextSize returns the FONT's height for the
+-- vertical, which does not vary with the letters, and measuring the glyphs
+-- would make the layout jump the day somebody edits the words.
+local function typeTall(role)
+    surface.SetFont(Omerta.HUD.Font(role))
+    local _, tall = surface.GetTextSize("H")
+    return tall
+end
+
 function Omerta.Menu.Client.Masthead()
     local scale = Omerta.HUD.Scale()
     local middle = ScrH() * 0.5
+    local margin = Omerta.HUD.Space(5)
 
     if M.screen == "creation" then
-        local top = middle - 258 * scale + Omerta.HUD.Space(4)
+        -- Both lines are drawn TEXT_ALIGN_BOTTOM, so a baseline here is the
+        -- BOTTOM of a box that grows upward. The eyebrow therefore sits one
+        -- step above the TOP of the heading's box, not a guessed distance above
+        -- the heading's own baseline.
+        local title = middle - 258 * scale
+        local eyebrow = title - typeTall("headline") - Omerta.HUD.Space(1)
+
+        -- AND IF THERE IS NO ROOM FOR IT, IT IS NOT DRAWN — the heading does
+        -- not move to make space for its own eyebrow.
+        --
+        -- Which way to resolve that was the whole decision here. Pushing the
+        -- pair down until the eyebrow clears the screen edge is the obvious
+        -- answer and it is the wrong one: `title` is where contentTop comes
+        -- from, so moving it shortens the column, and this form has already
+        -- gone off the bottom of a screen once and taken Confirm with it. A
+        -- masthead is not allowed to spend the commit button's pixels on a
+        -- decoration. So the heading holds the position the column is measured
+        -- from, and the eyebrow — which is an eyebrow — gives way.
+        --
+        -- On a display with the room (this pair is around 140px tall at 1x)
+        -- nothing is given up and both lines are shown, properly separated.
+        -- On one without, "NEW ARRIVAL" was already three-quarters off the top
+        -- edge AND printed through the heading, so what is lost here is a line
+        -- nobody could read.
+        if eyebrow - typeTall("mono") < margin then eyebrow = nil end
+
+        local top = title + Omerta.HUD.Space(4)
         return {
-            eyebrow = middle - 300 * scale,
-            title = middle - 258 * scale,
+            eyebrow = eyebrow,
+            title = title,
             -- Creation's column already begins immediately under its heading,
             -- so there is nothing between rest and ceiling for it to borrow.
             contentTop = top,
@@ -467,7 +515,10 @@ function Omerta.Menu.Client.Masthead()
     end
 
     local title = middle - ROW_H * scale * 2.6
-    local subtitle = title + 26 * scale
+    -- One step under the wordmark's box. The old 26 design px was very nearly
+    -- the tagline's own height, which left a gap of about four pixels at 1x and
+    -- would have closed entirely the next time a type size moved.
+    local subtitle = title + typeTall("label") + Omerta.HUD.Space(1)
     return {
         title = title,
         subtitle = subtitle,
@@ -524,9 +575,14 @@ function Omerta.Menu.Client.Build()
         -- the words and what sits under them cannot drift apart.
         local head = Omerta.Menu.Client.Masthead()
         if M.screen == "creation" then
-            draw.SimpleText("NEW ARRIVAL", Omerta.HUD.Font("mono"),
-                margin, head.eyebrow, Omerta.HUD.Colour("dim"),
-                TEXT_ALIGN_LEFT, TEXT_ALIGN_BOTTOM)
+            -- The eyebrow is optional: on a screen with no room above the
+            -- heading, Masthead returns none rather than moving the heading
+            -- (and with it the column) to make space for it.
+            if head.eyebrow then
+                draw.SimpleText("NEW ARRIVAL", Omerta.HUD.Font("mono"),
+                    margin, head.eyebrow, Omerta.HUD.Colour("dim"),
+                    TEXT_ALIGN_LEFT, TEXT_ALIGN_BOTTOM)
+            end
             draw.SimpleText("WHO ARE YOU", Omerta.HUD.Font("headline"),
                 margin, head.title, Omerta.HUD.Colour("text"),
                 TEXT_ALIGN_LEFT, TEXT_ALIGN_BOTTOM)

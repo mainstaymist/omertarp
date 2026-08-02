@@ -210,7 +210,7 @@ end
 -- would have had to remember the same list, and would have remembered a
 -- different subset of it.
 --
--- THE FACTS, and why each is a fact rather than three:
+-- THE FACTS — three of them, not a list of screens:
 --
 --   character  the client has a live character standing in the city. That one
 --              fact is the whole of the front end's absence: somebody at the

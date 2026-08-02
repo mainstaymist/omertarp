@@ -1221,10 +1221,40 @@ hook.Add("Think", "omerta.inventory.hold", function()
     -- typing — and the letter C is in a great many sentences.
     local chatting = (ply.IsTyping and ply:IsTyping())
         or (Omerta.Chat and Omerta.Chat.IsTyping and Omerta.Chat.IsTyping())
+    -- ...and not while the player is not, in fact, standing in a street with
+    -- pockets. The three conditions above are every full-screen state the
+    -- ENGINE owns and none of the ones this gamemode owns, which is how the
+    -- inventory came to open over the front end, over character creation and
+    -- over the pause rail. Omerta.HUD.InWorld is that list, asked once, in a
+    -- place the next screen to poll a key can ask it too.
+    local inWorld = Omerta.HUD.InWorld()
     local down = input.IsKeyDown(KEY_C) and not chatting
         and not gui.IsGameUIVisible() and not gui.IsConsoleVisible()
+        and inWorld
     local previous = wasDown
     wasDown = down
+
+    -- LEAVING THE WORLD TAKES ANY WINDOW WITH IT. Refusing to open one is only
+    -- half the answer: a player can be looking in their pockets when they are
+    -- shot, or press F1 with somebody's coat open, and a window that survived
+    -- either would sit over the death card — or over the pause rail — until
+    -- they thought to press C at it.
+    --
+    -- WHATEVER IS UP, not only the held-open kind, and that is why this is here
+    -- rather than a case in HoldAction. Pockets on a key would fall out of
+    -- `down` going false on their own; a loot plate would not, because it was
+    -- opened by a search and is dismissed by a press that will never come, and
+    -- neither would a window pinned by the console command, which is pinned
+    -- precisely so that no key can take it down. Closed rather than removed —
+    -- it sinks out under whatever is arriving, like everything else that leaves.
+    if not inWorld then
+        pinned = false
+        if IsValid(frame) and Omerta.HUD.Revealed(frame) then
+            if frame.OmertaLooting then Omerta.Inventory.Request(0) end
+            frame:OmertaClose()
+        end
+        return
+    end
 
     if pinned then
         if not IsValid(frame) then pinned = false end

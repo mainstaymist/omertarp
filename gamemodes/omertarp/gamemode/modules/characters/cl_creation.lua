@@ -83,6 +83,22 @@ function Omerta.Characters.BuildCreationForm(formParent, boothParent, opts)
     opts = opts or {}
     local scale = Omerta.HUD.Scale()
     local H = Omerta.HUD
+    -- EVERY LINE OF TYPE IN HERE IS AS TALL AS THE FONT SAYS IT IS. The field
+    -- captions were 22 and 26 design px and the status and warning lines 40 and
+    -- 24, all of them written against the guide's raw px values — which stopped
+    -- being the sizes actually drawn when T.READABILITY (1.3) landed on a scale
+    -- base of 1.75. None of them collided, because they are docked and docking
+    -- cannot overlap; what they did instead was spend about ninety pixels of a
+    -- column that has none to spare, and this form has already lost Confirm off
+    -- the bottom of a screen once.
+    local function typeTall(role)
+        surface.SetFont(H.Font(role))
+        local _, tall = surface.GetTextSize("H")
+        return tall
+    end
+    local captionTall, lineTall = typeTall("mono"), typeTall("label")
+    local noticeTall = typeTall("small")
+
     local fieldH, gap = 40 * scale, H.Space(4)
 
     -- The booth. This panel is also the portrait framing (D-011).
@@ -97,7 +113,7 @@ function Omerta.Characters.BuildCreationForm(formParent, boothParent, opts)
     -- GIVEN NAME · FAMILY NAME, side by side.
     local names = vgui.Create("DPanel", formParent)
     names:Dock(TOP)
-    names:SetTall(fieldH + 26 * scale)
+    names:SetTall(captionTall + 4 * scale + fieldH)
     names:DockMargin(0, gap, 0, 0)
     names:SetPaintBackground(false)
 
@@ -110,7 +126,7 @@ function Omerta.Characters.BuildCreationForm(formParent, boothParent, opts)
         end
         local label = H.FieldLabel(half, caption)
         label:Dock(TOP)
-        label:SetTall(22 * scale)
+        label:SetTall(captionTall)
         local entry = H.TextEntry(half)
         entry:Dock(TOP)
         entry:SetTall(fieldH)
@@ -139,7 +155,7 @@ function Omerta.Characters.BuildCreationForm(formParent, boothParent, opts)
     local function fieldLabel(text)
         local label = H.FieldLabel(formParent, text)
         label:Dock(TOP)
-        label:SetTall(26 * scale)
+        label:SetTall(captionTall)
         label:DockMargin(0, gap, 0, 4 * scale)
     end
 
@@ -168,7 +184,7 @@ function Omerta.Characters.BuildCreationForm(formParent, boothParent, opts)
     -- danger rule, acceptances are the name in brass.
     local status = vgui.Create("DPanel", formParent)
     status:Dock(TOP)
-    status:SetTall(40 * scale)
+    status:SetTall(lineTall + H.Space(1))
     status:DockMargin(0, gap, 0, 0)
     status.OmertaText, status.OmertaBad = "", false
     status.Paint = function(self, w, h)
@@ -207,7 +223,7 @@ function Omerta.Characters.BuildCreationForm(formParent, boothParent, opts)
 
     local warning = vgui.Create("DPanel", formParent)
     warning:Dock(BOTTOM)
-    warning:SetTall(24 * scale)
+    warning:SetTall(noticeTall)
     warning:DockMargin(0, gap, 0, 4 * scale)
     warning.Paint = function(_, w, h)
         draw.SimpleText("This character can die. There is no second copy.",
@@ -293,14 +309,80 @@ end
 -- The confirmation
 --------------------------------------------------------------------------------
 -- Not a courtesy "are you sure": the one thing a new player cannot know from
--- the form is that this is the ONLY copy of this person, and that the name
--- goes with them. Said in prose, in the same rail grammar as everything else,
--- with Back holding the same third of the row it holds on the form behind it.
+-- the form is that this is the ONLY copy of this person, and that the name goes
+-- with them.
+--
+-- IT READ AS A PARAGRAPH, and a paragraph is what a player skips. Everything in
+-- it was the same size, the same colour and the same voice — a mono caption
+-- floating over a wrapped DLabel with no rule between them and no subject — so
+-- the one word on the box that actually matters, the name, was buried in the
+-- middle of a sentence about permanence.
+--
+-- Rebuilt to the standard, and it is now four things rather than one:
+--
+--   * A MONO HEADER in the system voice, caps, under a hairline. The same
+--     register as the inventory's column captions and the context menu's
+--     header — "this is what this box is about", said by the game and not by
+--     the fiction.
+--   * THE NAME AS THE SUBJECT, in the `subject` role and in brass. Brass marks
+--     the one thing under the cursor everywhere else in the game; here the one
+--     thing is the person about to become permanent, and putting it on its own
+--     line in the accent is the whole redesign in one move.
+--   * TWO SHORT LINES OF PROSE, one fact each — the name cannot change, and
+--     nobody else can be made while this one lives. Cut down rather than
+--     re-flowed: the old text said the same thing three times with an em dash
+--     in it, and the game does not raise its voice (see the permadeath sentence
+--     on the form behind this).
+--   * THE IRREVERSIBLE FACT LAST, alone, under a second rule, in #8E2B22 TEXT.
+--     Danger is never a fill at this size and never a button; it is a line you
+--     have to read past on the way to the commit.
+--
+-- Every Y in the box is MEASURED off the fonts, not guessed, because five type
+-- roles stacked in one plate is exactly the arithmetic that put "NEW ARRIVAL"
+-- inside "WHO ARE YOU" on the screen behind it.
+
+-- What the box says. Up here because it is copy, and copy is reviewed.
+local CONFIRM_HEADER = "NO SECOND COPY"
+local CONFIRM_PROSE = {
+    "This name cannot be changed.",
+    "No one takes their place while they live.",
+}
+local CONFIRM_DANGER = "When they die, they are gone."
 
 function Omerta.Characters.ConfirmModal(fullName, onConfirm)
     local scale = Omerta.HUD.Scale()
     local H = Omerta.HUD
-    local width, height = 520 * scale, 260 * scale
+
+    local function typeTall(role)
+        surface.SetFont(H.Font(role))
+        local _, tall = surface.GetTextSize("H")
+        return tall
+    end
+    local headerTall, nameTall = typeTall("mono"), typeTall("subject")
+    local proseTall, dangerTall = typeTall("body"), typeTall("small")
+
+    local pad = H.Space(5)
+    local buttonTall = 44 * scale
+    -- Never wider than the screen it has to sit on, the same rule every other
+    -- scaled window in the game follows.
+    local width = math.min(560 * scale, ScrW() - pad * 2)
+
+    -- The box, worked out once, top down. Each line is placed under the
+    -- MEASURED bottom of the one above it, so nothing here can be made to
+    -- collide by a type size moving.
+    local headerY = pad
+    local headerRuleY = headerY + headerTall + H.Space(2)
+    local nameY = headerRuleY + 1 + H.Space(4)
+    local proseY = nameY + nameTall + H.Space(3)
+    -- One line of prose and the leading under it. Measured height plus a step,
+    -- not set solid: two sentences stacked at exactly the font height read as a
+    -- paragraph, and a paragraph is what this box is being taken apart to stop
+    -- being.
+    local proseLine = proseTall + H.Space(1)
+    local dangerRuleY = proseY + proseLine * (#CONFIRM_PROSE - 1) + proseTall
+        + H.Space(4)
+    local dangerY = dangerRuleY + 1 + H.Space(2)
+    local height = dangerY + dangerTall + H.Space(5) + buttonTall + pad
 
     local modal = vgui.Create("DFrame")
     modal:SetSize(width, height)
@@ -314,9 +396,26 @@ function Omerta.Characters.ConfirmModal(fullName, onConfirm)
         surface.DrawRect(0, 0, w, h)
         surface.SetDrawColor(H.Colour("rule"))
         surface.DrawOutlinedRect(0, 0, w, h, 1)
-        draw.SimpleText("NO SECOND COPY", H.Font("mono"),
-            H.Space(5), H.Space(5), H.Colour("dim"),
-            TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
+
+        draw.SimpleText(CONFIRM_HEADER, H.Font("mono"), pad, headerY,
+            H.Colour("dim"), TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
+        surface.SetDrawColor(H.Colour("ruleFaint"))
+        surface.DrawRect(pad, headerRuleY, w - pad * 2, 1)
+
+        -- The subject of the screen, and the only brass on it.
+        draw.SimpleText(fullName, H.Font("subject"), pad, nameY,
+            H.Colour("brass"), TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
+
+        for index, line in ipairs(CONFIRM_PROSE) do
+            draw.SimpleText(line, H.Font("body"), pad,
+                proseY + proseLine * (index - 1), H.Colour("text"),
+                TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
+        end
+
+        surface.SetDrawColor(H.Colour("rule"))
+        surface.DrawRect(pad, dangerRuleY, w - pad * 2, 1)
+        draw.SimpleText(CONFIRM_DANGER, H.Font("small"), pad, dangerY,
+            H.Colour("danger"), TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
     end
 
     -- The full rise. This is the one modal in the game that interrupts, and
@@ -324,21 +423,10 @@ function Omerta.Characters.ConfirmModal(fullName, onConfirm)
     -- glitching over the form the player was mid-way through.
     H.Reveal(modal)
 
-    local prose = vgui.Create("DLabel", modal)
-    prose:SetPos(H.Space(5), H.Space(7) + 18 * scale)
-    prose:SetSize(width - H.Space(5) * 2, height - H.Space(7) * 2 - 40 * scale)
-    prose:SetFont(H.Font("label"))
-    prose:SetTextColor(H.Colour("text"))
-    prose:SetWrap(true)
-    prose:SetContentAlignment(7)
-    prose:SetText(fullName .. " cannot be remade. When they die, they are " ..
-        "gone — everything they own, everyone who knows them, and this name, " ..
-        "which no one will use again.")
-
     local buttons = vgui.Create("DPanel", modal)
     buttons:Dock(BOTTOM)
-    buttons:DockMargin(H.Space(5), 0, H.Space(5), H.Space(5))
-    buttons:SetTall(44 * scale)
+    buttons:DockMargin(pad, 0, pad, pad)
+    buttons:SetTall(buttonTall)
     buttons:SetPaintBackground(false)
 
     local confirm = H.Button(buttons, "Confirm", "commit", function()
@@ -376,6 +464,17 @@ local function buildFrame()
     local H = Omerta.HUD
     local columnW = 470 * scale
 
+    -- The same masthead as the menu's creation screen, with the same fault it
+    -- had: two lines placed 46 design px apart, over a heading whose box is
+    -- around 105px tall at 1x, so the eyebrow was drawn INSIDE the heading.
+    -- Measured here too — this window is rarely seen (it is only reached in a
+    -- build with no menu module) which makes it exactly the kind of screen that
+    -- keeps a bug after the one everybody looks at is fixed.
+    surface.SetFont(H.Font("headline"))
+    local _, headlineTall = surface.GetTextSize("H")
+    surface.SetFont(H.Font("mono"))
+    local _, captionTall = surface.GetTextSize("H")
+
     frame = vgui.Create("DFrame")
     frame:SetSize(ScrW(), ScrH())
     frame:SetTitle("")
@@ -387,11 +486,20 @@ local function buildFrame()
         surface.DrawRect(0, 0, w, h)
         surface.SetDrawColor(H.Colour("plate", 0.94))
         surface.DrawRect(0, 0, columnW + H.Space(7) * 2, h)
-        draw.SimpleText("NEW ARRIVAL", H.Font("mono"),
-            H.Space(7), h * 0.2 - 58 * Omerta.HUD.Scale(), H.Colour("dim"),
-            TEXT_ALIGN_LEFT, TEXT_ALIGN_BOTTOM)
+        -- Both are drawn TEXT_ALIGN_BOTTOM, so these are the bottoms of boxes
+        -- that grow upward: the eyebrow sits one step above the TOP of the
+        -- heading's box, not a guessed distance above its baseline — and is
+        -- dropped rather than drawn off the screen edge if there is no room,
+        -- exactly as the menu's own creation masthead does it.
+        local title = h * 0.2 - H.Space(3)
+        local eyebrow = title - headlineTall - H.Space(1)
+        if eyebrow - captionTall >= H.Space(5) then
+            draw.SimpleText("NEW ARRIVAL", H.Font("mono"),
+                H.Space(7), eyebrow, H.Colour("dim"),
+                TEXT_ALIGN_LEFT, TEXT_ALIGN_BOTTOM)
+        end
         draw.SimpleText("WHO ARE YOU", H.Font("headline"),
-            H.Space(7), h * 0.2 - H.Space(3), H.Colour("text"),
+            H.Space(7), title, H.Colour("text"),
             TEXT_ALIGN_LEFT, TEXT_ALIGN_BOTTOM)
     end
 
