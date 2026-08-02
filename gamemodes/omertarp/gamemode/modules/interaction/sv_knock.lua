@@ -59,6 +59,75 @@ local function doorInReach(ply)
     return tr.Entity
 end
 
+--------------------------------------------------------------------------------
+-- Who hears it
+--------------------------------------------------------------------------------
+-- DECIDED HERE, rather than by the engine's visibility system.
+--
+-- Entity:EmitSound with no filter of its own builds a CPASAttenuationFilter:
+-- the potentially-audible set around the door, intersected with a distance
+-- cutoff taken from the sound level. The distance half was never the problem —
+-- it is generous, and Knock.AudibleRadius is that same arithmetic. The PAS half
+-- is the problem, and it is the problem in precisely the place this feature
+-- lives.
+--
+-- The PAS is derived from the map's compiled visibility, and a Source map
+-- optimises a doorway by tying a func_areaportal to the door — which SEVERS the
+-- two sides of that doorway in the visibility data whenever the door is shut. A
+-- knock is a noise made specifically to be heard through a shut door, so the
+-- single case the feature exists for is the single case the engine is built to
+-- cut. That is the "heard from both sides" half of the report, and it is not a
+-- volume problem at all: those listeners were never sent the sound.
+--
+-- So the recipients are chosen by DISTANCE, in the open, at the engine's own
+-- radius. The engine still does the falloff, and it still positions the sound at
+-- the door; all that changes is who is handed the message.
+--
+-- Ears, not feet: EyePos is where a listener actually is, and on a stairwell the
+-- difference between the two is most of a floor.
+local function audience(door)
+    local filter = RecipientFilter()
+    local origin = door:WorldSpaceCenter()
+    local reach = Knock.AudibleRadius(Knock.SOUND_LEVEL)
+    reach = reach * reach
+
+    for _, ply in ipairs(player.GetAll()) do
+        if ply:EyePos():DistToSqr(origin) <= reach then
+            filter:AddPlayer(ply)
+        end
+    end
+    return filter
+end
+
+-- The trailing recipient-filter argument is a comparatively recent addition to
+-- Entity:EmitSound, and this was written on a machine with no engine to check it
+-- against. A build that will not take it must not lose the knock — so a rejected
+-- call falls back to the plain emit, which is exactly the behaviour that shipped
+-- last week, and SAYS SO once. Silently doing less than the comment above claims
+-- is the one outcome that would be worse than either.
+--
+-- The argument is validated before anything sounds, so the fallback cannot
+-- double up: either the filtered call played it or nothing did.
+local filterRefused = false
+
+local function emit(door)
+    if not filterRefused then
+        local ok, err = pcall(door.EmitSound, door,
+            Knock.SOUND, Knock.SOUND_LEVEL, Knock.SOUND_PITCH,
+            Knock.SOUND_VOLUME, CHAN_STATIC, 0, 0, audience(door))
+        if ok then return end
+
+        filterRefused = true
+        Omerta.Log.Warn("knock",
+            "this build will not take a recipient filter on EmitSound (%s) — " ..
+            "knocks fall back to the engine's PAS, which a closed areaportal cuts",
+            tostring(err))
+    end
+
+    door:EmitSound(Knock.SOUND, Knock.SOUND_LEVEL, Knock.SOUND_PITCH,
+        Knock.SOUND_VOLUME, CHAN_STATIC)
+end
+
 -- Knock, if everything about the moment allows it. Returns true, or false plus
 -- a reason — for the log and for tests, never for the player: a refusal that
 -- reached the screen would answer questions ("is anyone in there?", "is that a
@@ -83,11 +152,12 @@ function Knock.Attempt(ply)
         return false, "still sounding"
     end
 
-    -- From the DOOR, into the world, at a fixed pitch (see sh_knock.lua).
-    -- Anyone near enough hears a knock; nobody learns anything else, including
-    -- the people who can already see who is standing there — they learn it with
-    -- their eyes, which is the point.
-    door:EmitSound(Knock.SOUND, Knock.SOUND_LEVEL, Knock.SOUND_PITCH, 1, CHAN_STATIC)
+    -- From the DOOR, into the world, at full volume and a fixed pitch (see
+    -- sh_knock.lua), to everyone within earshot on either side of it (see
+    -- `audience` above). Anyone near enough hears a knock; nobody learns
+    -- anything else, including the people who can already see who is standing
+    -- there — they learn it with their eyes, which is the point.
+    emit(door)
     return true
 end
 

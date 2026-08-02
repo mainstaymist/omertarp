@@ -147,6 +147,11 @@ end
 
 -- Room for an amount, without moving anything. Callers that must not lose
 -- money (a treasury payout, a shop's change drawer) check this first.
+--
+-- Asked through the inventory's own gate rather than through Fits directly:
+-- being handed money is a path that adds bulk, so an overloaded character
+-- refuses it for the same reason and with the same words as anything else.
+-- Returns ok, why.
 function Omerta.Money.HasRoomFor(owner, cents)
     local wallet = Omerta.Money.Compose(cents)
     if not wallet then return false end
@@ -154,8 +159,7 @@ function Omerta.Money.HasRoomFor(owner, cents)
     if not ownerType then return false end
     if ownerType == Omerta.Inventory.OWNER.WORLD then return true end
 
-    local used = Omerta.Inventory.SumBulk(Inventory.CachedRows(ownerType, ownerId))
-    return Omerta.Inventory.Fits(used, bulkOfWallet(wallet), Omerta.Inventory.BulkLimit(owner))
+    return Inventory.MayReceive(ownerType, ownerId, bulkOfWallet(wallet))
 end
 
 -- Mints an amount into an owner's hands as notes and coins. cb(ok, err)
@@ -176,10 +180,9 @@ function Omerta.Money.Give(owner, cents, cb)
 
     local rows = Inventory.CachedRows(ownerType, ownerId)
     if ownerType ~= Omerta.Inventory.OWNER.WORLD then
-        local used = Omerta.Inventory.SumBulk(rows)
-        if not Omerta.Inventory.Fits(used, bulkOfWallet(wallet),
-                Omerta.Inventory.BulkLimit({ type = ownerType, id = ownerId })) then
-            cb(false, "there is no room to carry that much")
+        local room, why = Inventory.MayReceive(ownerType, ownerId, bulkOfWallet(wallet))
+        if not room then
+            cb(false, why or "there is no room to carry that much")
             return
         end
     end

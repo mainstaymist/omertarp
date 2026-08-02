@@ -25,6 +25,21 @@ Omerta.Config.Define("inventory.max_stream", {
     description = "Most items sent in one inventory stream.",
 })
 
+-- The two halves of the overload penalty. Both are pacing numbers that will be
+-- tuned against a real map, so both are configuration; the curve they feed and
+-- the reasoning behind these defaults are in sh_inventory.lua's
+-- OverloadSpeedMultiplier.
+Omerta.Config.Define("inventory.overload_speed_floor", {
+    type = "number", default = 0.55, min = 0.2, max = 1, scope = "server",
+    description = "The slowest an over-capacity character moves, as a " ..
+        "movement multiplier. 1 turns the penalty off entirely.",
+})
+Omerta.Config.Define("inventory.overload_reach", {
+    type = "number", default = 0.5, min = 0.05, max = 4, scope = "server",
+    description = "How far over the limit — as a fraction of the limit — the " ..
+        "movement penalty takes to ramp from nothing to its floor.",
+})
+
 --------------------------------------------------------------------------------
 -- Owners
 --------------------------------------------------------------------------------
@@ -164,17 +179,64 @@ function Omerta.Inventory.BulkLimit(owner)
 end
 
 -- Worn clothing is what lets you carry a thing you otherwise could not, which
--- is what makes taking someone's coat worth doing.
+-- is what makes taking someone's coat worth doing. The arithmetic itself is
+-- pure and lives beside SumBulk, because the two are one ruling read from
+-- opposite ends and must never be edited apart.
 Omerta.Inventory.RegisterCapacityProvider("inventory.worn", function(_, _, rows)
-    local bonus = 0
-    for _, row in ipairs(rows) do
-        if row.equipped_slot then
-            local def = Omerta.Items.Get(row.def_id)
-            if def and def.capacityBonus then bonus = bonus + def.capacityBonus end
-        end
-    end
-    return bonus
+    return Omerta.Inventory.WornCapacityBonus(rows)
 end)
+
+--------------------------------------------------------------------------------
+-- Over the limit
+--------------------------------------------------------------------------------
+-- Being over capacity is allowed and it has consequences: nothing else can be
+-- picked up, and the character moves slower, both until the load is back
+-- within capacity. Nothing is ever refused in order to reach the state and
+-- nothing is ever dropped for the player to get out of it — the ways out all
+-- REMOVE bulk, and the gate below only ever looks at bulk being added.
+
+-- Is this owner over their limit right now?
+function Omerta.Inventory.Overloaded(owner)
+    local ownerType, ownerId = resolveOwner(owner)
+    if not ownerType or ownerType == OWNER.WORLD then return false end
+    return Omerta.Inventory.IsOverloaded(
+        Omerta.Inventory.SumBulk(cache[ownerKey(ownerType, ownerId)] or {}),
+        Omerta.Inventory.BulkLimit({ type = ownerType, id = ownerId }))
+end
+
+-- The movement multiplier for an owner, from the live numbers. Read once per
+-- movement tick per player through the speed modifier registered in OnEnable.
+function Omerta.Inventory.OverloadSpeed(owner)
+    local ownerType, ownerId = resolveOwner(owner)
+    if not ownerType or ownerType == OWNER.WORLD then return 1 end
+    return Omerta.Inventory.OverloadSpeedMultiplier(
+        Omerta.Inventory.SumBulk(cache[ownerKey(ownerType, ownerId)] or {}),
+        Omerta.Inventory.BulkLimit({ type = ownerType, id = ownerId }),
+        Omerta.Config.Get("inventory.overload_speed_floor"),
+        Omerta.Config.Get("inventory.overload_reach"))
+end
+
+-- THE ONE PLACE bulk is allowed into an inventory. Add mints new rows; Move
+-- carries existing ones, which is every pick-up off the floor, every take from
+-- a container or a body, and every hand-over; Money.Give credits cash through
+-- the same question. Nothing else creates bulk, so nothing else needs a check
+-- — and there is therefore no caller that can forget one.
+-- Returns true, or false + the reason to tell the player.
+function Internal.MayReceive(ownerType, ownerId, addUnits)
+    if ownerType == OWNER.WORLD then return true end
+    local ok, why, overloaded = Omerta.Inventory.MayReceive(
+        Omerta.Inventory.SumBulk(cache[ownerKey(ownerType, ownerId)] or {}),
+        addUnits,
+        Omerta.Inventory.BulkLimit({ type = ownerType, id = ownerId }))
+    if ok then return true end
+    -- The overload refusal is written in the second person because that is
+    -- overwhelmingly who it is about. A crate that has somehow ended up over
+    -- its own capacity is told about in the crate's own terms instead.
+    if overloaded and ownerType ~= OWNER.CHARACTER then
+        return false, "there is no room in there"
+    end
+    return false, why
+end
 
 --------------------------------------------------------------------------------
 -- In-flight locks
@@ -290,13 +352,14 @@ function Omerta.Inventory.Add(owner, defId, quantity, opts, cb)
     local season = Omerta.Seasons.GetActive()
     if not season then cb(false, "no active season") return end
 
+    -- `force` still bypasses, and only conservation uses it: the weapons
+    -- module refunds a clip's rounds into the inventory when a gun is stripped,
+    -- and a refusal there would destroy ammunition rather than refuse an
+    -- acquisition. Nothing a player can ask for sets it.
     if not opts.force then
-        local used = Omerta.Inventory.SumBulk(cachedRows(ownerType, ownerId))
-        local adding = Omerta.Inventory.StackBulk(def, quantity)
-        if not Omerta.Inventory.Fits(used, adding, Omerta.Inventory.BulkLimit(owner)) then
-            cb(false, "there is no room for that")
-            return
-        end
+        local ok, why = Internal.MayReceive(ownerType, ownerId,
+            Omerta.Inventory.StackBulk(def, quantity))
+        if not ok then cb(false, why) return end
     end
 
     local plan = Internal.PlanAdd(cachedRows(ownerType, ownerId), def, quantity)
@@ -432,16 +495,17 @@ function Omerta.Inventory.Move(instanceId, toOwner, cb)
         local def = Omerta.Items.Get(row.def_id)
         if not def then fail("unknown item type") return end
 
+        -- The destination is the only end that is ever checked. A move OUT of
+        -- an overloaded inventory — dropping, storing, handing over — asks
+        -- nothing of the source, which is what guarantees there is always a way
+        -- back under the limit.
         if toType ~= OWNER.WORLD then
             if not Omerta.Inventory.IsLoaded({ type = toType, id = toId }) then
                 fail("destination inventory is not loaded") return
             end
-            local used = Omerta.Inventory.SumBulk(cachedRows(toType, toId))
-            local adding = Omerta.Inventory.StackBulk(def, row.quantity)
-            if not Omerta.Inventory.Fits(used, adding,
-                    Omerta.Inventory.BulkLimit({ type = toType, id = toId })) then
-                fail("there is no room for that") return
-            end
+            local mayTake, why = Internal.MayReceive(toType, toId,
+                Omerta.Inventory.StackBulk(def, row.quantity))
+            if not mayTake then fail(why) return end
         end
 
         local fromType, fromId = row.owner_type, row.owner_id
@@ -672,9 +736,16 @@ function Omerta.Inventory.Unequip(ply, instanceId, cb)
     if not row then cb(false, "you are not carrying that") return end
     if not row.equipped_slot then cb(false, "that is not equipped") return end
 
-    -- Taking a coat off can put you over your limit; the item stays in hand
-    -- rather than vanishing, and the overweight state is what it is. Refusing
-    -- would be worse: it would let a full inventory weld clothing on.
+    -- Taking a coat off can put you over your limit and IT GOES THROUGH.
+    -- Nothing is refused and nothing is dropped for you; what it costs is
+    -- stated under "Over the limit" above — no picking anything else up, and
+    -- slower on your feet, both until the load is back within capacity.
+    -- Refusing would be worse: it would let a full inventory weld clothing on.
+    --
+    -- The two halves of the change land on ONE reload, which is what makes the
+    -- numbers the client is next told consistent: in a single write the coat
+    -- stops paying its capacityBonus and starts paying its own bulk, so the
+    -- capacity line never shows one of those without the other.
     local def = Omerta.Items.Get(row.def_id)
     Internal.Repo.SetEquippedSlot(instanceId, nil, ownerType, ownerId, function(ok, err)
         if not ok then cb(false, err) return end
@@ -822,10 +893,40 @@ end
 
 Internal.SendInventory = sendInventory
 
--- Refreshes whoever currently has this owner's contents on screen.
+-- Whether this player was over their limit the last time their pockets
+-- changed. steamid64 -> bool.
+local overloadedLast = {}
+
+-- Said once on the way in and once on the way out, never in between. The
+-- inventory window carries the state permanently (that is what the capacity
+-- line is for) and a persistent HUD element is exactly what GDD §8 forbids —
+-- but a player who is suddenly slower and suddenly cannot pick things up has
+-- to be told which of their own actions did it, and the moment it happened is
+-- the only moment that answers that.
+function Internal.AnnounceOverload(ply)
+    local sid = ply:SteamID64() or ""
+    local now = Omerta.Inventory.Overloaded(ply)
+    local was = overloadedLast[sid]
+    if was == now then return end
+    overloadedLast[sid] = now
+
+    if now then
+        Omerta.Chat.Notice(ply, "You are carrying more than you can manage. " ..
+            "You are slower, and you cannot pick anything else up.")
+    elseif was ~= nil then
+        -- Only after a real transition. A player whose first refresh finds
+        -- them comfortably under the limit is not congratulated for it.
+        Omerta.Chat.Notice(ply, "Your load is manageable again.")
+    end
+end
+
+-- Refreshes whoever currently has this owner's contents on screen. Every
+-- operation that changed this player's pockets ends here, which makes it the
+-- one honest place to notice that the load crossed the line.
 function Internal.Refresh(ply)
     if not (Omerta.InEngine and IsValid(ply)) then return end
     sendInventory(ply, reachableOpen(ply))
+    Internal.AnnounceOverload(ply)
 end
 
 function Internal.HandleOpen(ply, target)
@@ -913,6 +1014,12 @@ end
 
 function Internal.CloseFor(ply)
     openContainer[ply:SteamID64() or ""] = nil
+end
+
+-- A fresh character is announced to from scratch: the last one's load says
+-- nothing about this one's, and D-012 means it is a different person anyway.
+function Internal.ForgetOverload(ply)
+    overloadedLast[ply:SteamID64() or ""] = nil
 end
 
 --------------------------------------------------------------------------------
@@ -1116,6 +1223,7 @@ function MODULE:OnEnable()
     end
 
     hook.Add("Omerta.CharacterLoaded", "omerta.inventory.load", function(ply, character)
+        Internal.ForgetOverload(ply)
         Omerta.Inventory.Load({ type = OWNER.CHARACTER, id = character.id }, function()
             -- Announced AFTER the rows exist: anything that restores physical
             -- state from equipment (the weapons module putting a revolver back
@@ -1127,10 +1235,26 @@ function MODULE:OnEnable()
         Internal.LoadNeeds(ply, character)
     end)
 
+    -- Being over the limit is slow. The number and its defence are in
+    -- sh_inventory.lua's OverloadSpeedMultiplier; this is only the wiring.
+    --
+    -- Registered under its OWN id, beside hunger's and M19's leg rather than
+    -- folded into either. The registry is keyed by id and MULTIPLIES what it
+    -- finds, so a starving, limping, overloaded man is all three at once —
+    -- where a second registration under an existing id would silently replace
+    -- it. M8's MIN_SPEED_FRACTION is what stops the product reaching a crawl,
+    -- and the floor above is picked so the ordinary combinations stay clear of
+    -- it rather than piling onto it.
+    Omerta.Stamina.RegisterSpeedModifier("inventory.overloaded", function(ply)
+        if not Omerta.Characters.IsLoaded(ply) then return 1 end
+        return Omerta.Inventory.OverloadSpeed(ply)
+    end)
+
     hook.Add("PlayerDisconnected", "omerta.inventory.unload", function(ply)
         local character = Omerta.Characters.Get(ply)
         Internal.CloseFor(ply)
         Internal.UnloadNeeds(ply)
+        Internal.ForgetOverload(ply)
         if character then
             Omerta.Inventory.Unload({ type = OWNER.CHARACTER, id = character.id })
         end

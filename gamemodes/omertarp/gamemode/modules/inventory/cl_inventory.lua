@@ -512,7 +512,12 @@ local function buildRow(parent, entry, mine, wide)
                 held and Omerta.HUD.Colour("ink")
                     or Omerta.HUD.Colour(stateToken, taking and 115 or 255),
                 TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
-            draw.SimpleText(Omerta.Inventory.FormatBulk(
+            -- A worn item costs no bulk while it is worn, so its row says so
+            -- with the same em dash the STATE column uses for "nothing here".
+            -- Printing its bulk anyway would put a number in the ledger that
+            -- is deliberately absent from the total underneath it, and a
+            -- ledger whose column does not add up is worse than no column.
+            draw.SimpleText(entry.slot and "—" or Omerta.Inventory.FormatBulk(
                     Omerta.Inventory.StackBulk(entry.def, entry.quantity)),
                 Omerta.HUD.Font("label"), w - pad - 96 * scale, h * 0.5,
                 faintColour, TEXT_ALIGN_RIGHT, TEXT_ALIGN_CENTER)
@@ -576,7 +581,10 @@ end
 -- words sat with their caps on the top edge of the plate with no margin at all
 -- above them. Asking the font how tall it is costs one call at build time and
 -- cannot go stale the next time a size moves.
-local function buildColumn(parent, title, note, entries, mine, wide)
+--
+-- `noteToken` is the colour of the note in the top right, "dim" unless the
+-- caller has something to mark.
+local function buildColumn(parent, title, note, entries, mine, wide, noteToken)
     local scale = Omerta.HUD.Scale()
 
     surface.SetFont(Omerta.HUD.Font("heading"))
@@ -610,7 +618,7 @@ local function buildColumn(parent, title, note, entries, mine, wide)
             TEXT_ALIGN_LEFT, TEXT_ALIGN_BOTTOM)
         if note then
             draw.SimpleText(note, Omerta.HUD.Font("mono"),
-                w - pad, titleBottom, Omerta.HUD.Colour("dim"),
+                w - pad, titleBottom, Omerta.HUD.Colour(noteToken or "dim"),
                 TEXT_ALIGN_RIGHT, TEXT_ALIGN_BOTTOM)
         end
         surface.SetDrawColor(Omerta.HUD.Colour("rule"))
@@ -691,9 +699,24 @@ local function buildFooter(parent)
         local usedUnits = math.floor(state.bulkUsed / Omerta.Inventory.BULK_SCALE + 0.5)
         local limitUnits = math.max(1,
             math.floor(state.bulkLimit / Omerta.Inventory.BULK_SCALE + 0.5))
-        draw.SimpleText(string.format("POCKETS — %d OF %d", usedUnits, limitUnits),
+
+        -- Over the limit is a state the player has to be able to read off the
+        -- one line that already carries the constraint. THE SERVER DECIDED IT:
+        -- both numbers arrived on the same stream, so this is a comparison of
+        -- two facts, not a second opinion about capacity.
+        --
+        -- Red is a MARK, not a sentence. One word of the caption changes and
+        -- the caption takes the danger ink — the same move the single word
+        -- APPETITE makes on the other side of this footer when a character is
+        -- starving. The tick meter keeps its own colour: a meter that is
+        -- visibly full under a caption that says OVERLOADED is unambiguous,
+        -- and two red things would be a paragraph.
+        local over = Omerta.Inventory.IsOverloaded(state.bulkUsed, state.bulkLimit)
+        draw.SimpleText(string.format("%s — %d OF %d",
+                over and "OVERLOADED" or "POCKETS", usedUnits, limitUnits),
             Omerta.HUD.Font("mono"), pad, 14 * scale,
-            Omerta.HUD.Colour("dim"), TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
+            Omerta.HUD.Colour(over and "danger" or "dim"),
+            TEXT_ALIGN_LEFT, TEXT_ALIGN_TOP)
 
         -- The tick meter. Spent ticks stay lit; room is the dim remainder.
         local ticks = math.min(limitUnits, 24)
@@ -1054,9 +1077,14 @@ function Omerta.Inventory.Show()
             local usedUnits = math.floor(state.bulkUsed / Omerta.Inventory.BULK_SCALE + 0.5)
             local limitUnits = math.max(1,
                 math.floor(state.bulkLimit / Omerta.Inventory.BULK_SCALE + 0.5))
+            -- The loot plate has no footer, and it is the one window where
+            -- "why will nothing move across" is the live question — so the
+            -- pockets column's own note carries the mark instead.
+            local over = Omerta.Inventory.IsOverloaded(state.bulkUsed, state.bulkLimit)
             local mine = buildColumn(self, "Pockets",
-                string.format("%d / %d", usedUnits, limitUnits),
-                state.mine, true, false)
+                string.format("%d / %d%s", usedUnits, limitUnits,
+                    over and " OVER" or ""),
+                state.mine, true, false, over and "danger" or nil)
             mine.OmertaOwned = true
             mine:SetPos(0, 0)
             mine:SetSize(width * 0.5, height)

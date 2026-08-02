@@ -87,6 +87,83 @@ function Omerta.HUD.StepAlpha(alpha, wantVisible, dt, fadeSeconds)
 end
 
 --------------------------------------------------------------------------------
+-- The lens
+--------------------------------------------------------------------------------
+-- A slight, permanent darkening at the edges of the picture. It is there from
+-- the moment the game starts and it never goes away, and that needs answering
+-- rather than assuming: GDD §8 keeps the persistent screen EMPTY, and D-041
+-- grants exactly one exception to it — the crosshair — with an M8 acceptance
+-- test that fails the moment a second element joins it.
+--
+-- THE ANSWER IS THAT A VIGNETTE IS NOT AN ELEMENT. It is atmosphere, not
+-- information. The empty-screen rule is a rule about what the interface TELLS
+-- the player: D-033 states it as a ban on omniscient information rather than on
+-- information as such, and D-041 admitted the dot because a player cannot aim
+-- at a point that is not drawn. Both are arguments about things that are READ.
+-- A vignette cannot be read. It has no state, it responds to nothing, it
+-- answers no question, and a player who studies it learns precisely nothing
+-- they did not already have. It is closer to the lens the picture is taken
+-- through than to anything printed on top of it — which is why it is drawn
+-- UNDER the interface, in HUDPaintBackground, and never through
+-- Omerta.HUD.Register.
+--
+-- THAT DISTINCTION IS A DOOR, AND IT IS LOAD-BEARING THAT IT STAYS SHUT.
+-- "Atmosphere, not information" is exactly the sentence somebody will reach for
+-- in a year to justify a permanent ammunition ring, a permanent compass strip,
+-- a permanent anything — and every one of those is a thing you look at in order
+-- to find something out. The test is not whether a thing is subtle, or pretty,
+-- or drawn in a different hook. It is whether a player could ever GAIN by
+-- looking at it. If they could, it is information: it is an element, and it
+-- goes through the controller, the visible() condition and the idle assertion
+-- like everything else. cl_selftest.lua puts the test in those words rather
+-- than the idle assertion being widened to let this through — the same move
+-- D-041 made when it named its exception instead of weakening the check.
+--
+-- The numbers live here rather than in the client file so the suite can pin the
+-- one thing about a vignette worth pinning: that "slight" is a quantity and not
+-- an opinion.
+
+Omerta.HUD.VIGNETTE = {
+    -- How far each edge gradient reaches inward, as a fraction of the HALF
+    -- dimension it grows from. That is the same measure M19's bleed-out
+    -- vignette uses, deliberately: the two are the same object at different
+    -- strengths, and a second way of expressing "how far in" would be a second
+    -- thing to keep in step. At 0.38 the middle 62% of the picture is untouched
+    -- in both axes, so nothing a player is looking at is ever inside it.
+    REACH = 0.38,
+
+    -- Ink opacity at the outermost pixel, before presence. Under the threshold
+    -- at which the eye reads a vignette AS a vignette rather than as the
+    -- picture having weight — which is the whole brief. The corners, where two
+    -- gradients overlap, come to about 24%, and a corner is where a real lens
+    -- is darkest anyway.
+    EDGE = 0.13,
+
+    -- Seconds to hand the edges over to M19's vignette, and to take them back.
+    -- Matched to that element's own fade so the two cross rather than cut.
+    FADE = 1.2,
+}
+
+-- The two band thicknesses and the ink opacity for the lens at this presence.
+--
+-- Pure — no Color, no ScrW — so the suite can drive it, and garbage-proof for
+-- the same reason StepAlpha is: presence is stepped by frame time, and one
+-- enormous frame (a map load, an alt-tab) must not hand a negative or
+-- over-unity value to a draw call.
+--
+-- A presence of zero returns an alpha of zero, which is the caller's cue to
+-- draw nothing at all rather than four invisible rectangles.
+function Omerta.HUD.VignetteBands(w, h, presence)
+    presence = tonumber(presence) or 0
+    if presence ~= presence then return 0, 0, 0 end -- NaN
+    presence = math.max(0, math.min(1, presence))
+
+    local V = Omerta.HUD.VIGNETTE
+    w, h = tonumber(w) or 0, tonumber(h) or 0
+    return w * 0.5 * V.REACH, h * 0.5 * V.REACH, V.EDGE * 255 * presence
+end
+
+--------------------------------------------------------------------------------
 -- The reveal: how anything that pops up arrives, and how it leaves
 --------------------------------------------------------------------------------
 -- ONE curve, ONE pair of durations, ONE distance, for every window, modal and

@@ -68,6 +68,75 @@ check("a knock is only offered at arm's reach", function()
 end)
 
 --------------------------------------------------------------------------------
+suite("knock.audibility")
+--------------------------------------------------------------------------------
+-- The "too quiet, and not heard on both sides" report, turned into arithmetic.
+--
+-- Three quantities fail differently and were being conflated: the VOLUME at the
+-- source (never lowered), the sound LEVEL that governs falloff (tuned for
+-- speech, which is what made it quiet), and WHO the sound is sent to at all
+-- (the engine's PAS, which a closed door is designed to cut). Only the first
+-- two are arithmetic; the third is pinned as far as it can be here, by the
+-- radius the server picks its listeners with.
+
+check("the knock is emitted at full volume", function()
+    loadModules()
+    -- The "make it original" half of the report. It always was original; this
+    -- pins it so a future tuning pass cannot quietly turn the knock down and
+    -- leave the reason to be rediscovered by ear.
+    assert(Omerta.Knock.SOUND_VOLUME == 1,
+        "a knock is not attenuated at the source, got " ..
+        tostring(Omerta.Knock.SOUND_VOLUME))
+end)
+
+check("a knock carries further than a spoken sentence and less far than a gun", function()
+    loadModules()
+    -- 75 is SNDLVL_NORM, the level of speech, and it is what the knock shipped
+    -- at — which is why it went unheard through the door it was aimed at. The
+    -- ceiling matters just as much: a knock audible across the map would tell a
+    -- player something their character cannot possibly hear.
+    assert(Omerta.Knock.SOUND_LEVEL > 75,
+        "a fist on a panel is not a spoken sentence: " ..
+        tostring(Omerta.Knock.SOUND_LEVEL))
+    assert(Omerta.Knock.SOUND_LEVEL < 100,
+        "a knock must not reach the next building: " ..
+        tostring(Omerta.Knock.SOUND_LEVEL))
+end)
+
+check("the audible radius is Source's own arithmetic", function()
+    loadModules()
+    -- Restated from soundflags.h and CPASAttenuationFilter so the server can
+    -- pick its own listeners. If these drift from the engine, our filter starts
+    -- dropping people the engine would have kept.
+    assert(math.abs(Omerta.Knock.Attenuation(75) - 0.8) < 1e-9,
+        "attn(75) should be 0.8, got " .. tostring(Omerta.Knock.Attenuation(75)))
+    assert(math.abs(Omerta.Knock.AudibleRadius(75) - 2500) < 1e-6,
+        "radius(75) should be 2500, got " .. tostring(Omerta.Knock.AudibleRadius(75)))
+    assert(math.abs(Omerta.Knock.AudibleRadius(85) - 3500) < 1e-6,
+        "radius(85) should be 3500, got " .. tostring(Omerta.Knock.AudibleRadius(85)))
+end)
+
+check("raising the level actually widened the audience", function()
+    loadModules()
+    -- The claim the change is making, checked rather than asserted in a comment.
+    assert(Omerta.Knock.AudibleRadius(Omerta.Knock.SOUND_LEVEL) >
+        Omerta.Knock.AudibleRadius(75),
+        "the new level must reach further than the speech level it replaced")
+end)
+
+check("a nonsense level falls back rather than dividing by zero", function()
+    loadModules()
+    -- Attenuation is 4 at and below 50 in the engine, which is also the only
+    -- value that keeps 20/(level-50) away from a division by zero.
+    assert(Omerta.Knock.Attenuation(50) == 4, "at the floor, attenuation is 4")
+    assert(Omerta.Knock.Attenuation(10) == 4, "below the floor, attenuation is 4")
+    assert(Omerta.Knock.Attenuation("loud") ==
+        Omerta.Knock.Attenuation(Omerta.Knock.SOUND_LEVEL),
+        "garbage falls back to the knock's own level")
+    assert(Omerta.Knock.Attenuation(0 / 0) == 4, "NaN must not escape into a radius")
+end)
+
+--------------------------------------------------------------------------------
 suite("knock.lockout")
 --------------------------------------------------------------------------------
 

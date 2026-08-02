@@ -55,6 +55,22 @@ the wav and that one line is what changes. The sound is emitted at a fixed
 pitch for the same reason: pitch scales playback speed, so a randomised pitch
 would make the real duration disagree with the number.
 
+**The knock is a mono recording in a stereo container**, and that is worth
+recording because Source only spatializes mono sounds. Measured, the two
+channels correlate at 0.9997 and their RMS differs by 0.06 dB — they are the
+same signal twice. So converting the file to mono would be lossless in every
+sense that matters, would halve it, and would remove any question about whether
+the engine positions it at the door. It has **not** been done here (the asset is
+not to be re-encoded without the project lead's say-so), and it is the first
+thing to try if an in-engine test finds the knock has no direction to it. The
+same is true of every other stereo file in this table that is emitted from an
+entity rather than played flat.
+
+The file is **not quiet**: it peaks at 0 dBFS and runs about −12 dBFS RMS across
+the four raps. Neither is the emit — it passes volume 1, and `EmitSound` clamps
+there. Anything louder than `Omerta.Knock.SOUND_LEVEL` can buy is a change to
+the recording.
+
 **The intro track is still not registered by default.** The front end plays it,
 which by the rule above would mean registering it — but it is 30.9 MB of
 uncompressed WAV standing between a new player and their first impression, and

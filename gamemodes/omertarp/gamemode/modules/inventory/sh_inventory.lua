@@ -198,20 +198,132 @@ function Omerta.Inventory.StackBulk(def, quantity)
     return Omerta.Inventory.UnitBulk(def) * math.max(0, math.floor(quantity or 0))
 end
 
--- Total bulk of a list of { def_id = , quantity = } rows, in hundredths.
--- Rows naming an unregistered item contribute nothing rather than erroring:
--- an item removed from a later version of the gamemode must not make an
--- existing character's inventory unopenable.
+-- Total CARRIED bulk of a list of { def_id = , quantity = , equipped_slot = }
+-- rows, in hundredths. Rows naming an unregistered item contribute nothing
+-- rather than erroring: an item removed from a later version of the gamemode
+-- must not make an existing character's inventory unopenable.
+--
+-- WHAT IS WORN COSTS NOTHING. An item sitting in an equipped slot is ON the
+-- character rather than in their hands, so the only number it contributes is
+-- its capacityBonus (WornCapacityBonus below, which is the other half of this
+-- same rule). A coat you are wearing is therefore strictly good; a coat over
+-- your arm costs its 4 — which is what makes taking one off a decision.
+--
+-- Iterated with pairs rather than ipairs so an owner's raw cache, which is
+-- keyed by instance id rather than being an array, can be summed without first
+-- being flattened and sorted. Both shapes iterate identically.
 function Omerta.Inventory.SumBulk(rows)
     local total = 0
-    for _, row in ipairs(rows or {}) do
-        total = total + Omerta.Inventory.StackBulk(Omerta.Items.Get(row.def_id), row.quantity)
+    for _, row in pairs(rows or {}) do
+        if not row.equipped_slot then
+            total = total + Omerta.Inventory.StackBulk(Omerta.Items.Get(row.def_id), row.quantity)
+        end
     end
     return total
 end
 
+-- Capacity granted by what is worn, in BULK (not units) — the pure half of
+-- sv_inventory's "inventory.worn" capacity provider.
+--
+-- It lives here beside SumBulk on purpose. The two are one ruling read from
+-- opposite ends, and they move together: the frame a coat comes off it stops
+-- paying this AND starts paying its own bulk up there. Kept apart, the pair
+-- could be changed one at a time, and the failure would be a capacity line
+-- that disagreed with itself for exactly as long as nobody looked.
+function Omerta.Inventory.WornCapacityBonus(rows)
+    local bonus = 0
+    for _, row in pairs(rows or {}) do
+        if row.equipped_slot then
+            local def = Omerta.Items.Get(row.def_id)
+            if def and def.capacityBonus then bonus = bonus + def.capacityBonus end
+        end
+    end
+    return bonus
+end
+
 function Omerta.Inventory.Fits(usedUnits, addUnits, limitUnits)
     return (usedUnits + addUnits) <= limitUnits
+end
+
+--------------------------------------------------------------------------------
+-- Over the limit (pure)
+--------------------------------------------------------------------------------
+-- Being over capacity is ALLOWED and it costs two things: nothing else can be
+-- picked up, and the character moves slower. Both end the instant carried bulk
+-- is back within capacity. The state is reachable in one move — taking a coat
+-- off removes its capacityBonus and adds its own bulk at the same time — and
+-- refusing that move would be worse, because it would let a full inventory
+-- weld clothing on.
+
+-- STRICTLY greater. Carrying exactly the limit is full, not over, and the two
+-- must never be confused: one of them stops you picking anything up.
+function Omerta.Inventory.IsOverloaded(usedUnits, limitUnits)
+    return (tonumber(usedUnits) or 0) > (tonumber(limitUnits) or 0)
+end
+
+-- THE GATE. Every path that adds bulk to an owner asks this and nothing else.
+-- Returns true, or false + the reason + whether the refusal was the overload
+-- one (so a caller can word it differently for a crate than for a person).
+--
+-- Two refusals, deliberately distinct. "There is no room for that" invites you
+-- to try something smaller; while you are overloaded nothing at all will fit,
+-- however small, and a player told the wrong one of those will keep clicking.
+--
+-- Anything adding NO bulk passes either way, and that is what keeps an
+-- overloaded man from being stuck for ever: dropping, handing over, storing
+-- and eating all remain open, and every one of them is a way back under.
+function Omerta.Inventory.MayReceive(usedUnits, addUnits, limitUnits)
+    if (tonumber(addUnits) or 0) <= 0 then return true end
+    if Omerta.Inventory.IsOverloaded(usedUnits, limitUnits) then
+        return false, "you are carrying too much to pick anything else up", true
+    end
+    if not Omerta.Inventory.Fits(usedUnits, addUnits, limitUnits) then
+        return false, "there is no room for that", false
+    end
+    return true
+end
+
+-- How much slower an overloaded character moves, as a multiplier. Exactly 1
+-- while within the limit.
+--
+-- IT RAMPS RATHER THAN BEING FLAT, and that is the load-bearing choice. A flat
+-- penalty makes one cigarette over the line cost precisely what a Thompson
+-- over the line costs, so the whole difference between walking normally and
+-- visibly labouring is one item and which way a comparison rounded — the
+-- arsenal's own objection to the M1911's damage, and the reason M19's fall
+-- curve keeps its break and its safe height seventeen units apart. Starting at
+-- 1 exactly on the boundary also means crossing it is not an event: being a
+-- hundredth of a bulk over is not a thing anybody should be able to feel.
+--
+-- THE FLOOR IS 0.55, chosen against the numbers already on this stack rather
+-- than in the abstract. Starvation is 0.75; a limp runs 0.50 to 0.94 around
+-- 0.72; modifiers MULTIPLY. At 0.55 a limping overloaded man moves at 0.40 of
+-- base and a starving limping overloaded one at 0.30 — both still clear of
+-- M8's MIN_SPEED_FRACTION of 0.25, so each penalty stays individually legible
+-- instead of the whole stack landing on the clamp and reading as one
+-- undifferentiated crawl. Much below 0.55 and the ordinary combinations sit on
+-- that clamp; much above it and it is not a consequence.
+--
+-- THE REACH IS HALF YOUR CAPACITY AGAIN, expressed as a fraction of the limit
+-- rather than an absolute bulk so it means the same thing to a man in a coat
+-- as to one without. The design's own worked example — take the coat off with
+-- a Thompson under it — lands about 30% over and therefore around 0.73: a
+-- stagger, not a crawl. The floor is reserved for somebody who kept picking
+-- things up after being told to stop.
+function Omerta.Inventory.OverloadSpeedMultiplier(usedUnits, limitUnits, floor, reach)
+    floor = tonumber(floor) or 1
+    reach = tonumber(reach) or 0
+    limitUnits = tonumber(limitUnits) or 0
+    -- A limit of zero has no "how far over" to measure against; an owner with
+    -- no capacity at all is not a character and is not walking anywhere.
+    if limitUnits <= 0 then return 1 end
+
+    local over = (tonumber(usedUnits) or 0) - limitUnits
+    if over <= 0 then return 1 end
+    if reach <= 0 then return floor end
+
+    local depth = math.min(1, (over / limitUnits) / reach)
+    return math.max(floor, 1 - depth * (1 - floor))
 end
 
 -- "4.5" — for display only; never feed this back into the arithmetic.

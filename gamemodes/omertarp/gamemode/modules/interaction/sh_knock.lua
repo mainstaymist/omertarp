@@ -47,10 +47,37 @@ Knock.SOUND_FILE = "sound/omertarp/world/door-knock.wav"
 -- overlap this exists to prevent.
 Knock.SOUND_SECONDS = 1.44
 
--- Emitted at ordinary speech level: audible through a doorway and down a short
--- hall, not across the street. A knock that carried further would tell people
--- in the next building something they have no business hearing.
-Knock.SOUND_LEVEL = 75
+-- FULL VOLUME, written down rather than left as a bare 1 at the call site.
+--
+-- "If it's manually lowered from original just make it original" was the brief,
+-- and the honest answer is that it never was lowered: the emit has always
+-- passed 1, and the asset is a hot master — it peaks at 0 dBFS and runs about
+-- -12 dBFS RMS across the four raps. There is no headroom above this either,
+-- because EmitSound clamps volume at 1. So if a knock is ever wanted louder
+-- than the level below can make it, the change is to the WAV and not to a
+-- number in this file. Stated here so the next person reading "it's too quiet"
+-- does not spend an afternoon hunting for the multiplier stealing it.
+Knock.SOUND_VOLUME = 1
+
+-- HOW FAR IT CARRIES, which is a different quantity from how loud it is.
+--
+-- This was 75 — SNDLVL_NORM, the level of a spoken sentence — and that was the
+-- real defect behind the "too quiet" report. A fist on a wooden panel is not a
+-- spoken sentence, and the two do not carry the same distance. Volume sets the
+-- gain at the source; the sound LEVEL sets how quickly that gain is thrown away
+-- with distance and how far away the engine stops sending the sound at all, and
+-- it was the one tuned for a conversation.
+--
+-- 85 is Source's SNDLVL_85dB. It buys roughly 40% more earshot and 40% more
+-- gain at any given distance, which is the difference between a knock heard by
+-- whoever is standing at the door and a knock heard by whoever is in the room,
+-- in the hall, or up the stairs — the people a knock is actually addressed to.
+--
+-- The original rule survives the change and is worth restating, because it is
+-- the reason this is 85 and not 140: a knock must not reach the next building.
+-- Somebody a street away learning that a door somewhere was knocked on is being
+-- told something their character cannot hear.
+Knock.SOUND_LEVEL = 85
 
 -- Fixed, and load-bearing rather than cosmetic: pitch scales playback SPEED, so
 -- a randomised pitch would make the real duration differ from SOUND_SECONDS and
@@ -60,6 +87,40 @@ Knock.SOUND_PITCH = 100
 -- Arm's reach. Well inside Omerta.Interaction.MAX_RANGE (256) on purpose: you
 -- knock on a door you are standing at, not one you can see down a corridor.
 Knock.RANGE = 96
+
+--------------------------------------------------------------------------------
+-- How far a knock is worth sending
+--------------------------------------------------------------------------------
+-- Two lines of Source's own arithmetic, restated here so the server can apply
+-- them itself rather than asking the engine to. sv_knock.lua explains why it
+-- must; this is only the sum.
+--
+--   soundflags.h            attenuation = level > 50 and 20 / (level - 50) or 4
+--   CPASAttenuationFilter   a listener is dropped past (2 * 1000) / attenuation
+--
+-- Restating an engine constant is normally the wrong move and it is done here
+-- for exactly one reason: the alternative is a radius somebody invented, which
+-- either drops listeners the engine would have kept — a knock that goes unheard
+-- for no reason anybody could find — or carries to people the falloff has
+-- already silenced, which is packets spent on nothing. Taking the engine's own
+-- number means our audience is precisely the engine's audience minus the
+-- visibility test, and that difference is the entire change.
+--
+-- This is a NETWORKING cutoff and not the distance a knock is loud at. Past a
+-- little over a third of it the gain is already negligible; the radius is the
+-- point beyond which sending the message is pointless, not the point where the
+-- sound arrives.
+
+function Knock.Attenuation(level)
+    level = tonumber(level) or Knock.SOUND_LEVEL
+    if level ~= level then return 4 end -- NaN
+    if level <= 50 then return 4 end
+    return 20 / (level - 50)
+end
+
+function Knock.AudibleRadius(level)
+    return 2000 / Knock.Attenuation(level)
+end
 
 --------------------------------------------------------------------------------
 -- What counts as a door
