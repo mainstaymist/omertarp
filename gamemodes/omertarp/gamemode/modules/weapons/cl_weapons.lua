@@ -142,14 +142,16 @@ Omerta.HUD.Register("weapons.rounds", {
 -- gamemode and would be right even if no weapon framework were installed. The
 -- clash is what made somebody notice, not what makes it right.
 --
--- NOTHING HERE READS OR CALLS ARC9 (D-043/D-044's rule, and the reason three
--- unverified class strings never became a maintenance problem). Both hooks
--- below are base Garry's Mod and both are about OUR gamemode's own facilities:
--- one refuses to open a menu we do not have, the other refuses to run a command
--- we do not want run. Whether an addon is listening to either is not asked and
--- does not need to be.
+-- NOTHING HERE CALLS ARC9 (D-043/D-044's rule, and the reason three unverified
+-- class strings never became a maintenance problem). The two GATES below are
+-- base Garry's Mod and both are about OUR gamemode's own facilities: one
+-- refuses to open a menu we do not have, the other refuses to run a command we
+-- do not want run. The SWEEP that follows them reads the engine's hook table
+-- and hands identifiers back to hook.Remove; it calls nothing belonging to
+-- anybody, and the asymmetry that makes reading a name safe where calling one
+-- is not is argued at "Somebody else's HOOK" in sh_weapons.lua.
 --
--- BOTH HOOKS, AND WHY IN THAT ORDER.
+-- BOTH GATES, AND WHY IN THAT ORDER.
 --
 -- ContextMenuOpen is the GATE and it is the real answer. It is asked at the
 -- moment something tries to open the menu, by whatever is trying — the bind, a
@@ -231,7 +233,13 @@ end
 -- the name because that is the only way a removal is reversible — and storing a
 -- function is not calling one. Nothing in this file ever calls what it holds;
 -- the only thing done with it is handing it to hook.Add again.
+--
+-- Keyed by event and identifier rather than appended, because the sweep runs
+-- again every few seconds: a framework that re-registers its listener on every
+-- spawn would otherwise grow this table all night, and the newest function is
+-- the one worth being able to give back anyway.
 local removedHooks = {}
+local removedCount = 0
 local announced = {}
 
 local function sweepForeignHooks()
@@ -243,14 +251,15 @@ local function sweepForeignHooks()
 
     for _, entry in ipairs(plan) do
         hook.Remove(entry.event, entry.id)
-        removedHooks[#removedHooks + 1] = entry
+
+        local key = entry.event .. "|" .. entry.id
+        if removedHooks[key] == nil then removedCount = removedCount + 1 end
+        removedHooks[key] = entry
 
         -- INFO, not silence, and not a warning either: this is a deliberate act
-        -- on somebody else's code and the operator is entitled to see it happen
-        -- rather than wonder why an addon's key stopped working. Once per
-        -- identifier — a framework that re-registers on every spawn would
-        -- otherwise print the same line all night.
-        local key = entry.event .. "|" .. entry.id
+        -- on somebody else's code, and the operator is entitled to watch it
+        -- happen rather than wonder why an addon's key stopped working. Once
+        -- per identifier, for the same reason the table is keyed.
         if not announced[key] then
             announced[key] = true
             Omerta.Log.Info("weapons", "removed hook '%s' from %s — it is not " ..
@@ -261,15 +270,28 @@ local function sweepForeignHooks()
 end
 
 local function restoreForeignHooks()
-    if #removedHooks == 0 then return end
-    for _, entry in ipairs(removedHooks) do
+    local keys = {}
+    for key in pairs(removedHooks) do keys[#keys + 1] = key end
+    table.sort(keys) -- deterministic, like the plan itself
+
+    for _, key in ipairs(keys) do
+        local entry = removedHooks[key]
         hook.Add(entry.event, entry.id, entry.fn)
         Omerta.Log.Info("weapons", "restored hook '%s' on %s", entry.id, entry.event)
     end
-    removedHooks = {}
-    announced = {}
+    removedHooks, removedCount, announced = {}, 0, {}
 end
 
+-- THE BLUNTNESS, ON THE RECORD. A hook is removed WHOLE. If the framework's
+-- PlayerButtonDown listener does more than open its menu — a firemode toggle,
+-- an inspect key, an attachment shortcut — those go with it, and we cannot know
+-- which from here because we have not read a line of it. That is the price of
+-- stopping a notification hook, and it is why this is a setting with an off
+-- switch, why the removals are logged by name at Info, and why omerta_hook_dump
+-- shows exactly what would go before anybody turns it on. What is NOT at risk
+-- is the weapon itself: the sweep never touches a per-frame hook, so nothing it
+-- does can stop a gun firing, reloading or drawing.
+--
 -- Swept repeatedly, and that is not belt and braces. An addon is free to
 -- register its hooks whenever it likes — at file scope, on InitPostEntity, on
 -- the first spawn, or on a Lua refresh — and a one-shot sweep at load would win
@@ -345,7 +367,7 @@ concommand.Add("omerta_hook_dump", function(caller, _, args)
 
     Omerta.Log.Info("weapons", "matching '%s'; suppression is %s. %d hook(s) " ..
         "removed this session.", match, suppressionOn() and "ON" or "OFF",
-        #removedHooks)
+        removedCount)
 end)
 
 hook.Add("ContextMenuOpen", "omerta.weapons.no_context", function()

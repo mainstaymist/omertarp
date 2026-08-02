@@ -94,12 +94,12 @@ Drop their framework and that stand-in becomes what everybody sees: an AK-47 in 
 
 So the port gets first person right and third person badly wrong, and that is a decision rather than a detail:
 
-- **(a) Bonemerge the `c_` model as the world model.** A `c_` model is built to be bonemerged onto a rig and this is what ARC9 itself effectively does. Most work, best result, and it is work on our side rather than theirs.
+- **(a) Bonemerge the `c_` model as the world model.** A `c_` model is built to be bonemerged onto a rig and this is what ARC9 itself effectively does. Most work, best result, and it is work on our side rather than theirs. **SELECTED 2026-08-02 — see §4d**, narrowed to the holster prop only.
 - **(b) Source proper `w_` models separately** for three guns. Cleanest to render, but it means finding or commissioning art.
 - **(c) Keep D-044's external bridge for these three** and accept the ammunition-accounting risk in exchange for a framework that already solves the world model.
 - **(d) Ship the port with placeholder world models** and treat third person as a later pass.
 
-This needs a ruling. It did not exist as a question before the dump, which is exactly why the dump came first.
+This needs a ruling. It did not exist as a question before the dump, which is exactly why the dump came first. **Ruled 2026-08-02: option (a), for the holster prop only — §4d.**
 
 ### Also learned
 
@@ -132,7 +132,19 @@ Three things the data changed:
 
 Our numbers moved onto the art where its length was defensible as balance, per §2's principle: the M1911 2.2 → 2.635/3.333, the Thompson 3.6 → 3.333/4.762. Nothing is stretched — the playback rate is 1.0 for all four reloads. No `damage`, `rpm` or `clip` was touched.
 
-**Still open.** The revolver: `arc9_doi_sw1917` has not been dumped, so `weapon.revolver` has no animation block and must not be given one until it is. Sounds: the dump named sequences, not sound files, so both ported guns still fire HL2 placeholders. The world-model ruling in §4b. And the `external` seam still **wins** over all of this — a server with the packs runs `arc9_doi_*` and never reaches our base — so the blocks above are inert until an operator sets `weapons.external 0`, which is Phase 4's decision to make.
+**Still open.** Sounds: the dumps named sequences, not sound files, so every ported gun still fires HL2 placeholders. And the `external` seam still **wins** over all of this — a server with the packs runs `arc9_doi_*` and never reaches our base — so the blocks above are inert until an operator sets `weapons.external 0`, which is Phase 4's decision to make.
+
+## 4d. The Model 10, and §4b's ruling (2026-08-02)
+
+`arc9_doi_sw1917` came back, so **Phase 3 is complete**: all three weapons carry blocks, a `viewModelFOV` of 62 and the pack's `c_` viewmodel with the HL2 placeholder behind it.
+
+**It reloads two different ways, and we take one.** The model carries a moon-clip reload (`base_reload_clip` 5.375s, `base_reload_clip_empty` 6.031s — one animation, the whole cylinder) *and* a loose-round family (`base_reload_start` 2.206s / `base_reload_start_empty` 2.912s, `base_reload_insert` 0.950s once per round, `base_reload_end` 2.000s). Our base has one reload event, one clock and one `PlanReload` that moves N rounds in a single transaction, so the clip reload is the one it can drive honestly and the loose family is deliberately unused. What wanting it would cost is in §6 below.
+
+**`reloadTime` 2.8 → 5.375 / 6.031.** The largest balance move the port has made, and it wants a look in the field: the Model 10 is now by a distance the slowest gun in the arsenal to bring back into a fight — slower than a Thompson run dry. It buys the thing the design says concealment should cost, in the currency a gunfight spends. One line of §4c's balance prose died with it: the M1911's empty reload used to cost more than the revolver's only reload, and no longer can.
+
+**§4b is RULED: option (a).** The project lead reported the holstered weapon as the wrong model twice, and all three weapons now declare `holsterModel` pointing at the pack's `c_` viewmodel, with the placeholder behind it so a server without the pack is unchanged. `worldModel` is untouched — what our own SWEP renders in a hand, and what a dropped weapon lies on the pavement as, were not what §4b was about.
+
+**The risk that comes with it**, unresolved and visible: a `c_` model standing on its own as a prop renders in its reference pose, and models of this kind are commonly built with the arms in them. If ARC9's are, the holster prop carries a pair of hands. It cannot be fixed from here without guessing at a bodygroup index, so `omerta_weapon_dump` now prints every model's bodygroups: if one of them hides the arms, hiding it is one data edit in the arsenal. If none does, the answer is option (b) — real `w_` models — and the holster lines revert to the placeholder alone.
 
 ## 5. Phases
 
@@ -166,11 +178,20 @@ The arsenal entry for a gun grows one block. Adding a weapon stays one `Register
 
 Sound moves with it: firing sound, dry click, and the reload's foley become data on the same entry instead of the HL2 placeholders they are now.
 
-### Phase 3 — per-weapon data, one gun at a time — **the M1911 and the Thompson are done, see §4c**
+### Phase 3 — per-weapon data, one gun at a time — **DONE for all three, see §4c and §4d**
 
-The Model 10 was meant to go first — simplest action, cheapest place to expose a bad assumption. The dump decided the order instead: the two guns that came back are the two that are ported, and the revolver waits on `omerta_weapon_dump arc9_doi_sw1917`.
+The Model 10 was meant to go first — simplest action, cheapest place to expose a bad assumption. The dump decided the order instead, and the Model 10 went last; it was also the gun that exposed the assumption, by arriving with two mutually exclusive reload families where the other two had one.
 
-Each gun is: model paths, the sequence map, the sound map, and the balance numbers — which turned out not to be "left alone" but *moved onto the art* wherever the animation's length was defensible as balance, which is what §2 asks for and what makes the playback rate 1.0. The sound map is still empty for both: the dump named sequences, not `.wav` paths.
+Each gun is: model paths, the sequence map, the sound map, and the balance numbers — which turned out not to be "left alone" but *moved onto the art* wherever the animation's length was defensible as balance, which is what §2 asks for and what makes the playback rate 1.0. The sound map is still empty for all three: the dumps named sequences, not `.wav` paths.
+
+**What a loose-round reload would cost, if it is ever wanted.** It is not data in the arsenal; it is a change to the base and to the server's reload, in four places:
+
+1. `ANIM_EVENTS` gains `reload_start`, `reload_insert`, `reload_end` (plus an empty variant of the start), and `PlayAnim` gains a *chain* — a scheduled sequence of animations with a per-round step — where today it plays exactly one and returns its length.
+2. `Internal.Reload` stops being one commit. `PlanReload` moves N rounds in a single transaction today; a per-round loop means N transactions, each of which can fail, and an interrupted reload has to leave a **partially** loaded cylinder rather than rolling back — which is a new state for M9's accounting and for D-004's "rounds are items" to be checked against.
+3. The reload WINDOW becomes variable: `start + n × insert + end`, computed from the rounds actually needed, so `OmertaReloadUntil` and `SetNextPrimaryFire` stop being one number read off the arsenal. Client and server must derive the same window from the same round count or the hands and the lockout disagree.
+4. Interrupting it becomes a mechanic rather than a cancellation — firing with three in the cylinder is something a player will do deliberately, and it needs a rule and a design review.
+
+That is a feel change with a server-authority component, not a port. It is also the only way the loose family is honest: driven through today's single reload event it would either play a start and stop, or loop an insert while no round moves.
 
 ### Phase 4 — decide what happens to D-044
 

@@ -1362,7 +1362,7 @@ end)
 --------------------------------------------------------------------------------
 suite("weapons.port")
 --------------------------------------------------------------------------------
--- Phase 3 of docs/review/06_weapon_art_port.md: the first two guns wearing
+-- Phase 3 of docs/review/06_weapon_art_port.md: the whole arsenal wearing
 -- somebody else's art, driven by our own base.
 --
 -- The dumps below are the ONLY facts this suite is built on, and they are
@@ -1446,7 +1446,7 @@ local function dumpedModel(id)
     return fakeModel(index)
 end
 
-check("both ported blocks resolve, event for event, against the model that was dumped", function()
+check("every ported block resolves, event for event, against the model that was dumped", function()
     loadModules()
     for _, id in ipairs(PORTED) do
         local def = Omerta.Weapons.Get(id)
