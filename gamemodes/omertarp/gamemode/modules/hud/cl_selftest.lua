@@ -54,6 +54,63 @@ local function buildSteps()
         pass("nothing but the crosshair")
     end }
 
+    -- THE ONE THING ON A PERMANENT SCREEN THAT IS NOT AN ELEMENT, named here
+    -- rather than excused in the assertion above.
+    --
+    -- The lens vignette is always drawn. It is allowed to be, because it is
+    -- atmosphere and not information: it has no state, answers no question, and
+    -- a player who studies it learns nothing — it is the lens the picture is
+    -- taken through rather than something printed on top of it. sh_hud.lua
+    -- argues that in full.
+    --
+    -- The argument is only worth anything if it is checked, and this is the
+    -- check. What it defends is not the vignette, it is the door the vignette
+    -- came through: "atmosphere, not information" must never become the excuse
+    -- that lets a permanent ammunition ring or a permanent compass onto an idle
+    -- screen. So the rule is stated as a property — a lens is NOT registered
+    -- with the controller, is bounded to something felt rather than seen, and
+    -- draws literally nothing when it is switched off. Anything that carries
+    -- information fails all three the moment it tries, because it needs a
+    -- visible() condition and a place in the stack, which is the controller.
+    steps[#steps + 1] = { name = "the vignette is a lens, not an element", fn = function(pass, fail)
+        for _, def in ipairs(Omerta.HUD.GetElements()) do
+            -- M19's bleed-out vignette is conditional and belongs to the
+            -- controller; anything else by that name has joined the idle screen.
+            if def.id:find("vignette", 1, true) and def.id ~= "injury.vignette" then
+                fail("'" .. def.id .. "' is a registered element — a permanent " ..
+                    "one is exactly what the rule above forbids")
+                return
+            end
+        end
+
+        local V = Omerta.HUD.VIGNETTE
+        if not V or not Omerta.HUD.VignetteBands then
+            fail("the lens is missing")
+            return
+        end
+        if V.EDGE > 0.2 then
+            fail(math.Round(V.EDGE * 100) .. "% at the edge — slight means a " ..
+                "picture with weight, not a vignette you can see")
+            return
+        end
+
+        local _, _, off = Omerta.HUD.VignetteBands(ScrW(), ScrH(), 0)
+        if off ~= 0 then
+            fail("switched off, it must draw nothing at all")
+            return
+        end
+
+        -- The live presence as well as the setting, because they legitimately
+        -- disagree: the lens hands the edges to M19's bleed-out vignette while
+        -- somebody is dying, so "on, 0% present" is a correct answer given from
+        -- the floor rather than a fault.
+        local live = Omerta.HUD.VignettePresence
+            and Omerta.HUD.VignettePresence() or 0
+        pass(string.format("%s, %d%% at the edge, %d%% present right now",
+            GetConVar("omerta_vignette"):GetBool() and "on" or "off",
+            math.Round(V.EDGE * 100), math.Round(live * 100)))
+    end }
+
     steps[#steps + 1] = { name = "fade maths", fn = function(pass, fail)
         local S = Omerta.HUD.StepAlpha
         if S(0, true, 0.1, 0.2) ~= 0.5 then fail("half a fade in should be 0.5") return end

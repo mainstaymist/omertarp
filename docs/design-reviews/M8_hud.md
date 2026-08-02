@@ -1,6 +1,6 @@
 # Design Review — M8: Contextual HUD Framework
 
-Status: **APPROVED 2026-07-27 — IMPLEMENTED AND VERIFIED IN-ENGINE** (`omerta_hud_selftest` 6/6, including the headline check that the screen is empty when idle; 7 elements registered). §4a ruled *keep* hunger, inventory-only; §4b ruled (b); logged as D-016 and D-017. See §13. Amended 2026-07-28 with entity labels (D-033) and jump stamina (§14), and base movement speeds (D-034, §15).
+Status: **APPROVED 2026-07-27 — IMPLEMENTED AND VERIFIED IN-ENGINE** (`omerta_hud_selftest` 6/6 at the time, including the headline check that the screen is empty when idle; **7/7 since the vignette landed** — the new step asserts the vignette is a lens rather than an element, so the idle check keeps its meaning instead of being widened). §4a ruled *keep* hunger, inventory-only; §4b ruled (b); logged as D-016 and D-017. See §13. Amended 2026-07-28 with entity labels (D-033) and jump stamina (§14), and base movement speeds (D-034, §15).
 Milestone: M8 (roadmap Track A). Depends on: M0–M7. Consumed by: M9 (inventory), M12 (telephony), M19 (injury), M21 (newspaper) — every system that ever needs to show the player something.
 
 > **Two things need your ruling** (§4): confirmation of Q-7 (no hunger mechanic), and the crosshair, which the GDD says to remove and which materially changes how the game feels to play.
@@ -124,7 +124,7 @@ Implemented as `modules/hud/`. Suite grew to 140 checks. Notes:
 - **Module dependency direction:** `identity` and `interaction` now depend on `hud`, not the reverse. The headless suite caught this immediately when three test files booted the graph without `hud` present — the loader refusing an unknown dependency doing exactly its job.
 - `Omerta.SelfTest.Run` lost its server-only assertion, since the HUD suite must run client-side.
 
-In-engine acceptance (user-side): pull, restart, then run **`omerta_hud_selftest` in a CLIENT console** (the HUD only exists there) — expect 6/6, including the headline check that the screen is empty when idle. Then manually: sprint until winded and watch the bar fade in and out, look at another player for the dot and the name label, hold `C`, and try `omerta_ui_scale 1.4`. Health, armour, ammo and crosshair should all be gone.
+In-engine acceptance (user-side): pull, restart, then run **`omerta_hud_selftest` in a CLIENT console** (the HUD only exists there) — expect 7/7, including the headline check that the screen is empty when idle. Then manually: sprint until winded and watch the bar fade in and out, look at another player for the dot and the name label, hold `C`, and try `omerta_ui_scale 1.4`. Health, armour, ammo and crosshair should all be gone.
 
 ---
 

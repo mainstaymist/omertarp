@@ -1,9 +1,10 @@
 -- In-engine acceptance suite: `omerta_inventory_selftest`.
 --
 -- Drives the whole milestone against synthetic owners: items in and out,
--- capacity refusal, a move between two owners, money given and spent with
--- change, hunger persisted, and a deliberately broken write proving that a
--- failed change leaves nothing behind. Cleans up after itself.
+-- capacity refusal, what is worn costing nothing, the over-capacity state and
+-- both of its consequences, a move between two owners, money given and spent
+-- with change, hunger persisted, and a deliberately broken write proving that
+-- a failed change leaves nothing behind. Cleans up after itself.
 
 if not Omerta.InEngine then return end
 
@@ -95,6 +96,7 @@ local function buildSteps()
                     if row.def_id == "clothing.overcoat" then coat = row end
                 end
                 if not coat then fail("the coat is missing") return end
+                local carriedWithCoatInHand = Omerta.Inventory.BulkUsed(CHAR)
 
                 Omerta.Inventory.Equip(CHAR, coat.id, function(eok, eerr)
                     if not eok then fail("equip: " .. tostring(eerr)) return end
@@ -105,9 +107,24 @@ local function buildSteps()
                     if limit ~= expected then
                         fail("coat gave " .. limit .. ", expected " .. expected) return
                     end
+
+                    -- WHAT IS WORN COSTS NOTHING. Putting the coat on both
+                    -- raised the limit by its 12 and dropped what is carried
+                    -- by its own 4, and the second half is the one an
+                    -- assertion about capacity alone would never notice.
+                    local carriedWorn = Omerta.Inventory.BulkUsed(CHAR)
+                    local coatBulk = Omerta.Inventory.UnitBulk(
+                        Omerta.Items.Get("clothing.overcoat"))
+                    if carriedWorn ~= carriedWithCoatInHand - coatBulk then
+                        fail(string.format(
+                            "wearing the coat should have shed %d of carried bulk: %d -> %d",
+                            coatBulk, carriedWithCoatInHand, carriedWorn))
+                        return
+                    end
+
                     Omerta.Inventory.Add(CHAR, "weapon.thompson", 1, nil, function(ok3, err3)
                         if not ok3 then fail("with a coat on: " .. tostring(err3)) return end
-                        pass("refused bare, accepted with a coat")
+                        pass("refused bare, accepted with a coat, and the coat is free")
                     end)
                 end)
             end)
@@ -139,6 +156,66 @@ local function buildSteps()
             Omerta.Inventory.Move(thompson.id, BOX, function(ok2, err2)
                 if ok2 then fail("a repeated move was allowed") return end
                 pass("moved once, refused twice")
+            end)
+        end)
+    end }
+
+    -- Taking a coat off is the one move that can put somebody over, because it
+    -- removes 12 of capacity and adds 4 of carried bulk at once. What follows
+    -- has to be true or the state is a trap: nothing else goes in, and
+    -- everything still comes out.
+    steps[#steps + 1] = { name = "over the limit refuses a pick-up and permits a drop",
+        fn = function(pass, fail)
+        local coat, thompson
+        for _, row in ipairs(Omerta.Inventory.Get(CHAR)) do
+            if row.def_id == "clothing.overcoat" then coat = row end
+        end
+        for _, row in ipairs(Omerta.Inventory.Get(BOX)) do
+            if row.def_id == "weapon.thompson" then thompson = row end
+        end
+        if not (coat and thompson) then fail("the coat or the Thompson is missing") return end
+        if not coat.equipped_slot then fail("the coat should still be worn") return end
+
+        -- Back into the coat's pockets, which is where the previous step left
+        -- it fitting.
+        Omerta.Inventory.Move(thompson.id, CHAR, function(mok, merr)
+            if not mok then fail("taking the Thompson back: " .. tostring(merr)) return end
+
+            Omerta.Inventory.Unequip(CHAR, coat.id, function(uok, uerr)
+                -- The unequip GOES THROUGH. Refusing it would let a full
+                -- inventory weld clothing on.
+                if not uok then fail("the coat refused to come off: " .. tostring(uerr)) return end
+                if not Omerta.Inventory.Overloaded(CHAR) then
+                    fail(string.format("expected to be over: %d carried against %d",
+                        Omerta.Inventory.BulkUsed(CHAR), Omerta.Inventory.BulkLimit(CHAR)))
+                    return
+                end
+
+                local speed = Omerta.Inventory.OverloadSpeed(CHAR)
+                if not (speed < 1 and speed > 0) then
+                    fail("the movement penalty is " .. tostring(speed)) return
+                end
+
+                -- Nothing else goes in, however small — a newspaper is 0.3.
+                Omerta.Inventory.Add(CHAR, "misc.newspaper", 1, nil, function(aok, aerr)
+                    if aok then fail("an overloaded character picked something up") return end
+                    if not (aerr and string.find(aerr, "carrying too much", 1, true)) then
+                        fail("refused for the wrong reason: " .. tostring(aerr)) return
+                    end
+
+                    -- And everything still comes out. If this ever fails the
+                    -- state is inescapable and the ruling is a bug.
+                    Omerta.Inventory.Move(thompson.id, BOX, function(dok, derr)
+                        if not dok then fail("could not put it down: " .. tostring(derr)) return end
+                        if Omerta.Inventory.Overloaded(CHAR) then
+                            fail("still over after putting the Thompson down") return
+                        end
+                        if Omerta.Inventory.OverloadSpeed(CHAR) ~= 1 then
+                            fail("the penalty outlived the load") return
+                        end
+                        pass("refused a newspaper, allowed the Thompson back out")
+                    end)
+                end)
             end)
         end)
     end }

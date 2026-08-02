@@ -848,6 +848,12 @@ function Omerta.Menu.Client.BuildSettings(parent)
     end
 
     toggle("Black and white", "omerta_blackwhite")
+    -- Beside Black and white because it is the same kind of setting: neither
+    -- changes what the game tells you, both change what it looks like. It is
+    -- offered at all because edge darkening is one of the few atmospheric
+    -- effects a minority of players genuinely cannot stand, and the alternative
+    -- to a toggle is those players editing a gamemode.
+    toggle("Vignette", "omerta_vignette")
     toggle("Multi-core rendering", "omerta_mcore", Omerta.Menu.ApplyMulticore)
 
     local back = Omerta.HUD.Button(list, "Back", "quiet", function()
@@ -865,10 +871,18 @@ function Omerta.Menu.Client.BuildSettings(parent)
     -- between the masthead's two numbers and no further: it rests at
     -- contentTop, and only if the column will not otherwise reach the bottom
     -- margin — which happens on a 1080p screen at the largest interface scale,
-    -- where three settings and a Back button come to more than half the height
+    -- where four settings and a Back button come to more than half the height
     -- of the display — does it borrow upward, stopping dead at contentCeiling.
     -- Past that the column simply runs long, and ESCAPE (above) is the way out
     -- rather than a Back button dragged over the wordmark to be reachable.
+    --
+    -- Vignette is the setting that took it past. At 1080p and 1.4x the column
+    -- now comes to about 966px against a ceiling of 282, so Back sits below the
+    -- bottom edge and ESCAPE is the only way out of the screen at that one
+    -- scale. Recorded rather than fixed here, because the fix is M26's — this
+    -- rail was always the stopgap, and the honest answer for a settings list
+    -- that has outgrown a hand-laid column is a settings WINDOW that scrolls,
+    -- not a fifth opinion about where the column starts.
     local head = Omerta.Menu.Client.Masthead()
     list:SetSize(width, y)
     list:SetPos(margin, math.max(head.contentCeiling,

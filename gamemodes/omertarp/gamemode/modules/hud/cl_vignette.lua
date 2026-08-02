@@ -79,9 +79,16 @@ hook.Add("HUDPaintBackground", "omerta.hud.vignette", function()
 
     local w, h = ScrW(), ScrH()
     local thickX, thickY, alpha = Omerta.HUD.VignetteBands(w, h, presence)
+    -- Two reasons, and the second one matters much more than the first.
+    --
     -- Below a whole unit of alpha there is nothing on screen to show for four
-    -- textured rectangles.
-    if alpha < 1 then return end
+    -- textured rectangles. And Omerta.HUD.Colour accepts its alpha as EITHER
+    -- 0..1 or 0..255 and tells them apart with `alpha <= 1` — so handing it a 1
+    -- would be read as "fully opaque" and paint the edges solid black for a
+    -- frame, at the exact moment the vignette is meant to be at its faintest.
+    -- The comparison is therefore `<=`, not `<`: the ambiguous value is the one
+    -- being excluded, not merely the invisible one.
+    if alpha <= 1 then return end
 
     -- The palette's ink, through Colour, so this desaturates with everything
     -- else under Black and white and can never become a hand-picked grey. It is
@@ -100,7 +107,12 @@ hook.Add("HUDPaintBackground", "omerta.hud.vignette", function()
     surface.DrawTexturedRectUV(w - thickX, 0, thickX, h, 1, 0, 0, 1)
 end)
 
--- What the self-test reads. Not a setter: the vignette has nothing to set.
+-- How much lens is actually on screen right now, 0..1. Read by the self-test,
+-- which needs to tell "off by setting" apart from "on, and currently handed over
+-- to the bleed-out vignette" — those look identical from outside and only one of
+-- them is a fault. There is deliberately no setter: a vignette has nothing to
+-- set, and anything that wanted one would be using it to say something, which is
+-- the line this effect is not allowed to cross.
 function Omerta.HUD.VignettePresence()
     return presence
 end

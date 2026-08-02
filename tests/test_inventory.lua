@@ -278,6 +278,156 @@ check("bulk displays as a short decimal", function()
 end)
 
 --------------------------------------------------------------------------------
+suite("inventory.overload")
+--------------------------------------------------------------------------------
+
+-- Two rulings meet in this suite, and they are tested together because the
+-- second is reachable through the first: what is WORN costs no bulk, and being
+-- over the limit is allowed and expensive. Taking a coat off removes 12 of
+-- capacity AND adds 4 of carried bulk in one move, which is the only ordinary
+-- way a character ends up carrying more than they can hold.
+
+check("what is worn costs nothing, and pays a bonus while it does", function()
+    loadModules()
+    local rows = {
+        { def_id = "clothing.overcoat", quantity = 1, equipped_slot = "outerwear" },
+        { def_id = "tool.crowbar",      quantity = 1 },
+    }
+    -- The crowbar's 3 and nothing else: the coat is on the man, not in his hands.
+    assert(Omerta.Inventory.SumBulk(rows) == 300, Omerta.Inventory.SumBulk(rows))
+    assert(Omerta.Inventory.WornCapacityBonus(rows) == 12,
+        Omerta.Inventory.WornCapacityBonus(rows))
+
+    -- Take it off and BOTH numbers move, in opposite directions, together.
+    rows[1].equipped_slot = nil
+    assert(Omerta.Inventory.SumBulk(rows) == 700, "the coat's own 4 arrives")
+    assert(Omerta.Inventory.WornCapacityBonus(rows) == 0, "and its 12 leaves")
+
+    -- An owner's cache is a map keyed by instance id rather than an array, and
+    -- the movement tick sums it without flattening it first.
+    assert(Omerta.Inventory.SumBulk({ [41] = { def_id = "tool.crowbar", quantity = 1 } })
+        == 300, "a map of rows sums the same as a list of them")
+end)
+
+check("taking the coat off is what puts a man over, and it does both at once", function()
+    loadModules()
+    -- The design's own worked example. Registered here rather than reached for
+    -- in the arsenal, which is a different module and not loaded by this suite.
+    Omerta.Items.Register("test.tommy", { name = "Tommy", bulk = 22, category = "weapon" })
+
+    local scale = Omerta.Inventory.BULK_SCALE
+    local base = Omerta.Config.Get("inventory.base_capacity") * scale
+    local rows = {
+        { def_id = "clothing.overcoat", quantity = 1, equipped_slot = "outerwear" },
+        { def_id = "test.tommy",        quantity = 1 },
+    }
+    local function limit()
+        return base + Omerta.Inventory.WornCapacityBonus(rows) * scale
+    end
+
+    assert(limit() == 3200, limit())
+    assert(Omerta.Inventory.SumBulk(rows) == 2200, Omerta.Inventory.SumBulk(rows))
+    assert(not Omerta.Inventory.IsOverloaded(Omerta.Inventory.SumBulk(rows), limit()),
+        "a Thompson under a coat is exactly what the coat is for")
+
+    rows[1].equipped_slot = nil
+    assert(limit() == 2000, "the coat's 12 of capacity went with it")
+    assert(Omerta.Inventory.SumBulk(rows) == 2600, "and its own 4 of bulk arrived")
+    assert(Omerta.Inventory.IsOverloaded(Omerta.Inventory.SumBulk(rows), limit()),
+        "26 carried against 20 is over")
+end)
+
+check("carrying exactly the limit is full, not over", function()
+    loadModules()
+    local O = Omerta.Inventory.IsOverloaded
+    assert(not O(1999, 2000))
+    assert(not O(2000, 2000), "exactly the limit is FULL and nothing else")
+    assert(O(2001, 2000), "one hundredth of a bulk past it is over")
+    assert(not O(0, 0), "nothing against nothing is not over")
+end)
+
+check("the gate refuses everything while overloaded, and never blocks the way out", function()
+    loadModules()
+    local M = Omerta.Inventory.MayReceive
+
+    assert(M(1000, 500, 2000), "room to spare")
+
+    -- Full, and one thing too many: the ordinary refusal.
+    local ok, why, overloaded = M(1900, 200, 2000)
+    assert(not ok and overloaded == false, tostring(why))
+    assert(why:find("no room"), tostring(why))
+
+    -- Over. Now even the smallest thing is refused, and it says so differently
+    -- — somebody told "there is no room for THAT" goes on trying smaller
+    -- things for ever, because nothing at all is going to fit.
+    local ok2, why2, over2 = M(2600, 1, 2000)
+    assert(not ok2 and over2 == true, tostring(why2))
+    assert(why2:find("carrying too much"), tostring(why2))
+
+    -- Adding nothing is not adding. Dropping, storing and handing over never
+    -- reach this question at all, and that is what stops the state being a
+    -- trap; a zero-bulk destination check must not become one either.
+    assert(M(2600, 0, 2000), "an add of nothing is always allowed")
+end)
+
+check("the speed penalty starts at the boundary, ramps, and floors", function()
+    loadModules()
+    local S = Omerta.Inventory.OverloadSpeedMultiplier
+    local FLOOR, REACH = 0.55, 0.5
+
+    assert(S(1500, 2000, FLOOR, REACH) == 1, "under the limit is untouched")
+    assert(S(2000, 2000, FLOOR, REACH) == 1, "and so is exactly full")
+
+    -- Crossing the line is not an event. A flat penalty would make the whole
+    -- difference between walking and labouring one item and which way a
+    -- comparison rounded, which is the shape that gets reported as a bug.
+    local nudge = S(2001, 2000, FLOOR, REACH)
+    assert(nudge < 1 and nudge > 0.999, nudge)
+
+    -- Halfway to the reach is halfway to the floor.
+    assert(math.abs(S(2500, 2000, FLOOR, REACH) - 0.775) < 1e-9,
+        S(2500, 2000, FLOOR, REACH))
+    -- At the reach, and far past it, the floor: the penalty is bounded.
+    assert(math.abs(S(3000, 2000, FLOOR, REACH) - FLOOR) < 1e-9)
+    assert(math.abs(S(90000, 2000, FLOOR, REACH) - FLOOR) < 1e-9)
+
+    -- The worked example again: 26 against 20 is a stagger, not a crawl.
+    local staggering = S(2600, 2000, FLOOR, REACH)
+    assert(staggering > 0.70 and staggering < 0.76, staggering)
+
+    -- Nonsense in, no opinion out. An owner with no capacity at all is not a
+    -- character and is not walking anywhere.
+    assert(S(500, 0, FLOOR, REACH) == 1)
+    assert(S(nil, nil, nil, nil) == 1)
+end)
+
+check("the penalty composes with the other things that slow a man down", function()
+    loadModules()
+    local C = Omerta.HUD.Internal.CombineModifiers
+    local FLOOR = Omerta.Config.Get("inventory.overload_speed_floor")
+    local MIN = Omerta.HUD.Internal.MIN_SPEED_FRACTION
+
+    local overload = function() return FLOOR end
+    local limp = function() return 0.72 end -- M19's limp, mid-stride
+    local starving = function() return Omerta.Hunger.SpeedMultiplier(0) end
+
+    assert(C({ o = overload }, nil) == FLOOR, "alone it is exactly the floor")
+
+    local both = C({ o = overload, l = limp }, nil)
+    assert(both < FLOOR and both < 0.72,
+        "a limping overloaded man is slower than either alone")
+
+    local all = C({ o = overload, l = limp, h = starving }, nil)
+    assert(all < both, "and a starving one slower still")
+
+    -- Still clear of the clamp that stops a stack of modifiers reaching a
+    -- crawl. That is the whole reason the floor is 0.55 and not 0.3: at 0.3
+    -- the ordinary combinations all land on the clamp and read as one
+    -- undifferentiated speed instead of three legible penalties.
+    assert(all > MIN, string.format("%.3f is at or under the %.2f clamp", all, MIN))
+end)
+
+--------------------------------------------------------------------------------
 suite("inventory.stacking")
 --------------------------------------------------------------------------------
 

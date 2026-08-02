@@ -1,6 +1,6 @@
 -- Server side of knocking: the engine edge only. Every rule this file applies
 -- is defined in sh_knock.lua and tested headless; what lives here is the trace,
--- the sound, and the content registration.
+-- the audience, the sound, and the content registration.
 --
 -- Server-authoritative, in the same shape as the rest of the interaction
 -- module. The client contributes one bit — the attack button went down — and
@@ -102,9 +102,9 @@ end
 -- The trailing recipient-filter argument is a comparatively recent addition to
 -- Entity:EmitSound, and this was written on a machine with no engine to check it
 -- against. A build that will not take it must not lose the knock — so a rejected
--- call falls back to the plain emit, which is exactly the behaviour that shipped
--- last week, and SAYS SO once. Silently doing less than the comment above claims
--- is the one outcome that would be worse than either.
+-- call falls back to the plain emit, which is exactly what this module did
+-- before the change, and SAYS SO once. Silently doing less than the comment
+-- above claims is the one outcome that would be worse than either.
 --
 -- The argument is validated before anything sounds, so the fallback cannot
 -- double up: either the filtered call played it or nothing did.

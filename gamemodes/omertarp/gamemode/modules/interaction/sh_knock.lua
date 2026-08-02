@@ -106,10 +106,10 @@ Knock.RANGE = 96
 -- number means our audience is precisely the engine's audience minus the
 -- visibility test, and that difference is the entire change.
 --
--- This is a NETWORKING cutoff and not the distance a knock is loud at. Past a
--- little over a third of it the gain is already negligible; the radius is the
--- point beyond which sending the message is pointless, not the point where the
--- sound arrives.
+-- This is a NETWORKING cutoff and not the distance a knock is loud at. Well
+-- inside it the falloff has already taken the gain to nothing; the radius is
+-- the point past which sending the message buys the listener nothing, not the
+-- point at which the sound stops being audible.
 
 function Knock.Attenuation(level)
     level = tonumber(level) or Knock.SOUND_LEVEL

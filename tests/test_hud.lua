@@ -347,6 +347,94 @@ check("a pre-rebase scale is corrected rather than reinterpreted", function()
 end)
 
 --------------------------------------------------------------------------------
+suite("hud.vignette")
+--------------------------------------------------------------------------------
+-- The always-on lens. What is pinned here is the word "slight": the brief was
+-- that it must be felt rather than seen, and a number is the only form of that
+-- claim anybody can check a year from now. The reasoning that lets an always-on
+-- effect exist beside GDD §8 at all lives in sh_hud.lua, and the in-engine
+-- self-test is what holds it to being a lens rather than an element.
+
+check("slight is a quantity, not an opinion", function()
+    loadModules()
+    local V = Omerta.HUD.VIGNETTE
+
+    -- At the edge. Past about a fifth the eye stops reading "the picture has
+    -- weight" and starts reading "there is a vignette on my screen", which is
+    -- the failure the brief named.
+    assert(V.EDGE > 0, "a vignette nobody can see is not a vignette")
+    assert(V.EDGE <= 0.2,
+        "the edge is at " .. tostring(V.EDGE) .. " — that is a vignette you notice")
+
+    -- And the centre stays clear. Reach is measured against the HALF dimension,
+    -- so anything at or above 1 would have the two bands meeting in the middle
+    -- of the screen and darkening the thing the player is looking at.
+    assert(V.REACH > 0 and V.REACH < 0.5,
+        "the middle of the picture must never be inside the vignette")
+
+    -- And the edge opacity has to be UNAMBIGUOUS to Omerta.HUD.Colour, which
+    -- accepts either 0..1 or 0..255 and tells them apart with `alpha <= 1`. An
+    -- edge that came out at or under 1 would be read as a fraction, multiplied
+    -- back to 255, and painted solid black at the exact moment it is meant to
+    -- be faintest. The draw path guards the fading end of that; this guards the
+    -- constant, so nobody can tune EDGE down into the trap.
+    local _, _, full = Omerta.HUD.VignetteBands(1920, 1080, 1)
+    assert(full > 1,
+        "an edge opacity of " .. tostring(full) ..
+        " reads as a 0..1 fraction to Omerta.HUD.Colour and paints solid black")
+end)
+
+check("the bands are a fraction of the screen and scale with presence", function()
+    loadModules()
+    local thickX, thickY, alpha = Omerta.HUD.VignetteBands(1920, 1080, 1)
+    local V = Omerta.HUD.VIGNETTE
+
+    assert(math.abs(thickX - 1920 * 0.5 * V.REACH) < 1e-9, "horizontal band")
+    assert(math.abs(thickY - 1080 * 0.5 * V.REACH) < 1e-9, "vertical band")
+    assert(math.abs(alpha - V.EDGE * 255) < 1e-9, "edge opacity at full presence")
+
+    -- The bands do not move as it fades; only the ink does. A vignette that
+    -- grew and shrank would be M19's, which is a different statement — that one
+    -- closes in because you are dying, and this one must never look like it.
+    local halfX, halfY, halfAlpha = Omerta.HUD.VignetteBands(1920, 1080, 0.5)
+    assert(halfX == thickX and halfY == thickY,
+        "the reach is fixed; only the presence fades")
+    assert(math.abs(halfAlpha - alpha * 0.5) < 1e-9, "half presence, half ink")
+end)
+
+check("switched off it draws nothing, and garbage cannot switch it on", function()
+    loadModules()
+    local _, _, off = Omerta.HUD.VignetteBands(1920, 1080, 0)
+    assert(off == 0, "zero presence must draw literally nothing")
+
+    -- Presence is stepped by frame time, so a single enormous frame — a map
+    -- load, an alt-tab — must not reach a draw call as a negative or an
+    -- over-unity alpha. Same guard, same reason, as StepAlpha and RevealEase.
+    local _, _, under = Omerta.HUD.VignetteBands(1920, 1080, -3)
+    assert(under == 0, "a negative presence is off, not inverted")
+    local _, _, over = Omerta.HUD.VignetteBands(1920, 1080, 12)
+    assert(math.abs(over - Omerta.HUD.VIGNETTE.EDGE * 255) < 1e-9,
+        "over-unity clamps to the edge opacity, never above it")
+    local _, _, nan = Omerta.HUD.VignetteBands(1920, 1080, 0 / 0)
+    assert(nan == 0, "NaN must not escape into a draw call")
+    local _, _, none = Omerta.HUD.VignetteBands(nil, nil, nil)
+    assert(none == 0, "and neither must nil")
+end)
+
+check("the lens is ink, so it survives black and white", function()
+    loadModules()
+    -- It is drawn with the "plate" token through Omerta.HUD.Colour, which is
+    -- the one chokepoint the black-and-white setting acts at. Plate is already
+    -- the game's black, so desaturating it barely moves it — which is the
+    -- correct amount for a vignette to move when the world goes grey.
+    local plate = Omerta.HUD.Theme.COLOUR.plate
+    local luma = Omerta.HUD.Luma(plate[1], plate[2], plate[3])
+    assert(math.abs(luma - plate[1]) <= 1,
+        "the ink must read the same in monochrome as in colour, got " .. luma)
+    assert(luma < 24, "the lens darkens; it must never lighten the edges")
+end)
+
+--------------------------------------------------------------------------------
 suite("hud.stamina")
 --------------------------------------------------------------------------------
 
