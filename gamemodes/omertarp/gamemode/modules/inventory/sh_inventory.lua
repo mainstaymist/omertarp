@@ -452,6 +452,13 @@ Omerta.Net.Register("inventory.begin", {
         { name = "count",      type = "uint", bits = 8 },
         { name = "bulk_used",  type = "uint", bits = 24 },
         { name = "bulk_limit", type = "uint", bits = 24 },
+        -- And the same pair for whatever is being looted, so the second column
+        -- can answer "will this fit" without the player finding out by being
+        -- refused. Zero on both when there is nothing open, which is also what
+        -- an unlimited owner reports — a body has no capacity to run out of,
+        -- and a column that read "4 / 16777215" would be worse than silence.
+        { name = "their_used",  type = "uint", bits = 24 },
+        { name = "their_limit", type = "uint", bits = 24 },
     },
     handler = function(payload)
         Omerta.Inventory.Internal.BeginStream(payload)

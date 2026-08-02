@@ -880,12 +880,31 @@ local function sendInventory(ply, open)
     local theirs = open and cachedRows(open.owner.type, open.owner.id) or {}
     local limit = Omerta.Config.Get("inventory.max_stream")
 
+    -- What the thing being looted is holding, against what it can hold.
+    --
+    -- BulkLimit answers math.huge for a world owner and for anything with no
+    -- declared capacity, which is every body — so an unlimited owner is
+    -- reported as ZERO rather than as a number, and the client reads zero as
+    -- "this has no limit to speak of" and says nothing. A coat on a corpse does
+    -- not have a capacity the way a crate does, and inventing one for the sake
+    -- of filling a column would be inventing a rule.
+    local theirUsed, theirLimit = 0, 0
+    if open then
+        local capacity = Omerta.Inventory.BulkLimit(open.owner)
+        if capacity and capacity < math.huge then
+            theirUsed = math.min(Omerta.Inventory.SumBulk(theirs), 16777215)
+            theirLimit = math.min(capacity, 16777215)
+        end
+    end
+
     Omerta.Net.Send("inventory.begin", {
         container = wire,
         label = open and string.sub(open.label or "Container", 1, 24) or "",
         count = math.min(#mine + #theirs, limit),
         bulk_used = Omerta.Inventory.SumBulk(mine),
         bulk_limit = math.min(Omerta.Inventory.BulkLimit(ply), 16777215),
+        their_used = theirUsed,
+        their_limit = theirLimit,
     }, ply)
 
     local sent = 0

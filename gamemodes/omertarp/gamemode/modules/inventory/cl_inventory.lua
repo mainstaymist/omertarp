@@ -34,6 +34,10 @@ local state = {
     theirs = {},
     bulkUsed = 0,
     bulkLimit = 0,
+    -- The looted thing's own load, and what it can hold. Both zero means "this
+    -- has no limit worth naming" — a body, or nothing open — not "it is full".
+    theirUsed = 0,
+    theirLimit = 0,
 }
 
 -- The soft focus behind the window. One material, reused: rebuilding it per
@@ -67,6 +71,8 @@ function Internal.BeginStream(payload)
         theirs = {},
         bulkUsed = payload.bulk_used,
         bulkLimit = payload.bulk_limit,
+        theirUsed = payload.their_used or 0,
+        theirLimit = payload.their_limit or 0,
     }
 end
 
@@ -117,6 +123,10 @@ function Internal.EndStream(payload)
             state.mine = arrived.mine
             state.bulkUsed = arrived.bulkUsed
             state.bulkLimit = arrived.bulkLimit
+            -- theirUsed/theirLimit are NOT taken from a pockets refresh: that
+            -- stream carries zeroes for them, and copying those in would blank
+            -- the container's own line every time the player picked something
+            -- up out of it.
         else
             state = arrived
         end
@@ -971,6 +981,20 @@ local function release(panel)
     if frame ~= panel then return end
     frame = nil
     endLootSession()
+    -- The verb menu goes with the window it was opened from.
+    --
+    -- A DermaMenu is NOT a child of the row that spawned it — it is parented to
+    -- the screen, which is what lets it hang past the window's own edge — so
+    -- nothing about the window closing reaches it, and it was left standing on
+    -- an empty screen offering to Drop an item nobody could see. Worse than
+    -- untidy: those verbs still name a live instance id, so clicking one would
+    -- have acted on a real object from a window the player had already left.
+    --
+    -- Closed here rather than in the poll because this is where "the window is
+    -- gone" is actually decided, and the window has more ways out than the key:
+    -- a death, the front end taking the screen, a loot plate dismissed, a
+    -- rebuild that replaces the panel.
+    if Omerta.InEngine then CloseDermaMenus() end
 end
 
 function Omerta.Inventory.Show()
@@ -1105,7 +1129,27 @@ function Omerta.Inventory.Show()
 
             local columnWide = width * 0.5 - 1
             local title = state.label ~= "" and state.label or "Container"
-            local theirs = buildColumn(self, title, "C TO CLOSE",
+
+            -- What THEY are holding, against what they can hold.
+            --
+            -- A limit of zero means the thing has no capacity worth naming — a
+            -- body, a coat on a corpse — and the note stays as it was. Only a
+            -- declared container gets a number, because only a container can
+            -- actually refuse you, and a column that read "4 / 16777215" on a
+            -- dead man would be answering a question nobody asked.
+            --
+            -- "C TO CLOSE" is kept beside it either way: it is the only place
+            -- this window says how to leave, and a player who has just learned
+            -- the crate is full is exactly the player about to want that.
+            local theirNote = "C TO CLOSE"
+            if state.theirLimit and state.theirLimit > 0 then
+                local scale = Omerta.Inventory.BULK_SCALE
+                theirNote = string.format("%d / %d  ·  C TO CLOSE",
+                    math.floor((state.theirUsed or 0) / scale + 0.5),
+                    math.max(1, math.floor(state.theirLimit / scale + 0.5)))
+            end
+
+            local theirs = buildColumn(self, title, theirNote,
                 state.theirs, false, false)
             theirs.OmertaOwned = true
             theirs:SetPos(width * 0.5 + 1, 0)
@@ -1116,7 +1160,7 @@ function Omerta.Inventory.Show()
             -- their title row. Placed against the MEASURED note beside it: a
             -- fixed offset overlaps the moment the interface scale changes.
             surface.SetFont(Omerta.HUD.Font("mono"))
-            local noteWide = surface.GetTextSize("C TO CLOSE")
+            local noteWide = surface.GetTextSize(theirNote)
             local lootAllButton = Omerta.HUD.Button(theirs, "Loot all", "quiet",
                 startLootAll)
             local buttonTall = 26 * scale
