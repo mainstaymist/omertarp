@@ -40,9 +40,10 @@
 -- installed on the machine this was written on, so the only safe integration is
 -- one that guesses nothing about them. Sequence NAMES are data supplied by a
 -- dump from a real server; not one may be typed into the arsenal before that
--- dump exists, because a guessed name is silently wrong forever. Two weapons
--- have been dumped and carry blocks (the Thompson and the M1911, 2026-08-02);
--- the revolver has not and carries none.
+-- dump exists, because a guessed name is silently wrong forever. All three
+-- weapons have now been dumped and carry blocks (the Thompson and the M1911 on
+-- 2026-08-02, the Model 10 the same day); the fallback for a weapon with no
+-- block is unchanged and is what the fourth gun will live on.
 --
 -- The resolution — which sequence for which event, with which fallback and
 -- which sound — is PURE and lives above the engine line, so the headless suite
@@ -108,9 +109,9 @@ Omerta.Weapons.ANIM_CALLS = {
 -- `reload` has no default sound on purpose: our base emits nothing on a reload
 -- today (HL2 viewmodels carry their own sound events), and inventing foley for
 -- the placeholder weapons would be a change to guns nobody asked to change. A
--- ported weapon declares its own and gets it — and NEITHER PORTED WEAPON DOES
--- YET, because the dump that named their sequences did not name their sound
--- files. Their gunshots are still the HL2 placeholders their `sound` field has
+-- ported weapon declares its own and gets it — and NO PORTED WEAPON DOES YET,
+-- because the dumps that named their sequences did not name their sound files.
+-- All three gunshots are still the HL2 placeholders their `sound` field has
 -- always held. A sound path is a name like any other, and a guessed one is
 -- silently wrong forever.
 Omerta.Weapons.ANIM_EVENTS = {
@@ -217,14 +218,17 @@ Omerta.Weapons.ANIM_EVENT_ORDER = {
 -- CycleDelay and EquipDuration are — a mismatch should produce a brisk reload
 -- or a languid one, never a strobe and never a frozen hand.
 --
--- AND THE HONEST MOVE, WHICH IS NOW TAKEN FOR THE TWO GUNS WE HAVE READ.
+-- AND THE HONEST MOVE, WHICH IS NOW TAKEN FOR EVERY GUN WE HAVE READ.
 -- Stretching is a compensation for not knowing. With the real durations in hand
 -- the arsenal's numbers were moved onto the art wherever the art's length was
--- defensible as balance — the M1911 reloads in 2.635s and the Thompson in
--- 3.333s because that is how long their reloads take — so this formula returns
--- 1.0 for both and nothing is stretched at all. The clamp-bite warning below is
--- the worklist for the next gun: it names exactly the weapon whose declared
--- number and whose art disagree by more than a stretch can hide.
+-- defensible as balance — the M1911 reloads in 2.635s, the Thompson in 3.333s
+-- and the Model 10 in 5.375s because that is how long their reloads take — so
+-- this formula returns 1.0 for all six and nothing is stretched at all. The
+-- Model 10 is the case that proves the principle is not free: its declared 2.8s
+-- would have played at 1.92x, inside the clamp, silently, and the gun would have
+-- reloaded at double speed for the rest of its life with nothing in the log. The
+-- clamp-bite warning below is the worklist for the next gun; a stretch that
+-- fits is the one this file cannot warn about, which is why the arsenal moves.
 Omerta.Weapons.ANIM_RATE = { min = 0.25, max = 4 }
 
 -- Is this event's animation stretched to a duration the server is enforcing?

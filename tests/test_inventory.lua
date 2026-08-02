@@ -22,6 +22,7 @@ local MODULE_FILES = {
     "gamemodes/omertarp/gamemode/modules/characters/sv_repository.lua",
     "gamemodes/omertarp/gamemode/modules/characters/sv_characters.lua",
     "gamemodes/omertarp/gamemode/modules/hud/sh_module.lua",
+    "gamemodes/omertarp/gamemode/modules/hud/sh_gait.lua",
     "gamemodes/omertarp/gamemode/modules/hud/sh_hud.lua",
     "gamemodes/omertarp/gamemode/modules/hud/sv_stamina.lua",
     "gamemodes/omertarp/gamemode/modules/interaction/sh_module.lua",
@@ -430,14 +431,43 @@ check("the speed penalty starts at the boundary, ramps, and floors", function()
     assert(math.abs(S(3000, 2000, FLOOR, REACH) - FLOOR) < 1e-9)
     assert(math.abs(S(90000, 2000, FLOOR, REACH) - FLOOR) < 1e-9)
 
-    -- The worked example again: 26 against 20 is a stagger, not a crawl.
-    local staggering = S(2600, 2000, FLOOR, REACH)
-    assert(staggering > 0.70 and staggering < 0.76, staggering)
-
     -- Nonsense in, no opinion out. An owner with no capacity at all is not a
     -- character and is not walking anywhere.
     assert(S(500, 0, FLOOR, REACH) == 1)
     assert(S(nil, nil, nil, nil) == 1)
+end)
+
+-- The shape above is one thing; what a player actually MEETS is the shipped
+-- pair, and on 2026-08-02 the reach moved from 0.5 to 0.35 ("make the runspeed
+-- lower when you are overloaded"). The floor deliberately did not — see the
+-- composition check below, and sh_inventory.lua's own defence of it.
+check("the shipped ramp bites where an overloaded man actually stands", function()
+    loadModules()
+    local S = Omerta.Inventory.OverloadSpeedMultiplier
+    local floor = Omerta.Config.Get("inventory.overload_speed_floor")
+    local reach = Omerta.Config.Get("inventory.overload_reach")
+
+    assert(floor == 0.55, "the floor is the stack's calibration number, not a feel knob")
+    assert(reach == 0.35, "the reach is the number that decides what is felt")
+
+    -- THE DEPTH IS BOUNDED BY THE GATE, which is why the reach matters more than
+    -- the floor: MayReceive refuses every pick-up the moment you are over, so
+    -- the only way past the line is to remove capacity, and how far past you
+    -- land is whatever that one move cost. The design's worked example — take
+    -- the coat off with a Thompson under it — is 26 of bulk against 20.
+    local worked = S(2600, 2000, floor, reach)
+    assert(worked > 0.58 and worked < 0.64,
+        string.format("the worked example reads %.3f", worked))
+    assert(worked < 0.73 - 0.1,
+        "the case the design wrote down is barely slower than it was")
+
+    -- Reachable rather than theoretical: 35% over is one bad decision, not an
+    -- absurd one, and that is where the penalty now stops getting worse.
+    assert(math.abs(S(2700, 2000, floor, reach) - floor) < 1e-9,
+        "the floor is not reached by an ordinary overload")
+    -- Still not an event at the line itself.
+    local nudge = S(2001, 2000, floor, reach)
+    assert(nudge < 1 and nudge > 0.99, nudge)
 end)
 
 check("the penalty composes with the other things that slow a man down", function()
@@ -447,13 +477,18 @@ check("the penalty composes with the other things that slow a man down", functio
     local MIN = Omerta.HUD.Internal.MIN_SPEED_FRACTION
 
     local overload = function() return FLOOR end
-    local limp = function() return 0.72 end -- M19's limp, mid-stride
+    -- M19's limp, mid-stride (injury.limp_speed_scale). Hardcoded because this
+    -- file does not load M19; the authoritative version of this check, which
+    -- reads every number from its own module and goes end to end through the
+    -- seam, is "every penalty at once" in test_injury.lua.
+    local LIMP_MID = 0.68
+    local limp = function() return LIMP_MID end
     local starving = function() return Omerta.Hunger.SpeedMultiplier(0) end
 
     assert(C({ o = overload }, nil) == FLOOR, "alone it is exactly the floor")
 
     local both = C({ o = overload, l = limp }, nil)
-    assert(both < FLOOR and both < 0.72,
+    assert(both < FLOOR and both < LIMP_MID,
         "a limping overloaded man is slower than either alone")
 
     local all = C({ o = overload, l = limp, h = starving }, nil)

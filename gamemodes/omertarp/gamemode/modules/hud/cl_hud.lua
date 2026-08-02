@@ -603,35 +603,74 @@ local function cursorHasScreen()
     return vgui.CursorVisible() or gui.IsGameUIVisible() or gui.IsConsoleVisible()
 end
 
+-- Could this player be looking down a sight at all?
+--
+-- ONE function, asked by two different things for two different reasons, and
+-- that is deliberate rather than convenient. The crosshair element asks it as
+-- "may I be drawn" — a cursor has the screen, or there is nobody standing in the
+-- street to aim with. The aiming rule asks its NEGATION as "is this frame's
+-- picture the RESTING picture", because no sight can be up in any of these
+-- states, and a moment no sight can be up is a moment the baseline can be
+-- re-measured. Two answers to that question would be two answers that drift.
+local function canAim()
+    if cursorHasScreen() then return false end
+    local ply = LocalPlayer()
+    if not (IsValid(ply) and ply:Alive()) then return false end
+    -- Nothing to aim while on the floor or watching the death screen.
+    local C = Omerta.Injury and Omerta.Injury.Client
+    if C and (C.death or C.leaving or Omerta.Injury.IsDown(C.state)) then
+        return false
+    end
+    return true
+end
+
 -- ...and where a sight takes over.
 --
 -- The rule and every number are in sh_hud.lua's "Looking down a sight"; this is
 -- the two engine readings it is fed, and they are both base GMod.
 --
---   Player:GetFOV()   — the player's field of view THIS FRAME. It is the
---     reading that catches every mechanism a weapon system might use, because
---     they all end up here: SetFOV lands in it, and so does a SWEP's
---     TranslateFOV, which is the engine hook the ironsight of every base worth
---     the name is built on. We call neither of those; we read the result.
+--   render.GetViewSetup().fov — the field of view the frame was ACTUALLY DRAWN
+--     at. It is the one reading a narrowing cannot hide from, because the
+--     renderer is set up from what CalcView answered: a base that narrows there
+--     lands here, and so does one that goes through SetFOV or a SWEP's
+--     TranslateFOV. We call none of those; we read what they produced.
 --
---   fov_desired       — the field of view the player chose to play at, which is
---     the same kind of quantity as the reading above. That is the whole reason
---     the two are comparable at all.
+--   fov_desired — the field of view the player chose to play at. NOT compared
+--     against the reading above; they are different kinds of number, and
+--     comparing them was the first attempt's bug. It is what the calibration is
+--     measured AGAINST, so moving the slider moves the baseline with it.
 --
--- REJECTED: render.GetViewSetup(). It reports what the frame was actually drawn
--- at, which sounds strictly better, and it is the wrong reading here because it
--- is aspect-corrected — on a wide screen it hands back a horizontal field of
--- view that has nothing to do with fov_desired, so the ratio would be junk in
--- exactly the way that is hardest to notice. Two readings of the same kind beat
--- one better reading and one that does not match it.
---
--- KNOWN BLIND SPOT, on the record: a weapon system that narrows the picture ONLY
--- inside CalcView, never touching the player's own field of view, is invisible
--- to this. The symptom of that is the dot staying exactly as it is today — the
--- failure is a no-op rather than a wrong behaviour, which is the only kind of
--- failure worth accepting from a reading we cannot verify without the addon.
+-- WHY THE PREVIOUS READING FAILED, kept on the record because it is the reason
+-- this one is trusted. It was `Player:GetFOV()` against `fov_desired`, and its
+-- own header named the hole: a base that narrows only inside CalcView never
+-- touches the player's field of view, so GetFOV answers the same number all the
+-- way through an aim and the ratio is 1.000 forever. The field then reported the
+-- dot not moving on ANY weapon, which is that blind spot exactly rather than a
+-- threshold set wrong. `omerta_fov_watch` below prints all three readings side
+-- by side, so nobody has to take this on faith a second time.
 local aiming = false
 local sight = 1 -- 1 = the crosshair is the player's; 0 = the sight is
+local aimScale = nil -- drawn/desired at rest: measured, never assumed
+local lastW, lastH = 0, 0
+
+-- The rendered field of view, or nil when it cannot be read.
+--
+-- Exposed so omerta_fov_watch prints the SAME number the rule acts on: a
+-- diagnostic that takes its own reading is one that can agree with the code and
+-- disagree with the screen.
+--
+-- nil rather than a number when it fails, because "no reading" and "a reading of
+-- zero" are different facts and the rule has to tell them apart.
+function Omerta.HUD.ViewFOV()
+    if type(render) ~= "table" or type(render.GetViewSetup) ~= "function" then
+        return nil
+    end
+    local ok, setup = pcall(render.GetViewSetup)
+    if not ok or type(setup) ~= "table" then return nil end
+    local fov = tonumber(setup.fov)
+    if not fov or fov ~= fov or fov <= 0 then return nil end
+    return fov
+end
 
 -- Stepped in Think rather than in draw(), and that is not tidiness. draw() is
 -- not called on a frame the element is fully faded out, so a fade stepped there
@@ -640,11 +679,22 @@ local sight = 1 -- 1 = the crosshair is the player's; 0 = the sight is
 -- while they were reading it. Think runs every frame regardless of what is on
 -- screen, so the answer is always current by the time anything looks at it.
 hook.Add("Think", "omerta.hud.aiming", function()
-    local ply = LocalPlayer()
-    local fov = IsValid(ply) and ply:GetFOV() or nil
-    local desired = GetConVar("fov_desired")
+    -- A resolution change moves the aspect correction, which is the whole of
+    -- what the calibration measures — so it is a moment to re-read it, on the
+    -- same footing as a window being open. Held as two numbers rather than
+    -- assembled into a string: this runs every frame of the session.
+    local w, h = ScrW(), ScrH()
+    local resized = (w ~= lastW or h ~= lastH)
+    lastW, lastH = w, h
 
-    aiming = Omerta.HUD.IsAiming(fov, desired and desired:GetFloat(), aiming)
+    local desired = GetConVar("fov_desired")
+    aiming, aimScale = Omerta.HUD.StepAiming(
+        Omerta.HUD.ViewFOV(),
+        desired and desired:GetFloat(),
+        aimScale,
+        resized or not canAim(),
+        aiming)
+
     sight = Omerta.HUD.StepAlpha(sight, not aiming, FrameTime(), Omerta.HUD.AIM.FADE)
 end)
 
@@ -654,6 +704,106 @@ end)
 -- answer rather than taking its own reading of the same convar.
 function Omerta.HUD.Aiming() return aiming end
 
+-- What the resting picture currently measures against fov_desired, or nil
+-- before the first readable frame. For the diagnostic, and for anybody chasing
+-- a dot that will not come back: a scale that is not roughly constant across a
+-- session is the whole answer.
+function Omerta.HUD.AimCalibration() return aimScale end
+
+--------------------------------------------------------------------------------
+-- omerta_fov_watch: which reading actually moves
+--------------------------------------------------------------------------------
+-- The crosshair has now been asked twice to get out of the way of a sight, and
+-- the first attempt failed on a reasoned guess about which number a weapon
+-- framework moves. This is what makes a third guess unnecessary: it prints the
+-- readings side by side while somebody aims, and the one that MOVES is the one
+-- a sight is visible in. It ships permanently for that reason — it is small,
+-- and the alternative is guessing again.
+--
+-- Ungated, like omerta_hud_selftest and omerta_inventory beside it. It reads
+-- nothing but the caller's own camera, and the person best placed to run it
+-- while aiming is whoever is reporting that aiming does nothing.
+local WATCH_SAMPLE = 0.1 -- seconds. 10Hz is legible in a console; 60 is not.
+
+-- Every NUMERIC field of the view setup, sorted, on one line. Printed whole
+-- rather than picked from, because "which field moved" is the question this
+-- command exists to answer, and a field nobody thought to print is a field
+-- nobody can watch move. Sorted so two samples can be read against each other.
+local function viewSetupLine()
+    if type(render) ~= "table" or type(render.GetViewSetup) ~= "function" then
+        return "render.GetViewSetup is not available on this build"
+    end
+    local ok, setup = pcall(render.GetViewSetup)
+    if not ok or type(setup) ~= "table" then return "unreadable" end
+
+    local keys = {}
+    for key, value in pairs(setup) do
+        if type(value) == "number" then keys[#keys + 1] = key end
+    end
+    table.sort(keys)
+
+    local parts = {}
+    for _, key in ipairs(keys) do
+        parts[#parts + 1] = string.format("%s=%.3f", key, setup[key])
+    end
+    return table.concat(parts, "  ")
+end
+
+concommand.Add("omerta_fov_watch", function(_, _, args)
+    local seconds = math.Clamp(tonumber(args[1]) or 5, 1, 30)
+    local stopAt = SysTime() + seconds
+    local nextAt, first = 0, true
+
+    Omerta.Log.Info("hud", "watching the camera for %.0fs — AIM NOW. The " ..
+        "reading that MOVES is the one a sight is visible in; the crosshair " ..
+        "rule reads 'view'.", seconds)
+
+    hook.Add("Think", "omerta.hud.fov_watch", function()
+        local now = SysTime()
+        local done = now >= stopAt
+        if now < nextAt and not done then return end
+        nextAt = now + WATCH_SAMPLE
+
+        local ply = LocalPlayer()
+        local playerFov = IsValid(ply) and ply:GetFOV() or nil
+        local cvar = GetConVar("fov_desired")
+        local desired = cvar and cvar:GetFloat() or nil
+        local view = Omerta.HUD.ViewFOV()
+        local scale = Omerta.HUD.AimCalibration()
+
+        -- The ratio the rule is actually testing, assembled exactly as the rule
+        -- assembles it, so a threshold can be read straight off this line.
+        local ratio = "-"
+        if view and desired and scale and desired > 0 and scale > 0 then
+            ratio = string.format("%.3f", view / (desired * scale))
+        end
+
+        Omerta.Log.Info("hud",
+            "  GetFOV %-8s fov_desired %-8s view %-8s scale %-8s ratio %-7s %s",
+            playerFov and string.format("%.2f", playerFov) or "nil",
+            desired and string.format("%.2f", desired) or "nil",
+            view and string.format("%.2f", view) or "nil",
+            scale and string.format("%.4f", scale) or "nil",
+            ratio,
+            Omerta.HUD.Aiming() and "AIMING" or "")
+
+        -- The whole setup at both ends of the window: aim in between, and the
+        -- two lines are a diff of everything the renderer was told.
+        if first or done then
+            Omerta.Log.Info("hud", "  [%s] %s", first and "first" or "last",
+                viewSetupLine())
+            first = false
+        end
+
+        if done then
+            hook.Remove("Think", "omerta.hud.fov_watch")
+            Omerta.Log.Info("hud", "done. A sight is anything at or under %.2f " ..
+                "of the resting picture, and it lets go past %.2f.",
+                Omerta.HUD.AIM.ENTER, Omerta.HUD.AIM.LEAVE)
+        end
+    end)
+end)
+
 Omerta.HUD.Register("interactable", {
     order = 40,
     -- The element's own fade, for the reasons it appears and disappears: a
@@ -661,17 +811,9 @@ Omerta.HUD.Register("interactable", {
     -- its own, quicker one above, because it is the player's hand moving rather
     -- than the world changing.
     fade = 0.15,
-    visible = function()
-        if cursorHasScreen() then return false end
-        local ply = LocalPlayer()
-        if not (IsValid(ply) and ply:Alive()) then return false end
-        -- Nothing to aim while on the floor or watching the death screen.
-        local C = Omerta.Injury and Omerta.Injury.Client
-        if C and (C.death or C.leaving or Omerta.Injury.IsDown(C.state)) then
-            return false
-        end
-        return true
-    end,
+    -- The same question the calibration asks, from the other side: if a sight
+    -- could not be up, there is nothing here to aim either. See canAim().
+    visible = canAim,
     draw = function(alpha)
         -- The sight's alpha MULTIPLIES the controller's rather than replacing
         -- it, so the two stay separate facts: the controller's says whether

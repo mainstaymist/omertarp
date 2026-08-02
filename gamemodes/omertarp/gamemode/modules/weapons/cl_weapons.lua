@@ -188,11 +188,173 @@ Omerta.HUD.Register("weapons.rounds", {
 -- spec is a second thing to explain when somebody eventually wants a staff
 -- tool. If it needs doing it is one more hook, in this section, with its own
 -- sentence.
+--
+-- WHAT THE FIELD SAID, 2026-08-02: THE MENU STILL OPENS. Both gates above were
+-- installed and the customisation window still comes up on C, over the
+-- inventory. That is not a tuning problem, it is a proof: something that
+-- survives ContextMenuOpen answering false and survives the bind never running
+-- is not going through the context menu and is not going through the bind. It
+-- is on PlayerButtonDown, which is a NOTIFICATION — the engine tells every
+-- listener a key went down and reads nothing back, so there is no value we can
+-- return that stops it. The third hook this section could have grown would have
+-- been the third thing that does not work.
+--
+-- So the gates stay (they are correct for this gamemode on their own terms, and
+-- they are what stops the context menu being opened by any OTHER route), and
+-- the listener is removed by name instead. The sweep is below; why removing a
+-- hook by name is allowed where CALLING somebody's function is not is argued in
+-- full at "Somebody else's HOOK" in sh_weapons.lua, and the short version is
+-- that a name that matches nothing removes nothing and leaves today's behaviour
+-- — which is a state we are already in.
+
+-- Both gates and the sweep answer to ONE setting, so "turn it off" means all of
+-- it rather than two thirds of it. Client-side because every hook here is
+-- client-side: the menu is a panel, and the key that opens it is pressed on the
+-- machine the panel would appear on.
+CreateClientConVar("omerta_context_suppress", "1", true, false)
+
+-- And WHOSE hooks. A setting rather than a constant because the identifier is
+-- the one thing here nobody has read: if the pack spells itself differently, or
+-- a second framework arrives, this is a console line rather than a patch. The
+-- default is the pack the arsenal names.
+--
+-- An empty value sweeps NOTHING (PlanHookRemoval refuses it), which is the
+-- safe way to switch the sweep off while leaving the gates on.
+CreateClientConVar("omerta_context_match", "arc9", true, false)
+
+local function suppressionOn()
+    local cvar = GetConVar("omerta_context_suppress")
+    return cvar == nil or cvar:GetInt() ~= 0
+end
+
+-- What was taken out, kept so it can be put back. The FUNCTION is stored beside
+-- the name because that is the only way a removal is reversible — and storing a
+-- function is not calling one. Nothing in this file ever calls what it holds;
+-- the only thing done with it is handing it to hook.Add again.
+local removedHooks = {}
+local announced = {}
+
+local function sweepForeignHooks()
+    if not suppressionOn() then return end
+    local matchCvar = GetConVar("omerta_context_match")
+    local plan = Omerta.Weapons.PlanHookRemoval(hook.GetTable(),
+        Omerta.Weapons.HOOK_SWEEP_EVENTS,
+        matchCvar and matchCvar:GetString() or "")
+
+    for _, entry in ipairs(plan) do
+        hook.Remove(entry.event, entry.id)
+        removedHooks[#removedHooks + 1] = entry
+
+        -- INFO, not silence, and not a warning either: this is a deliberate act
+        -- on somebody else's code and the operator is entitled to see it happen
+        -- rather than wonder why an addon's key stopped working. Once per
+        -- identifier — a framework that re-registers on every spawn would
+        -- otherwise print the same line all night.
+        local key = entry.event .. "|" .. entry.id
+        if not announced[key] then
+            announced[key] = true
+            Omerta.Log.Info("weapons", "removed hook '%s' from %s — it is not " ..
+                "ours and this gamemode has no context menu (omerta_context_suppress 0 " ..
+                "puts it back)", entry.id, entry.event)
+        end
+    end
+end
+
+local function restoreForeignHooks()
+    if #removedHooks == 0 then return end
+    for _, entry in ipairs(removedHooks) do
+        hook.Add(entry.event, entry.id, entry.fn)
+        Omerta.Log.Info("weapons", "restored hook '%s' on %s", entry.id, entry.event)
+    end
+    removedHooks = {}
+    announced = {}
+end
+
+-- Swept repeatedly, and that is not belt and braces. An addon is free to
+-- register its hooks whenever it likes — at file scope, on InitPostEntity, on
+-- the first spawn, or on a Lua refresh — and a one-shot sweep at load would win
+-- or lose depending on include order, which is exactly the class of bug this
+-- module keeps being bitten by. A walk of five events costs a handful of table
+-- lookups, so it simply runs again.
+hook.Add("InitPostEntity", "omerta.weapons.hook_sweep", sweepForeignHooks)
+timer.Create("omerta.weapons.hook_sweep", 5, 0, sweepForeignHooks)
+sweepForeignHooks()
+
+cvars.AddChangeCallback("omerta_context_suppress", function(_, _, new)
+    if tonumber(new) == 0 then restoreForeignHooks() else sweepForeignHooks() end
+end, "omerta.weapons.context")
+
+-- Changing WHO is swept has to put the old set back first, or a corrected
+-- pattern would leave the previous pattern's casualties removed with no record
+-- of which setting took them.
+cvars.AddChangeCallback("omerta_context_match", function()
+    restoreForeignHooks()
+    sweepForeignHooks()
+end, "omerta.weapons.context_match")
+
+--------------------------------------------------------------------------------
+-- omerta_hook_dump: what is actually listening
+--------------------------------------------------------------------------------
+-- Two gates were installed against the C menu on reasoning alone and neither
+-- worked. This is the command that would have said so in one line, so it ships
+-- before the fix rather than after it: every listener on the events a keypress
+-- can travel through, by identifier, with the ones the sweep would take marked.
+--
+-- It reports Think and HUDPaint as well, which the sweep never touches, because
+-- "nothing is listening on any input event" is a real answer and it means the
+-- addon is polling the keyboard from a per-frame hook instead. A dump that only
+-- showed what we were prepared to remove would have quietly agreed with
+-- whatever we already believed.
+concommand.Add("omerta_hook_dump", function(caller, _, args)
+    if IsValid(caller) and not caller:IsSuperAdmin() then return end
+
+    local matchCvar = GetConVar("omerta_context_match")
+    local match = matchCvar and matchCvar:GetString() or ""
+    local filter = args[1] and args[1] ~= "" and args[1] or nil
+
+    -- What the sweep WOULD take, right now, computed by the same function the
+    -- sweep uses so the two can never disagree about what is marked.
+    local sweeping = {}
+    for _, entry in ipairs(Omerta.Weapons.PlanHookRemoval(hook.GetTable(),
+        Omerta.Weapons.HOOK_SWEEP_EVENTS, match)) do
+        sweeping[entry.event .. "|" .. entry.id] = true
+    end
+
+    local hooks = hook.GetTable()
+    for _, event in ipairs(Omerta.Weapons.HOOK_DUMP_EVENTS) do
+        if not filter or event:lower() == filter:lower() then
+            local listeners = hooks[event]
+            local names = {}
+            for id in pairs(type(listeners) == "table" and listeners or {}) do
+                -- An identifier may be a panel or an entity rather than a
+                -- string. Printed as what it is, because "there is a listener
+                -- here that cannot be matched by name" is the single most
+                -- useful thing this command can say about one.
+                names[#names + 1] = type(id) == "string" and id
+                    or ("<" .. type(id) .. " " .. tostring(id) .. ">")
+            end
+            table.sort(names)
+
+            Omerta.Log.Info("weapons", "%s: %d listener(s)", event, #names)
+            for _, name in ipairs(names) do
+                Omerta.Log.Info("weapons", "    %-44s%s", name,
+                    sweeping[event .. "|" .. name] and "  [SWEPT]" or "")
+            end
+        end
+    end
+
+    Omerta.Log.Info("weapons", "matching '%s'; suppression is %s. %d hook(s) " ..
+        "removed this session.", match, suppressionOn() and "ON" or "OFF",
+        #removedHooks)
+end)
+
 hook.Add("ContextMenuOpen", "omerta.weapons.no_context", function()
+    if not suppressionOn() then return end
     return false
 end)
 
 hook.Add("PlayerBindPress", "omerta.weapons.no_context_bind", function(_, bind)
+    if not suppressionOn() then return end
     -- Matched as a SUBSTRING rather than compared to "+menu_context". A bind
     -- arrives here with its sign attached and the release half of a +command is
     -- reported by some builds as `-menu_context`; matching the command's name

@@ -22,6 +22,7 @@ local MODULE_FILES = {
     "gamemodes/omertarp/gamemode/modules/characters/sv_repository.lua",
     "gamemodes/omertarp/gamemode/modules/characters/sv_characters.lua",
     "gamemodes/omertarp/gamemode/modules/hud/sh_module.lua",
+    "gamemodes/omertarp/gamemode/modules/hud/sh_gait.lua",
     "gamemodes/omertarp/gamemode/modules/hud/sh_hud.lua",
     "gamemodes/omertarp/gamemode/modules/hud/sv_stamina.lua",
     "gamemodes/omertarp/gamemode/modules/interaction/sh_module.lua",

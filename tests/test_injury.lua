@@ -22,6 +22,7 @@ local MODULE_FILES = {
     "gamemodes/omertarp/gamemode/modules/characters/sv_repository.lua",
     "gamemodes/omertarp/gamemode/modules/characters/sv_characters.lua",
     "gamemodes/omertarp/gamemode/modules/hud/sh_module.lua",
+    "gamemodes/omertarp/gamemode/modules/hud/sh_gait.lua",
     "gamemodes/omertarp/gamemode/modules/hud/sh_hud.lua",
     "gamemodes/omertarp/gamemode/modules/hud/sv_stamina.lua",
     "gamemodes/omertarp/gamemode/modules/interaction/sh_module.lua",
@@ -1312,12 +1313,7 @@ check("the limp survives the movement floor, and stacks with recovering", functi
     -- End to end against D-034's base: the two ends of one stride have to be
     -- different speeds after the flooring and the flooring's integer maths, or
     -- there is nothing to feel.
-    local base = {
-        walk = Omerta.Config.Get("movement.walk_speed"),
-        jog = Omerta.Config.Get("movement.jog_speed"),
-        jump = Omerta.Config.Get("movement.jump_power"),
-        exhaustedJumpScale = Omerta.Config.Get("stamina.exhausted_jump_scale"),
-    }
+    local base = Omerta.HUD.Internal.BaseMovement()
     local L = Omerta.Injury.LimpSpeedMultiplier
     local slow = Omerta.HUD.Internal.MovementFor(base, L(0, mid, swing), false)
     local fast = Omerta.HUD.Internal.MovementFor(base,
@@ -1325,6 +1321,147 @@ check("the limp survives the movement floor, and stacks with recovering", functi
     assert(fast > slow, "both ends of the stride land on the same walk speed")
     assert(fast - slow >= 10,
         "the difference between the two legs is too small to read as a limp")
+end)
+
+-- The limp was slowed on 2026-08-02 ("lower the runspeed when you have a broken
+-- leg"). WHICH END of the stride moved is the whole ruling, so it is pinned
+-- rather than left to whoever next edits the two numbers.
+check("the limp is slower throughout, and not merely slower at its slowest", function()
+    loadModules()
+    local mid = Omerta.Config.Get("injury.limp_speed_scale")
+    local swing = Omerta.Config.Get("injury.limp_swing")
+
+    assert(mid == 0.68 and swing == 0.21, "the tuned pair")
+
+    -- The AVERAGE came down. That is the request: a man on a broken leg covers
+    -- less ground per second than he did, at every point of the stride.
+    assert(mid < 0.72, "the middle of the gait did not move")
+    assert(mid + swing < 0.94, "the good leg's push is slower than it was")
+    assert(mid - swing < 0.50, "and so is the bad leg's settle")
+
+    -- The SHAPE did not. The ratio between the shove and the settle is what the
+    -- eye reads as a limp rather than as network lag (sh_injury_falls), and it
+    -- was tuned in the field: 0.94/0.50 was 1.88, and this must stay near it.
+    -- A limp that is slower ONLY at its slowest is a lurch, which is a different
+    -- injury from the one the lead asked to slow down.
+    local ratio = (mid + swing) / (mid - swing)
+    assert(math.abs(ratio - 1.88) < 0.1,
+        string.format("the gait changed shape, not just pace (ratio %.2f)", ratio))
+
+    -- The slowest point of the stride is deliberately almost where it was: it is
+    -- the moment the whole modifier stack is nearest M8's clamp, and anything
+    -- flattened there stops being a limp at all.
+    assert(mid - swing > 0.45, "the bottom of the stride fell further than intended")
+
+    -- Compounding with the lowered jog is the other half of the answer: the
+    -- multiplier moved 5.5%, the ground covered at a run moved far more.
+    local jog = Omerta.Config.Get("movement.jog_speed")
+    assert(math.floor(jog * mid) <= 120, "a limping run is not much slower than it was")
+end)
+
+-- THE CALIBRATION CHECK. Every registered speed modifier at once, every number
+-- read from the module that owns it, and the answer taken end to end through
+-- M8's seam rather than off the raw product — because the property being
+-- protected is about SPEEDS a player can tell apart, and the seam floors and
+-- rounds to integers before anybody feels anything.
+--
+-- The property: a starving, limping, overloaded man must still be measurably
+-- faster than the clamp, so that three penalties read as three penalties
+-- instead of all piling onto MIN_SPEED_FRACTION and reading as one crawl.
+-- This is the check the 2026-08-02 pass had to spend headroom against, and it
+-- is deliberately the thing that will fail first if anybody lowers any of the
+-- three again.
+check("every penalty at once still leaves a speed, not the clamp", function()
+    loadModules()
+    local M = Omerta.HUD.Internal.MovementFor
+    local C = Omerta.HUD.Internal.CombineModifiers
+    local MIN = Omerta.HUD.Internal.MIN_SPEED_FRACTION
+    local base = Omerta.HUD.Internal.BaseMovement()
+
+    local mid = Omerta.Config.Get("injury.limp_speed_scale")
+    local swing = Omerta.Config.Get("injury.limp_swing")
+    local L = Omerta.Injury.LimpSpeedMultiplier
+
+    local starving = function() return Omerta.Hunger.SpeedMultiplier(0) end
+    local overloaded = function()
+        return Omerta.Inventory.OverloadSpeedMultiplier(3000, 2000,
+            Omerta.Config.Get("inventory.overload_speed_floor"),
+            Omerta.Config.Get("inventory.overload_reach"))
+    end
+    -- THE MIDDLE OF THE GAIT, taken from the curve rather than asserted: the
+    -- warp puts the cosine on zero a quarter of the way through the shove, so
+    -- this phase is exactly `mid` and stays exactly `mid` if the warp is ever
+    -- retuned. The calibration is written against the AVERAGE of a stride; the
+    -- two ends of it are handled at the bottom of this check.
+    local average = Omerta.Injury.LIMP.PUSH_SHARE / 2
+    local limping = function() return L(average, mid, swing) end
+
+    assert(math.abs(limping() - mid) < 1e-9,
+        "that phase is no longer the middle of the gait")
+    assert(starving() == 0.75 and overloaded() == 0.55,
+        "the two floors this calibration is written against have moved")
+
+    local clamped = math.floor(base.walk * MIN)
+    local function walkAt(...)
+        local mods = {}
+        for index, fn in ipairs({ ... }) do mods["m" .. index] = fn end
+        return (M(base, C(mods, nil), false))
+    end
+
+    local none = walkAt()
+    local one = walkAt(overloaded)
+    local two = walkAt(overloaded, limping)
+    local three = walkAt(overloaded, limping, starving)
+
+    -- Four distinct speeds. This is the whole property: if any two of these are
+    -- equal, a penalty has stopped being visible to the player.
+    assert(none > one and one > two and two > three,
+        string.format("%d / %d / %d / %d — a penalty is invisible",
+            none, one, two, three))
+    assert(three > clamped, string.format(
+        "a starving, limping, overloaded man is on the %d clamp at %d",
+        clamped, three))
+
+    -- With real margin, not a rounding away from it. Three units of walk is
+    -- about a fiftieth of the stack, and it is all there is: this is why the
+    -- overload FLOOR was left alone when the reach was sharpened, and why the
+    -- limp came down 0.04 and not 0.10.
+    assert(three - clamped >= 3, string.format(
+        "only %d unit(s) of headroom over the clamp", three - clamped))
+
+    -- The jog is the number the project lead was actually complaining about, so
+    -- it is worth stating what the worst case does to it: still moving, still
+    -- above a clamped walk, and nowhere near the running animation.
+    local _, _, jog = M(base, C({ o = overloaded, l = limping, h = starving }, nil), false)
+    assert(jog > clamped, "the jog collapsed into the clamp")
+    assert(Omerta.HUD.GaitAnimation(jog) == Omerta.HUD.GAIT.WALK,
+        "a man in this state should not be playing a running animation")
+
+    -- AND THE HONEST PART, in two halves.
+    --
+    -- FIRST: at the very bottom of a limping stride the stack does touch the
+    -- clamp, and it did before this pass too — the threshold is
+    -- 0.25 / (0.75 x 0.55) = 0.606 of a limp, which sits above the middle of the
+    -- gait whatever the limp is tuned to. It is one instant of one stride for a
+    -- man who is starving, crippled AND overloaded, and buying it back would
+    -- cost one of the three penalties its whole magnitude.
+    local worstInstant = walkAt(overloaded, function() return L(0, mid, swing) end,
+        starving)
+    assert(worstInstant == clamped,
+        "the bottom of the stride is no longer where this calibration thinks")
+
+    -- SECOND: there is a FOURTH registrant, M19's own recovery penalty, at its
+    -- worst the moment somebody stands up from being put down. All four at once
+    -- lands on the clamp as well — 0.75 x 0.68 x 0.55 x 0.8 = 0.224 — and that
+    -- is stated here rather than left to be discovered, because it is the case
+    -- that decides there is no room for a fifth penalty at all. It was equally
+    -- clamped before the limp was lowered (0.238 against the same 0.25), so it
+    -- is a standing property of the stack and not something this pass spent.
+    local recovering = function()
+        return Omerta.Config.Get("injury.recovery_speed_scale")
+    end
+    assert(walkAt(overloaded, limping, starving, recovering) == clamped,
+        "four penalties at once no longer reach the clamp — the budget moved")
 end)
 
 check("the camera bobs with the legs, and not at all while standing still", function()

@@ -197,6 +197,133 @@ function Omerta.Weapons.ResolveExternal(present, allow)
 end
 
 --------------------------------------------------------------------------------
+-- Somebody else's HOOK
+--------------------------------------------------------------------------------
+-- C is the inventory, and a mounted weapon framework was still opening its
+-- customisation menu over the top of the pockets after both of the gates in
+-- cl_weapons.lua were installed. That is evidence rather than opinion: a
+-- listener that survives `ContextMenuOpen` returning false and survives
+-- `PlayerBindPress` returning true is not going through the context menu at
+-- all — it is on `PlayerButtonDown`, which is a NOTIFICATION. Nothing returned
+-- from it cancels anything, so there is no answer we can give that stops it.
+--
+-- What CAN stop it is the hook not being registered. `hook.GetTable()` hands
+-- back every listener in the game, event by event, with the identifier each was
+-- registered under, and `hook.Remove(event, identifier)` takes one out.
+--
+-- WHY THIS IS NOT THE THING D-043/D-044 FORBID, and the distinction is the
+-- whole justification for the section, so it is stated rather than implied.
+--
+-- Those rules ban CALLING a third party's function, and the reason is the
+-- failure mode: a guessed function name is silently wrong FOREVER — the call
+-- either errors inside our own path or, worse, does nothing while looking like
+-- it did something. Detection by name has the same disease, which is why
+-- `ResolveExternal` detects by whether the class exists rather than by what an
+-- addon is called.
+--
+-- REMOVING A HOOK BY NAME FAILS THE OTHER WAY. An identifier that matches
+-- nothing removes nothing, and removing nothing leaves precisely today's
+-- behaviour — a state we are already in and have already shipped. There is no
+-- silent wrongness available: the identifiers are read off the live hook table
+-- rather than assumed, every removal is logged by name, and a pattern that
+-- matches nothing produces an empty log and an unchanged game. That asymmetry
+-- is the same one D-044 leans on ("a wrong guess about a NAME is silently wrong
+-- forever, a wrong guess about a FUNCTION simply does not match") pointed the
+-- other way round: here the wrong guess is the one that does nothing.
+--
+-- Nothing below calls anything belonging to anybody. It reads a table the
+-- engine owns, compares strings, and hands identifiers back to hook.Remove.
+-- The removed functions are KEPT so the operator can put them back, and putting
+-- one back is hook.Add with the same function object — storing and returning a
+-- function is not calling it, and this file never calls one.
+
+-- What the dump reports. Two groups, deliberately different in kind:
+--
+--   the five INPUT AND MENU events — everything that can turn a keypress into
+--   something appearing on screen. This is where a customisation menu lives.
+--
+--   Think and HUDPaint — because a framework that POLLS the keyboard rather
+--   than listening for it will be in one of those and nowhere else, and a dump
+--   that could not show that would send the next reader off to look for a
+--   listener that does not exist.
+--
+-- The second group is reported and NEVER swept. Removing somebody's Think is
+-- removing their whole weapon.
+Omerta.Weapons.HOOK_DUMP_EVENTS = {
+    "PlayerButtonDown",
+    "PlayerButtonUp",
+    "PlayerBindPress",
+    "ContextMenuOpen",
+    "OnContextMenuOpen",
+    "Think",
+    "HUDPaint",
+}
+
+-- What the sweep may touch. A strict subset of the above, and the difference is
+-- the point: these are the events on which a hook's entire job is to react to a
+-- key or to open the context menu, so removing one removes a keypress
+-- behaviour and cannot remove a weapon's ability to shoot.
+Omerta.Weapons.HOOK_SWEEP_EVENTS = {
+    "PlayerButtonDown",
+    "PlayerButtonUp",
+    "PlayerBindPress",
+    "ContextMenuOpen",
+    "OnContextMenuOpen",
+}
+
+-- Which listeners a sweep would take out. PURE, and it takes the hook table as
+-- an argument for the same reason ResolveExternal takes a detector and
+-- ResolveModel takes a validator: the decision is then exercisable headlessly,
+-- against a hook table conjured out of nothing, on a machine that has no addons
+-- at all.
+--
+-- `hooks` is hook.GetTable()-shaped: event -> identifier -> function.
+-- `match` is a fragment of an identifier, matched as a case-insensitive plain
+-- substring — "arc9" catches ARC9_ContextMenu, arc9.buttons and everything in
+-- between without anybody having to know which spelling the addon chose.
+--
+-- Returns an array of { event =, id =, fn = }, ordered by event then id so the
+-- log reads the same way on every boot.
+--
+-- THREE THINGS IT WILL NOT DO, each of which is a way this could have become
+-- the dangerous kind of tool:
+--
+--   * An empty or absent `match` sweeps NOTHING. A pattern that matched
+--     everything would remove every listener in the game, which is the one
+--     mistake that must be impossible rather than merely unlikely.
+--   * An identifier that is not a string is left alone. Hooks may be registered
+--     under a panel or an entity, and a name-matching rule has nothing to say
+--     about those — it is not entitled to guess.
+--   * Anything registered under `omerta.` is ours and is never removed, however
+--     the operator spells the pattern.
+function Omerta.Weapons.PlanHookRemoval(hooks, events, match)
+    local plan = {}
+    if type(hooks) ~= "table" or type(events) ~= "table" then return plan end
+
+    match = type(match) == "string" and match:gsub("^%s+", ""):gsub("%s+$", "") or ""
+    if match == "" then return plan end
+    match = match:lower()
+
+    for _, event in ipairs(events) do
+        local listeners = hooks[event]
+        if type(listeners) == "table" then
+            for id, fn in pairs(listeners) do
+                if type(id) == "string" and id:lower():find(match, 1, true)
+                    and not id:lower():find("^omerta%.") then
+                    plan[#plan + 1] = { event = event, id = id, fn = fn }
+                end
+            end
+        end
+    end
+
+    table.sort(plan, function(a, b)
+        if a.event ~= b.event then return a.event < b.event end
+        return a.id < b.id
+    end)
+    return plan
+end
+
+--------------------------------------------------------------------------------
 -- The ammunition bridge (pure)
 --------------------------------------------------------------------------------
 -- D-004 does not bend for a third-party SWEP: THE INVENTORY IS STILL THE

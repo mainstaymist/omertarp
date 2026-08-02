@@ -26,7 +26,7 @@
 -- "Somebody else's SWEP" section of sh_weapons.lua for why that is the only
 -- claim this file is allowed to make about an addon nobody here has read.
 --
--- WHERE THE ANIMATION BLOCKS ARE. On two of the three, as of 2026-08-02.
+-- WHERE THE ANIMATION BLOCKS ARE. On all three, as of 2026-08-02.
 --
 -- A weapon may declare `anim = { fire = "…", reload = "…", … }` naming the
 -- sequence in its viewmodel that belongs to each event the base knows about —
@@ -35,12 +35,17 @@
 --
 -- EVERY NAME BELOW WAS READ OFF A MODEL BY `omerta_weapon_dump <class>` ON A
 -- REAL SERVER, and not one of them is a guess. That rule does not relax now
--- that two guns have been ported; it is the whole reason those two could be.
+-- that the arsenal is fully ported; it is the whole reason it could be.
 -- D-044's asymmetry is why — a wrong guess about a name is silently wrong
 -- forever, where a wrong guess about a function simply does not match — and a
--- sequence name is the first kind. The Model 10 therefore still has no block:
--- `arc9_doi_sw1917` has never been dumped, and a weapon with no block plays
--- exactly the ACT_VM_* activities it has always played.
+-- sequence name is the first kind. The Model 10 was the last one waiting, and
+-- `arc9_doi_sw1917` came back on 2026-08-02; the fallback it was living on is
+-- still there and is still what the next gun gets until its own dump arrives.
+--
+-- WHAT A DUMP MAY NOT DECIDE: which of a model's animations we USE. The
+-- revolver came back with two complete and mutually exclusive reload families,
+-- and only one of them is a reload our base can honestly drive — see its block.
+-- A dump answers "what exists", never "what this gamemode does".
 --
 -- The dump prints every sequence with its name and its DURATION, and both
 -- halves are used: the names are the block, and the durations are what the
@@ -87,7 +92,43 @@ Omerta.Weapons.Register("weapon.revolver", {
     chamber = "cylinder", -- what the ammunition counter calls where rounds sit
     spread = 0.9,
     recoil = 2.2,
-    reloadTime = 2.8,
+
+    --   reloadTime 5.375 / reloadEmptyTime 6.031 — MOVED ONTO THE ART,
+    --     2026-08-02, from 2.8 for both. `arc9_doi_sw1917`'s moon-clip reload
+    --     runs 5.375s and the same reload from an empty cylinder runs 6.031s.
+    --
+    --     THIS IS THE LARGEST BALANCE MOVE THE PORT HAS MADE and it deserves a
+    --     look in the field rather than a nod here. 2.8s was a number nobody
+    --     measured; 5.375s is nearly twice it, and it makes the Model 10 by a
+    --     distance the slowest gun in the arsenal to bring back into a fight —
+    --     slower than a Thompson's stick magazine (3.333s), and slower even
+    --     than a Thompson run dry (4.762s).
+    --
+    --     What the move BUYS, and why it was taken rather than the animation
+    --     being stretched to 2.8 (which is a 1.92x playback rate, inside the
+    --     clamp and visibly hurried): the design's whole position on this gun is
+    --     that it is the weapon anybody can hide, and that concealment is paid
+    --     for somewhere. Until now it was paid for in damage and rate of fire
+    --     only. Now it is paid for in the one currency a gunfight actually
+    --     spends — a man who empties a revolver is out of the argument for six
+    --     seconds, which is a genuinely frightening length of time and exactly
+    --     what loading a cylinder by hand should feel like.
+    --
+    --     The M1911's paragraph below still holds and holds harder: its 2.635s
+    --     magazine change is now less than half the revolver's, so "the sidearm
+    --     that is back in the fight first" is no longer a close-run thing. What
+    --     it LOSES is one line of that paragraph — the M1911's empty reload
+    --     (3.333s) used to cost more than the revolver's only reload, and it no
+    --     longer does. Running an automatic dry is still worse than not, but it
+    --     is no longer worse than carrying a revolver.
+    --
+    --     The 0.656s between the two revolver numbers is the smallest gap in the
+    --     arsenal, and the art agreeing with the prose is the pleasant part: the
+    --     comment that used to live here argued that "a revolver that has fired
+    --     five rounds is not meaningfully quicker to fill than one that has
+    --     fired six", and the animator evidently thought so too.
+    reloadTime = 5.375,
+    reloadEmptyTime = 6.031,
 
     -- CORRECTED 2026-08-02 from a real server's class list. There is no
     -- TFA pack mounted and no .38 anywhere; the S&W M1917 is the only
@@ -96,23 +137,57 @@ Omerta.Weapons.Register("weapon.revolver", {
     -- has ever counted the chambers.
     external = "arc9_doi_sw1917",
 
-    -- NO ANIMATION BLOCK, AND NO viewModelFOV. `arc9_doi_sw1917` has never been
-    -- dumped — the Thompson and the M1911 came back from a live server on
-    -- 2026-08-02 and this one did not — so there is no sequence name for it
-    -- that would not be a guess, and a guessed name is silently wrong forever.
-    -- It plays the ACT_VM_* activities on the HL2 placeholder exactly as it
-    -- always has. What it needs is one line of output from
-    -- `omerta_weapon_dump arc9_doi_sw1917`; nothing else is in the way.
-    --
-    -- Its 2.8s reload is therefore still our own number rather than the art's,
-    -- and it has one duration for both cases: a cylinder is loaded by hand and
-    -- a revolver that has fired five rounds is not meaningfully quicker to fill
-    -- than one that has fired six, which is the one case in the arsenal where a
-    -- single `reloadTime` is the honest model rather than a missing field.
     holdType = "revolver",
     sound = "Weapon_357.Single",
-    viewModel = { "models/weapons/c_357.mdl", "models/weapons/v_357.mdl" },
+    -- Their model first, ours behind it; see the M1911's note for why.
+    viewModel = {
+        "models/weapons/arc9_doi/c_sw1917.mdl",
+        "models/weapons/c_357.mdl",
+        "models/weapons/v_357.mdl",
+    },
     worldModel = { "models/weapons/w_357.mdl" },
+    holsterModel = {
+        "models/weapons/arc9_doi/c_sw1917.mdl",
+        "models/weapons/w_357.mdl",
+    },
+    viewModelFOV = 62,
+
+    -- PORTED 2026-08-02 from `omerta_weapon_dump arc9_doi_sw1917` on a live
+    -- server. Every name below was read off the model; the durations in the
+    -- comments are the dump's, and they are where the two reload numbers above
+    -- came from.
+    --
+    -- THIS MODEL RELOADS TWO DIFFERENT WAYS, and we take one of them.
+    --
+    --   the MOON CLIP — `base_reload_clip` (5.375s) and `base_reload_clip_empty`
+    --   (6.031s): one animation, six rounds, the whole cylinder at once. That is
+    --   what our base's reload IS — a single event, a single window, and one
+    --   `PlanReload` that moves N rounds from a pocket in one transaction.
+    --
+    --   the LOOSE ROUNDS — `base_reload_start` (2.206s) or
+    --   `base_reload_start_empty` (2.912s), then `base_reload_insert` (0.950s)
+    --   once per round, then `base_reload_end` (2.000s). DELIBERATELY UNUSED.
+    --   The base has no concept of a per-round loop: one reload event, one
+    --   clock, one commit. Playing the start-insert-end family through a single
+    --   reload event would either play the start and stop, or loop an insert
+    --   that no round is actually going into — hands working ammunition the
+    --   inventory is not moving, which is the exact lie the animation port
+    --   exists to remove. What it would cost to want it is written up in the
+    --   handover; it is a change to the base and to the server's reload, not
+    --   data in this file.
+    --
+    -- The `iron_*` set is ignored as it is on the other two: there is no
+    -- secondary attack to hang an ironsight on (W0 §6).
+    anim = {
+        draw         = "base_draw",              -- 0.469s
+        idle         = "base_idle",              -- 4.000s
+        fire         = "base_fire",              -- 1.257s, at its own rate
+        fire_empty   = "base_fire_last",         -- 1.000s: the last chamber
+        dry          = "base_dryfire",           -- 0.667s
+        reload       = "base_reload_clip",       -- 5.375s = reloadTime, rate 1.0
+        reload_empty = "base_reload_clip_empty", -- 6.031s = reloadEmptyTime
+        holster      = "base_holster",           -- 0.457s
+    },
 })
 
 --------------------------------------------------------------------------------
@@ -198,22 +273,35 @@ Omerta.Weapons.Register("weapon.m1911", {
         "models/weapons/c_pistol.mdl",
         "models/weapons/v_pistol.mdl",
     },
-    -- UNCHANGED, deliberately. `arc9_doi_*` declares a stand-in world model
-    -- that ARC9 itself never renders (the plan's §4b: the Thompson's is an
-    -- AK-47), so pointing at theirs would put the wrong gun in every observer's
-    -- hands and on every holster prop. That ruling — bonemerge the c_ model,
-    -- source proper w_ models, or ship placeholders — is still open.
-    --
-    -- WHAT MOVED IN PREPARATION FOR IT, WITHOUT PRE-EMPTING IT: the prop that
-    -- hangs off a back or a hip now reads an OPTIONAL `holsterModel` on this
-    -- table and falls back to `worldModel` when there is none — which is what
-    -- every weapon here does, so nothing about today's behaviour changed. It
-    -- exists because `worldModel` is three answers in one (the model our own
-    -- SWEP renders in a hand, the model a dropped weapon lies on the pavement
-    -- as, and the model on a back) and §4b moves exactly one of them. When the
-    -- ruling lands it is a line here, of the same shape as the viewModel list
-    -- above, and nothing outside this file is edited.
+    -- STILL UNCHANGED, and now for one reason where it used to have two.
+    -- `arc9_doi_*` declares a stand-in world model that ARC9 itself never
+    -- renders (the plan's §4b: the Thompson's is an AK-47), so pointing
+    -- `worldModel` at theirs would put the wrong gun in every observer's hands
+    -- and under every dropped weapon. What this field answers is what our own
+    -- generated SWEP renders in a hand and what the M9 item lies on the
+    -- pavement as, and §4b ruled on neither of those.
     worldModel = { "models/weapons/w_pistol.mdl" },
+    -- §4b OPTION (a), TAKEN 2026-08-02. The prop that hangs off a hip or a back
+    -- is built from the pack's `c_` viewmodel, with the HL2 placeholder behind
+    -- it so a server without the pack is byte for byte what it was. The project
+    -- lead has now reported the holstered weapon as the wrong model twice, and
+    -- twice is a decision: an AK-47 slung across a 1930s gangster's back is a
+    -- worse lie than any pose a `c_` model can hold.
+    --
+    -- THE RISK, ON THE RECORD, because it is real and it is visible. A `c_`
+    -- model is authored to be bonemerged onto a viewmodel rig, so standing on
+    -- its own as a prop it renders in its REFERENCE POSE — and models of this
+    -- kind are commonly built with the arms in them. If ARC9's are, this puts a
+    -- pair of disembodied hands on the holster prop. It cannot be fixed from
+    -- here without guessing at a bodygroup index, which is the one thing this
+    -- port refuses to do, so `omerta_weapon_dump` now prints every model's
+    -- bodygroups: if one of them turns out to hide the arms, hiding it is a data
+    -- edit on this line. If none does, the answer is §4b option (b) — real `w_`
+    -- models — and this line reverts to the placeholder alone.
+    holsterModel = {
+        "models/weapons/arc9_doi/c_m1911.mdl",
+        "models/weapons/w_pistol.mdl",
+    },
     -- What the pack authored the viewmodel for. Our base sets none and inherits
     -- the engine's 54, which makes a ported model sit visibly wrong.
     viewModelFOV = 62,
@@ -299,6 +387,16 @@ Omerta.Weapons.Register("weapon.thompson", {
         "models/weapons/v_smg1.mdl",
     },
     worldModel = { "models/weapons/w_smg1.mdl" },
+    -- §4b option (a), taken 2026-08-02; the M1911's note above carries the
+    -- argument and the risk for all three. This is the gun the ruling was
+    -- ABOUT — the stand-in ARC9 declares for it is `w_rif_ak47.mdl`, and a
+    -- slung Thompson is the design's own example of a thing everybody in the
+    -- street can read off a man before he says a word. Reading an AK-47 off him
+    -- is the worst available outcome.
+    holsterModel = {
+        "models/weapons/arc9_doi/c_thompson.mdl",
+        "models/weapons/w_smg1.mdl",
+    },
     viewModelFOV = 62,
 
     -- PORTED 2026-08-02 from `omerta_weapon_dump arc9_doi_tommy` on a live

@@ -21,6 +21,7 @@ local MODULE_FILES = {
     "gamemodes/omertarp/gamemode/modules/characters/sv_repository.lua",
     "gamemodes/omertarp/gamemode/modules/characters/sv_characters.lua",
     "gamemodes/omertarp/gamemode/modules/hud/sh_module.lua",
+    "gamemodes/omertarp/gamemode/modules/hud/sh_gait.lua",
     "gamemodes/omertarp/gamemode/modules/hud/sh_hud.lua",
     -- The design tokens. Needed here because the black-and-white maths is
     -- checked against the real palette rather than against invented colours —
@@ -159,6 +160,164 @@ check("an unreadable camera keeps the crosshair rather than losing it", function
     -- Including while already aiming: a reading that breaks mid-aim brings the
     -- crosshair back rather than leaving the screen blank forever.
     assert(not A(nan, 90, true))
+end)
+
+--------------------------------------------------------------------------------
+-- The whole rule, one frame at a time.
+--------------------------------------------------------------------------------
+-- StepAiming is the part that failed in the field and the part the first
+-- attempt did not have: the baseline. The first version compared
+-- Player:GetFOV() against fov_desired and was blind to a weapon base that
+-- narrows the picture only inside CalcView — which is what ARC9 does, and the
+-- reason the dot did not move on any weapon.
+--
+-- The readings below are a 16:9 screen: fov_desired 90 draws at about 106.3
+-- because the field of view is aspect-corrected. That correction is exactly
+-- what the first pass rejected this reading for, and exactly what a ratio
+-- against a self-measured baseline divides out.
+local RESTING, DESIRED = 106.3, 90
+
+check("the reading that is blind to CalcView is not the one this uses", function()
+    loadModules()
+    -- The regression, written as the bug rather than as the fix. GetFOV()
+    -- answers 90 through the whole of an ARC9 aim; the DRAWN field of view
+    -- falls to 80. A rule reading the first cannot ever fire, whatever its
+    -- thresholds are, and a rule reading the second cannot miss.
+    assert(not Omerta.HUD.IsAiming(DESIRED, DESIRED, false),
+        "the old reading answered 'aiming' — this test no longer reproduces the bug")
+
+    local aiming, scale = Omerta.HUD.StepAiming(RESTING, DESIRED, nil, false, false)
+    assert(not aiming, "the first readable frame is a calibration, not an aim")
+    aiming = Omerta.HUD.StepAiming(80, DESIRED, scale, false, aiming)
+    assert(aiming, "a narrowing that only exists in the drawn view was missed again")
+end)
+
+check("the baseline is measured off the same reading, so aspect correction cancels", function()
+    loadModules()
+    -- The same 25% narrowing on three screens whose correction factors are
+    -- wildly different. Nothing here knows what any of those factors are, which
+    -- is the entire point: a ratio against a baseline taken from the same
+    -- reading is unaffected by a constant nobody measured.
+    for _, drawn in ipairs({ 90, 106.3, 121.5 }) do
+        local _, scale = Omerta.HUD.StepAiming(drawn, DESIRED, nil, true, false)
+        local aiming = Omerta.HUD.StepAiming(drawn, DESIRED, scale, false, false)
+        assert(not aiming, "a resting picture read as an aim at " .. drawn)
+        aiming = Omerta.HUD.StepAiming(drawn * 0.75, DESIRED, scale, false, false)
+        assert(aiming, "a quarter off the picture was missed at " .. drawn)
+    end
+end)
+
+check("a whole aim: calibrate, narrow, hold, release", function()
+    loadModules()
+    local aiming, scale = false, nil
+
+    -- At rest, with a window open — the moment the baseline is read.
+    aiming, scale = Omerta.HUD.StepAiming(RESTING, DESIRED, scale, true, aiming)
+    assert(not aiming and math.abs(scale - RESTING / DESIRED) < 1e-9)
+
+    -- The gun comes up over a handful of frames. Nothing may be re-calibrated
+    -- while it does, or the baseline would follow the picture down and the aim
+    -- would be absorbed frame by frame — which is the failure mode of every
+    -- design that tracks continuously.
+    local before = scale
+    for _, drawn in ipairs({ 104, 98, 90, 80, 74 }) do
+        aiming, scale = Omerta.HUD.StepAiming(drawn, DESIRED, scale, false, aiming)
+        assert(scale == before, "the baseline moved during an aim")
+    end
+    assert(aiming, "the aim never registered")
+
+    -- Held, for as long as anybody holds one. The answer does not drift.
+    for _ = 1, 600 do
+        aiming, scale = Omerta.HUD.StepAiming(74, DESIRED, scale, false, aiming)
+    end
+    assert(aiming and scale == before, "a held aim decayed")
+
+    -- And released.
+    aiming = Omerta.HUD.StepAiming(RESTING, DESIRED, scale, false, aiming)
+    assert(not aiming, "the crosshair never came back")
+end)
+
+check("a widening never becomes the baseline, so a sprint cannot cost the dot", function()
+    loadModules()
+    local _, scale = Omerta.HUD.StepAiming(RESTING, DESIRED, nil, true, false)
+
+    -- Something widens the picture — a sprint effect, a damage kick. It is not
+    -- aiming (the rule is one-sided) and, more importantly, it does not move
+    -- the baseline: a baseline that crept up during the excursion would make
+    -- every later resting frame look narrowed and would hide the dot for good.
+    local aiming, after = Omerta.HUD.StepAiming(RESTING * 1.1, DESIRED, scale, false, false)
+    assert(not aiming, "a wider picture read as a sight")
+    assert(after == scale, "a widening moved the baseline")
+
+    -- Back to rest, and the dot is still the player's.
+    assert(not Omerta.HUD.StepAiming(RESTING, DESIRED, after, false, false),
+        "the picture came back to rest and the crosshair did not")
+end)
+
+check("changing the field-of-view slider does not read as aiming", function()
+    loadModules()
+    -- The most likely way a fixed baseline goes wrong: the player moves the
+    -- slider mid-session, every frame afterwards is narrower than the number we
+    -- measured, and the dot is gone for the session. It cannot happen here
+    -- because the baseline is a RATIO to fov_desired rather than an absolute
+    -- field of view, so the player's own preference divides out of it.
+    local _, scale = Omerta.HUD.StepAiming(RESTING, DESIRED, nil, true, false)
+    -- 90 -> 75. The drawn picture narrows to about 91.3, which is a 14%
+    -- narrowing to anything comparing absolute numbers.
+    assert(not Omerta.HUD.StepAiming(91.3, 75, scale, false, false),
+        "a field-of-view change read as an aim, and the dot would never return")
+end)
+
+check("a mis-calibration is re-read rather than lived with", function()
+    loadModules()
+    -- Suppose the baseline is measured at a bad moment — mid-aim, say. Every
+    -- resting frame afterwards is WIDER than it, which the one-sided rule reads
+    -- as "not aiming", so the dot is safe; and the next moment the player
+    -- provably cannot be aiming (any window, the menu, being down) re-reads it.
+    local _, bad = Omerta.HUD.StepAiming(74, DESIRED, nil, true, false)
+    assert(not Omerta.HUD.StepAiming(RESTING, DESIRED, bad, false, false),
+        "a bad calibration turned a resting picture into an aim")
+
+    local _, fixed = Omerta.HUD.StepAiming(RESTING, DESIRED, bad, true, false)
+    assert(math.abs(fixed - RESTING / DESIRED) < 1e-9, "the re-read did not take")
+    assert(Omerta.HUD.StepAiming(74, DESIRED, fixed, false, false),
+        "and aiming works again afterwards")
+end)
+
+check("resting is never aiming, whatever the picture is doing", function()
+    loadModules()
+    -- A window is open, or the player is dead. Whatever the camera says, there
+    -- is nothing to aim, so the answer is false and the reading becomes the new
+    -- baseline rather than a verdict.
+    local aiming, scale = Omerta.HUD.StepAiming(40, DESIRED, 1.18, true, true)
+    assert(not aiming, "a resting frame answered 'aiming'")
+    assert(math.abs(scale - 40 / DESIRED) < 1e-9)
+    -- Only a plain `true` counts, the same discipline InWorldFrom follows.
+    assert(Omerta.HUD.StepAiming(74, DESIRED, 106.3 / 90, "yes", false),
+        "something that is not a boolean was believed")
+end)
+
+check("an unreadable frame answers 'not aiming' and keeps the calibration", function()
+    loadModules()
+    local S = Omerta.HUD.StepAiming
+    local nan = 0 / 0
+    for _, case in ipairs({
+        { nil, DESIRED }, { RESTING, nil }, { 0, DESIRED }, { RESTING, 0 },
+        { -5, DESIRED }, { RESTING, -5 }, { nan, DESIRED }, { RESTING, nan },
+        { "wide", DESIRED },
+    }) do
+        local aiming, scale = S(case[1], case[2], 1.18, false, true)
+        assert(not aiming, "a degenerate reading answered 'aiming'")
+        assert(scale == 1.18,
+            "one bad frame cost the calibration — the renderer skipping a frame " ..
+            "must not be the same event as changing screens")
+    end
+
+    -- A degenerate CALIBRATION is no calibration: this frame becomes one.
+    local _, recovered = S(RESTING, DESIRED, nan, false, false)
+    assert(math.abs(recovered - RESTING / DESIRED) < 1e-9)
+    local _, fromZero = S(RESTING, DESIRED, 0, false, false)
+    assert(math.abs(fromZero - RESTING / DESIRED) < 1e-9)
 end)
 
 --------------------------------------------------------------------------------
@@ -593,25 +752,81 @@ suite("hud.movement")
 --------------------------------------------------------------------------------
 
 -- D-034. The engine's 200/400 is far too fast for a game about watching people.
+-- The jog came down again on 2026-08-02 ("lower the runspeed overall by a
+-- little bit"), and 175 is not a free number: see sv_stamina.lua, it is fenced
+-- above by the engine's 150 run-animation threshold and below by the fast walk.
 check("base movement is a walk, and it is configuration", function()
     loadModules()
     assert(Omerta.Config.Get("movement.walk_speed") == 100, "D-034 walk")
-    assert(Omerta.Config.Get("movement.jog_speed") == 200, "D-034 jog")
+    assert(Omerta.Config.Get("movement.jog_speed") == 175, "the lowered jog")
     assert(Omerta.Config.Get("movement.jump_power") == 200, "jump power is a knob too")
+    assert(Omerta.Config.Get("movement.fast_walk_scale") > 1,
+        "a fast walk that is not faster than a walk is not a gait")
+
+    -- The whole of the third gait's guarantee, in one line: the jog is a run to
+    -- look at and the fast walk is not.
+    local base = Omerta.HUD.Internal.BaseMovement()
+    assert(Omerta.HUD.GaitAnimation(base.jog) == Omerta.HUD.GAIT.RUN,
+        "a jog that does not play the run animation is not a jog")
+    assert(Omerta.HUD.GaitAnimation(base.fastWalk) == Omerta.HUD.GAIT.WALK,
+        "the fast walk must not start the run animation")
+    assert(base.jog - base.fastWalk >= 20,
+        "the jog and the fast walk are too close together to read as two gaits")
 end)
 
-local BASE = { walk = 100, jog = 200, jump = 200, exhaustedJumpScale = 0.55 }
+local BASE = { walk = 100, fastWalk = 130, jog = 175, jump = 200,
+    exhaustedJumpScale = 0.55 }
 
-check("all three values are decided together", function()
+check("every movement value is decided together", function()
     loadModules()
     local M = Omerta.HUD.Internal.MovementFor
 
-    local walk, jog, jump = M(BASE, 1, false)
-    assert(walk == 100 and jog == 200 and jump == 200, "rested and unencumbered")
+    local walk, fastWalk, jog, jump = M(BASE, 1, false)
+    assert(walk == 100 and fastWalk == 130 and jog == 175 and jump == 200,
+        "rested and unencumbered")
 
-    walk, jog, jump = M(BASE, 0.75, false)
-    assert(walk == 75 and jog == 150 and jump == 150,
+    walk, fastWalk, jog, jump = M(BASE, 0.75, false)
+    assert(walk == 75 and fastWalk == 97 and jog == 131 and jump == 150,
         "one modifier scales everything, so nothing is exempt from being slowed")
+
+    -- The fast walk is a WAY OF WALKING, not a way out of a penalty. A gait
+    -- that ignored the stack would let a starving man hold ALT and outwalk his
+    -- own hunger.
+    local _, penalised = M(BASE, 0.5, false)
+    assert(penalised == 65, "the modifier stack reaches the third gait too")
+end)
+
+-- The gaits are ORDERED, at every factor and either side of exhaustion. A key
+-- that makes a character slower than not pressing it reads as broken rather
+-- than as a penalty — which is exactly what the engine's own +walk does, and
+-- what this seam exists to invert.
+check("the three gaits never cross, however they are modified", function()
+    loadModules()
+    local M = Omerta.HUD.Internal.MovementFor
+
+    for step = 0, 20 do
+        local factor = step / 20
+        for _, tired in ipairs({ false, true }) do
+            local walk, fastWalk, jog = M(BASE, factor, tired)
+            assert(walk <= fastWalk, string.format(
+                "walk %d beat the fast walk %d at %.2f", walk, fastWalk, factor))
+            assert(fastWalk <= jog, string.format(
+                "the fast walk %d beat the jog %d at %.2f", fastWalk, jog, factor))
+        end
+    end
+
+    -- Including against a base that has no third gait at all, which is what an
+    -- operator who set movement.fast_walk_scale to 1 has.
+    local flat = { walk = 100, fastWalk = 100, jog = 175, jump = 200,
+        exhaustedJumpScale = 0.55 }
+    local walk, fastWalk = M(flat, 1, false)
+    assert(walk == 100 and fastWalk == 100, "scale 1 is simply no fast walk")
+
+    -- And against a caller from before there was a third gait: degrade to the
+    -- walk rather than to an error.
+    local old = { walk = 100, jog = 175, jump = 200, exhaustedJumpScale = 0.55 }
+    walk, fastWalk = M(old, 1, false)
+    assert(walk == 100 and fastWalk == 100, "a base with no fastWalk is not a crash")
 end)
 
 -- Exhaustion is a limit on FLEEING, not a general punishment: it takes the jog
@@ -620,12 +835,20 @@ check("exhaustion removes the jog rather than slowing the walk", function()
     loadModules()
     local M = Omerta.HUD.Internal.MovementFor
 
-    local walk, jog = M(BASE, 1, true)
+    local walk, fastWalk, jog = M(BASE, 1, true)
     assert(walk == 100, "an exhausted character still walks normally")
-    assert(jog == walk, "but cannot outrun a walk")
+    assert(jog == fastWalk, "but cannot outrun a brisk walk")
+    assert(jog < 175, "and the jog is genuinely gone, not merely trimmed")
 
-    walk, jog = M(BASE, 0.5, true)
-    assert(jog == walk, "still true once a modifier is stacked on top")
+    -- The fast walk SURVIVES exhaustion: it costs no stamina and it is not a
+    -- run. Taking it away too would mean ALT silently stops working at the one
+    -- moment a player is hammering every key they have.
+    assert(fastWalk == 130, "a man out of breath can still walk with purpose")
+    assert(Omerta.HUD.GaitAnimation(jog) == Omerta.HUD.GAIT.WALK,
+        "and what he is doing looks like walking, because it is")
+
+    walk, fastWalk, jog = M(BASE, 0.5, true)
+    assert(jog == fastWalk, "still true once a modifier is stacked on top")
 end)
 
 -- The floor is a fraction of the base, not an absolute number. Left absolute
@@ -652,9 +875,64 @@ check("the jog never drops below the walk", function()
     local M = Omerta.HUD.Internal.MovementFor
     -- A base whose jog is slower than its walk is a misconfiguration, not a
     -- reason to make sprinting a penalty.
-    local silly = { walk = 100, jog = 50, jump = 200, exhaustedJumpScale = 0.55 }
-    local walk, jog = M(silly, 1, false)
-    assert(jog >= walk, "holding sprint may never be slower than not holding it")
+    local silly = { walk = 100, fastWalk = 130, jog = 50, jump = 200,
+        exhaustedJumpScale = 0.55 }
+    local walk, fastWalk, jog = M(silly, 1, false)
+    assert(fastWalk >= walk, "holding ALT may never be slower than not holding it")
+    assert(jog >= fastWalk, "holding sprint may never be slower than not holding it")
+end)
+
+--------------------------------------------------------------------------------
+suite("hud.gait")
+--------------------------------------------------------------------------------
+
+-- The third gait, and the one thing it must not do. Source has two ground
+-- animations and the base gamemode picks between them on GROUND SPEED ALONE
+-- (GM:CalcMainActivity: len2d > 150 is the run) — no key, no speed slot, no
+-- hook. So "a fast walk that does not start the run animation" is arithmetic,
+-- and this is where it is pinned.
+check("the animation is decided by speed and nothing else", function()
+    loadModules()
+    local A, G = Omerta.HUD.GaitAnimation, Omerta.HUD.GAIT
+    local T = Omerta.HUD.RUN_ANIM_ABOVE
+
+    assert(T == 150, "the engine's own threshold, not one of ours")
+    assert(A(0) == G.IDLE, "standing still")
+    assert(A(0.4) == G.IDLE, "and shuffling is still standing still")
+    assert(A(1) == G.WALK)
+    assert(A(T) == G.WALK, "the test is STRICTLY greater, so the line itself walks")
+    assert(A(T + 1) == G.RUN, "and one unit past it runs")
+    assert(A(nil) == G.IDLE and A("nonsense") == G.IDLE, "nonsense stands still")
+    assert(A(0 / 0) == G.IDLE, "NaN does not pick an animation at random")
+end)
+
+check("the fast walk is quicker than a walk and never quick enough to run", function()
+    loadModules()
+    local F = Omerta.HUD.FastWalkSpeed
+    local T = Omerta.HUD.RUN_ANIM_ABOVE
+
+    assert(F(100, 1.3) == 130, "the shipped pair")
+    assert(Omerta.HUD.GaitAnimation(F(100, 1.3)) == Omerta.HUD.GAIT.WALK)
+    assert(F(100, 1) == 100, "a scale of 1 turns the gait off rather than breaking it")
+
+    -- THE CAP IS THE POINT. An operator may type any scale they like; the gait
+    -- stops getting faster before it starts looking wrong, so the guarantee is
+    -- a property of the code and not of one well-chosen default.
+    assert(F(100, 3) == T, "clamped to the threshold, not to 300")
+    assert(F(140, 1.3) == T, "and clamped from a base that could nearly reach it")
+    for scale = 1, 3, 0.05 do
+        assert(Omerta.HUD.GaitAnimation(F(100, scale)) ~= Omerta.HUD.GAIT.RUN,
+            "a scale of " .. scale .. " reached the running animation")
+    end
+
+    -- Never SLOWER than the walk, which is the engine's own +walk behaviour and
+    -- precisely what this reverses. Including where there is no third gait to be
+    -- had: a walk already past the threshold is already playing the run, and
+    -- returning something faster would only make that worse.
+    assert(F(200, 1.3) == 200, "no third gait above the threshold, and no lie")
+    assert(F(100, 0.5) == 100, "a scale under 1 is refused, not obeyed")
+    assert(F(100, nil) == 100 and F(nil, 1.3) == 0, "nonsense in, nothing invented")
+    assert(F(100, 0 / 0) == 100, "NaN is not a gait")
 end)
 
 --------------------------------------------------------------------------------

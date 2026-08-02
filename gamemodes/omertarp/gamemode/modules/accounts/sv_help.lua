@@ -85,6 +85,7 @@ local COMMANDS = {
     ["omerta_weapons_list"] = { usage = "", what = "The arsenal: ids, classes, damage, calibers. '(wanted X)' means that weapon fell back to our base because X is not mounted on the SERVER.", area = "Weapons" },
     ["omerta_weapon_dump"] = { usage = "<weapon class>", what = "Every animation inside a weapon's view and world models, by name and duration. For porting somebody else's weapon onto our base — it answers whether the animations are baked or procedural.", area = "Weapons" },
     ["omerta_weapon_classes"] = { usage = "[filter]", what = "Third-party weapon classes this SERVER has, optionally filtered. Tells 'the addon is missing' apart from 'the class is spelled differently'.", area = "Weapons" },
+    ["omerta_hook_dump"] = { usage = "[event]", what = "Every listener on the events a keypress travels through (PlayerButtonDown/Up, PlayerBindPress, the two context-menu events) plus Think and HUDPaint, by identifier, with the ones omerta_context_suppress removes marked [SWEPT]. Run it when somebody else's menu opens on one of our keys — it says what is listening instead of leaving it to be guessed at. Client console: the menu is a panel and the key is pressed there.", area = "Diagnostics", client = true },
 
     -- Identity
     ["omerta_identity_who_knows"] = { usage = "<characterId>", what = "Who knows this character, and as what.", area = "Identity" },
@@ -92,6 +93,7 @@ local COMMANDS = {
     -- Diagnostics
     ["omerta_help"] = { usage = "[area]", what = "This list, or one area of it.", area = "Diagnostics" },
     ["omerta_env"] = { usage = "", what = "The world outside: which weather/time provider was detected, the time, whether it is night, the weather, and the map name. Runs from either console — the server's answer and a client's may differ, which is itself the useful part.", area = "Diagnostics" },
+    ["omerta_fov_watch"] = { usage = "[seconds]", what = "Print Player:GetFOV(), fov_desired and the field of view the frame was actually drawn at, ten times a second, while you aim. The reading that MOVES is the one a sight is visible in — which is how the crosshair's aiming rule is meant to be checked rather than reasoned about. Client console.", area = "Diagnostics", client = true },
     ["omerta_leak_audit"] = { usage = "", what = "Scan networked state for identity leaks (M6).", area = "Diagnostics" },
     ["omerta_leak_audit_client"] = { usage = "", what = "The client half of the leak audit (client console).", area = "Diagnostics", client = true },
     ["omerta_demo_ping"] = { usage = "", what = "M0's loopback proof.", area = "Diagnostics" },

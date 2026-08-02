@@ -22,6 +22,7 @@ local MODULE_FILES = {
     "gamemodes/omertarp/gamemode/modules/characters/sv_repository.lua",
     "gamemodes/omertarp/gamemode/modules/characters/sv_characters.lua",
     "gamemodes/omertarp/gamemode/modules/hud/sh_module.lua",
+    "gamemodes/omertarp/gamemode/modules/hud/sh_gait.lua",
     "gamemodes/omertarp/gamemode/modules/hud/sh_hud.lua",
     "gamemodes/omertarp/gamemode/modules/hud/sv_stamina.lua",
     "gamemodes/omertarp/gamemode/modules/interaction/sh_module.lua",
@@ -180,21 +181,54 @@ end)
 --------------------------------------------------------------------------------
 suite("weapons.holster_model")
 --------------------------------------------------------------------------------
--- What a gun hangs off a back AS is now its own declarable field, because the
--- port plan's §4b ruling moves exactly that and must not be forced to move what
--- a DROPPED weapon looks like along with it. The ruling is still open, so the
--- thing pinned hardest here is that today's behaviour did not change.
+-- What a gun hangs off a back AS is its own declarable field, because the port
+-- plan's §4b ruling moves exactly that and must not be forced to move what a
+-- DROPPED weapon looks like along with it. §4b option (a) was taken on
+-- 2026-08-02 and all three weapons now declare one, so what is pinned here is
+-- that the ruling landed as DATA and moved nothing else.
+
+check("every ported weapon hangs on a back as the pack's own model", function()
+    loadModules()
+    for _, def in ipairs(Omerta.Weapons.All()) do
+        if def.external then
+            local list = Omerta.Weapons.HolsterModel(def)
+            assert(list and #list >= 2,
+                def.id .. " lost its holster model or its fallback")
+            assert(list[1]:find("arc9_doi", 1, true),
+                def.id .. " hangs on a back as '" .. tostring(list[1]) ..
+                "' — §4b option (a) is the pack's own c_ model")
+            -- The placeholder is still behind it, so a server without the pack
+            -- mounted renders exactly what it rendered yesterday.
+            assert(list[#list] == def.worldModel[1],
+                def.id .. " lost the placeholder a server without the pack falls " ..
+                "back to")
+            -- And the two things worldModel answers are untouched: what our own
+            -- SWEP renders in a hand, and what a dropped weapon lies on the
+            -- pavement as. §4b ruled on neither.
+            assert(not def.worldModel[1]:find("arc9", 1, true),
+                def.id .. "'s world model followed the holster model, and §4b " ..
+                "moved one of the three answers rather than all of them")
+            assert(Omerta.Items.Get(def.id).model == def.worldModel[1],
+                def.id .. " changed what it lies on the pavement as")
+        end
+    end
+end)
 
 check("with nothing declared, a holster prop is still the world model", function()
     loadModules()
-    for _, def in ipairs(Omerta.Weapons.All()) do
-        assert(def.holsterModel == nil,
-            def.id .. " declares a holsterModel — §4b's ruling is still open " ..
-            "and nothing may pre-empt it")
-        local list = Omerta.Weapons.HolsterModel(def)
-        assert(list and list[1] == def.worldModel[1],
-            def.id .. " no longer hangs off a back as its world model")
-    end
+    -- The promise the field was allowed under, and it outlives the arsenal
+    -- being fully ported: a weapon that says nothing gets exactly what every
+    -- weapon got before the field existed.
+    Omerta.Weapons.Register("weapon.undeclared", {
+        name = "Undeclared", slot = "sidearm", bulk = 4,
+        damage = 20, rpm = 120, clip = 6, ammo = "ammo.38",
+        worldModel = { "models/weapons/w_357.mdl" },
+    })
+    local def = Omerta.Weapons.Get("weapon.undeclared")
+    assert(def.holsterModel == nil)
+    local list = Omerta.Weapons.HolsterModel(def)
+    assert(list and list[1] == def.worldModel[1],
+        "a weapon that declares nothing stopped hanging off a back as its world model")
 end)
 
 check("a weapon may declare what it hangs on a back as, without moving anything else", function()
@@ -247,6 +281,126 @@ expectError("an empty holster model list is refused rather than silently ignored
         damage = 20, rpm = 100, clip = 5, ammo = "ammo.45",
         holsterModel = {},
     })
+end)
+
+--------------------------------------------------------------------------------
+suite("weapons.context_hooks")
+--------------------------------------------------------------------------------
+-- C is the inventory, and a mounted framework was still opening its own menu
+-- over the pockets after both of cl_weapons.lua's gates were installed —
+-- because it listens on PlayerButtonDown, which cannot be cancelled by anything
+-- returned from it. The answer is to remove the listener by identifier, and
+-- what is pinned here is the SHAPE of that: which events may be swept, and the
+-- three ways this could have become a tool that breaks a server.
+--
+-- The planner takes the hook table as an argument, so a hook table can be
+-- conjured out of nothing on a machine that has no addons at all — the same
+-- trick ResolveExternal's detector and ResolveModel's validator are driven
+-- with.
+
+local function fakeHooks()
+    return {
+        PlayerButtonDown = {
+            ["ARC9_ContextMenu"] = function() end,
+            ["omerta.weapons.something"] = function() end,
+            ["someone_elses_hud"] = function() end,
+        },
+        PlayerBindPress = { ["arc9.binds"] = function() end },
+        ContextMenuOpen = { ["ARC9 Attachments"] = function() end },
+        -- Not swept, ever: removing a framework's Think removes its weapon.
+        Think = { ["ARC9_Think"] = function() end },
+        HUDPaint = { ["ARC9_HUD"] = function() end },
+    }
+end
+
+check("a sweep takes the input hooks it was pointed at, and nothing else", function()
+    loadModules()
+    local plan = Omerta.Weapons.PlanHookRemoval(fakeHooks(),
+        Omerta.Weapons.HOOK_SWEEP_EVENTS, "arc9")
+
+    local taken = {}
+    for _, entry in ipairs(plan) do
+        taken[entry.event .. "|" .. entry.id] = true
+        assert(type(entry.fn) == "function",
+            "the function must come back with the name, or the removal is not reversible")
+    end
+
+    assert(taken["PlayerButtonDown|ARC9_ContextMenu"], "the listener that is the bug")
+    assert(taken["PlayerBindPress|arc9.binds"], "matched case-insensitively")
+    assert(taken["ContextMenuOpen|ARC9 Attachments"], "a space in an identifier is legal")
+    assert(not taken["PlayerButtonDown|someone_elses_hud"],
+        "an unrelated addon was swept — the pattern is the whole authorisation")
+
+    -- Think and HUDPaint are REPORTED by the dump and never swept. A framework
+    -- polling the keyboard from Think is a thing the dump has to be able to
+    -- show; removing that hook would remove its ability to fire a gun.
+    assert(not taken["Think|ARC9_Think"] and not taken["HUDPaint|ARC9_HUD"],
+        "the sweep reached a per-frame hook")
+    local dump, sweep = {}, {}
+    for _, e in ipairs(Omerta.Weapons.HOOK_DUMP_EVENTS) do dump[e] = true end
+    for _, e in ipairs(Omerta.Weapons.HOOK_SWEEP_EVENTS) do
+        sweep[e] = true
+        assert(dump[e], e .. " is swept but never reported, so a removal would be invisible")
+    end
+    assert(dump.Think and dump.HUDPaint, "the dump stopped reporting the polling case")
+    assert(not sweep.Think and not sweep.HUDPaint)
+end)
+
+check("a sweep that matches nothing removes nothing, which is today's behaviour", function()
+    loadModules()
+    -- The asymmetry the whole approach rests on, and the reason this is not
+    -- what D-043/D-044 forbid. Those rules ban CALLING somebody's function
+    -- because a wrong name there is silently wrong forever. A wrong name HERE
+    -- removes nothing and leaves the game exactly as it is — a state we have
+    -- already shipped and are already living in.
+    assert(#Omerta.Weapons.PlanHookRemoval(fakeHooks(),
+        Omerta.Weapons.HOOK_SWEEP_EVENTS, "tfa") == 0,
+        "a pattern nobody matches must be a no-op, not a surprise")
+end)
+
+check("nothing can talk the sweep into removing everything", function()
+    loadModules()
+    local P = Omerta.Weapons.PlanHookRemoval
+    local E = Omerta.Weapons.HOOK_SWEEP_EVENTS
+
+    -- An empty pattern is the one mistake that must be impossible rather than
+    -- merely unlikely: as a plain substring it matches every identifier in the
+    -- game, and the operator convar can be set to "" by hand.
+    assert(#P(fakeHooks(), E, "") == 0, "an empty pattern swept the game")
+    assert(#P(fakeHooks(), E, "   ") == 0, "whitespace is an empty pattern")
+    assert(#P(fakeHooks(), E, nil) == 0)
+    assert(#P(fakeHooks(), E, 7) == 0)
+
+    -- Ours are never taken, however the pattern is spelled.
+    for _, pattern in ipairs({ "omerta", "OMERTA", "e" }) do
+        for _, entry in ipairs(P(fakeHooks(), E, pattern)) do
+            assert(not entry.id:find("^omerta%."),
+                "the sweep removed one of ours: " .. entry.id)
+        end
+    end
+
+    -- A hook registered under a panel or an entity cannot be matched by name,
+    -- and this is not entitled to guess at one.
+    local weird = { PlayerButtonDown = { [{}] = function() end } }
+    assert(#P(weird, E, "arc9") == 0, "a non-string identifier was matched by name")
+
+    -- And nothing degenerate errors: this runs on every client, on a timer.
+    assert(#P(nil, E, "arc9") == 0)
+    assert(#P(fakeHooks(), nil, "arc9") == 0)
+    assert(#P({}, E, "arc9") == 0)
+end)
+
+check("the plan is ordered, so the log reads the same on every boot", function()
+    loadModules()
+    local plan = Omerta.Weapons.PlanHookRemoval(fakeHooks(),
+        Omerta.Weapons.HOOK_SWEEP_EVENTS, "arc9")
+    -- pairs() over a hook table names things in a different order every boot,
+    -- and a log nobody can diff against last night's is a log nobody reads.
+    for index = 2, #plan do
+        local a, b = plan[index - 1], plan[index]
+        assert(a.event < b.event or (a.event == b.event and a.id < b.id),
+            "the plan came back unsorted")
+    end
 end)
 
 --------------------------------------------------------------------------------
@@ -812,9 +966,17 @@ end
 check("a weapon that declares no animation block resolves to exactly what the base did before", function()
     loadModules()
     -- Every weapon that has NOT been ported, because this is the promise being
-    -- made to it — and the promise did not expire when two of its neighbours
-    -- were ported. The Model 10 is in this state today and anything added
-    -- before its art is read will be too.
+    -- made to it — and the promise did not expire when the last gun in the
+    -- arsenal was ported. It is now made to the NEXT gun instead, so the suite
+    -- registers one rather than letting the check quietly stop testing anything
+    -- the day the arsenal caught up with the dumps.
+    Omerta.Weapons.Register("weapon.unported", {
+        name = "Unported", slot = "sidearm", bulk = 4,
+        damage = 20, rpm = 120, clip = 6, ammo = "ammo.38",
+        sound = "Weapon_Pistol.Single",
+        worldModel = { "models/weapons/w_357.mdl" },
+    })
+
     local bare = 0
     for _, def in ipairs(Omerta.Weapons.All()) do
         if def.anim == nil then
@@ -859,7 +1021,12 @@ end)
 
 check("a weapon with no block asks the model nothing at all", function()
     loadModules()
-    local def = Omerta.Weapons.Get("weapon.revolver")
+    Omerta.Weapons.Register("weapon.silent", {
+        name = "Silent", slot = "sidearm", bulk = 4,
+        damage = 20, rpm = 120, clip = 6, ammo = "ammo.38",
+        sound = "Weapon_Pistol.Single",
+    })
+    local def = Omerta.Weapons.Get("weapon.silent")
     -- A model that would happily answer for every name in the world. The
     -- weapon declares none, so nothing is looked up and the activity stands.
     local asked = 0
@@ -1153,15 +1320,19 @@ end)
 check("only the weapons that were actually dumped carry sequence names", function()
     loadModules()
     -- The gate the port plan set, made into something a machine checks, and it
-    -- did not open when two of the three went through it. NOT ONE sequence name
-    -- may be typed for a weapon until `omerta_weapon_dump` has been run against
+    -- did not open for any of the three until each had gone through it. NOT ONE
+    -- sequence name may be typed for a weapon until `omerta_weapon_dump` has run
     -- its class on a server that has the pack — a guessed name is silently
     -- wrong forever (D-044's asymmetry), where a weapon with no block plays the
     -- activities it always has.
     --
-    -- `arc9_doi_tommy` and `arc9_doi_m1911` came back on 2026-08-02.
-    -- `arc9_doi_sw1917` did not, and the Model 10 is bare until it does.
-    local DUMPED = { ["weapon.thompson"] = true, ["weapon.m1911"] = true }
+    -- `arc9_doi_tommy`, `arc9_doi_m1911` and `arc9_doi_sw1917` all came back on
+    -- 2026-08-02. The gate is unchanged for the fourth gun: no dump, no block.
+    local DUMPED = {
+        ["weapon.thompson"] = true,
+        ["weapon.m1911"] = true,
+        ["weapon.revolver"] = true,
+    }
 
     local external, ported = 0, 0
     for _, def in ipairs(Omerta.Weapons.All()) do
@@ -1176,13 +1347,16 @@ check("only the weapons that were actually dumped carry sequence names", functio
         end
     end
     assert(external == 3, "expected three weapons naming a third party's SWEP, found " .. external)
-    assert(ported == 2, "expected two dumped weapons, found " .. ported)
+    assert(ported == 3, "expected three dumped weapons, found " .. ported)
 
-    -- Said plainly, because it is the one still outstanding and the report it
-    -- came from names it: the revolver needs a dump, not a guess.
+    -- The Model 10 was the last one outstanding and it is the one that proves
+    -- the gate was worth having: its dump came back with an animation nobody
+    -- would have guessed the name of, and with TWO reload families where every
+    -- other gun had one.
     local revolver = Omerta.Weapons.Get("weapon.revolver")
-    assert(revolver.anim == nil and revolver.external == "arc9_doi_sw1917",
-        "the Model 10's art is still unread — do not invent it")
+    assert(revolver.external == "arc9_doi_sw1917")
+    assert(revolver.anim.reload == "base_reload_clip",
+        "the Model 10 stopped reloading the way our base can honestly drive")
 end)
 
 --------------------------------------------------------------------------------
@@ -1235,9 +1409,30 @@ local DUMP = {
         base_reload      = 2.635,
         base_reloadempty = 3.333,
     },
+    -- arc9_doi_sw1917. A THIRD spelling again — `base_fire_last` with
+    -- underscores where the M1911 says `base_firelast` — and the only model of
+    -- the three that carries two complete reload families. Both are listed,
+    -- because a test that offered only the family we chose could not catch the
+    -- other one being chosen by accident.
+    ["weapon.revolver"] = {
+        base_idle               = 4.000,
+        base_draw               = 0.469,
+        base_holster            = 0.457,
+        base_fire               = 1.257,
+        base_fire_last          = 1.000,
+        base_dryfire            = 0.667,
+        -- The moon clip: one animation, the whole cylinder.
+        base_reload_clip        = 5.375,
+        base_reload_clip_empty  = 6.031,
+        -- Loose rounds, one at a time: start, insert, insert, ..., end.
+        base_reload_start       = 2.206,
+        base_reload_start_empty = 2.912,
+        base_reload_insert      = 0.950,
+        base_reload_end         = 2.000,
+    },
 }
 
-local PORTED = { "weapon.m1911", "weapon.thompson" }
+local PORTED = { "weapon.m1911", "weapon.thompson", "weapon.revolver" }
 
 -- A model built from a dump: names in, indices out, -1 for anything else.
 -- Indices are assigned in sorted order so they are stable between runs and so
@@ -1306,6 +1501,45 @@ check("the Thompson plays the stick magazine, never the drum", function()
     assert(def.clip == 20, "the stick magazine is what the drum test rests on")
 end)
 
+check("the Model 10 reloads by the clip, never round by round", function()
+    loadModules()
+    -- The revolver's dump came back with TWO reloads, and only one of them is a
+    -- reload this base can honestly drive.
+    --
+    -- `base_reload_clip` is a moon clip: one animation, six rounds, one commit
+    -- — which is what our reload IS. `base_reload_start` / `_insert` / `_end`
+    -- is a loop the base has no concept of: one event, one clock, one
+    -- PlanReload that moves N rounds in a single transaction. Driving the loose
+    -- family through a single reload event would play a start and stop, or loop
+    -- an insert with no round going anywhere — hands working ammunition the
+    -- inventory is not moving, which is the exact lie the port exists to
+    -- remove. The model answers for all six names perfectly happily, which is
+    -- why the dump above contains them and why this is checked rather than
+    -- trusted.
+    local def = Omerta.Weapons.Get("weapon.revolver")
+    local model = dumpedModel("weapon.revolver")
+
+    for _, event in ipairs({ "reload", "reload_empty" }) do
+        local wanted = Omerta.Weapons.AnimEntry(def, event).sequence
+        assert(tostring(wanted):find("clip", 1, true),
+            "the Model 10's " .. event .. " names '" .. tostring(wanted) ..
+            "', which is not the moon-clip reload")
+        for _, loose in ipairs({ "start", "insert", "end" }) do
+            assert(not tostring(wanted):find("_" .. loose, 1, true),
+                "the Model 10's " .. event .. " names the loose-round sequence '" ..
+                tostring(wanted) .. "' — the base has no per-round loop to play it in")
+        end
+        -- And it is really there, on the model that was dumped.
+        assert(Omerta.Weapons.ResolveAnim(def, event, model).missing == nil)
+    end
+
+    -- The clip is 6 and the ammunition is loose rounds in a pocket either way:
+    -- the moon clip is how the ANIMATION spells a cylinder being filled, not a
+    -- second kind of item. Nothing in M9 changed for this.
+    assert(def.clip == 6)
+    assert(Omerta.Items.Get("ammo.38") ~= nil)
+end)
+
 check("the ported reload numbers are the art's own, so nothing is stretched", function()
     loadModules()
     -- The port plan's preference, made checkable: where an animation's length
@@ -1335,15 +1569,26 @@ check("the ported reload numbers are the art's own, so nothing is stretched", fu
     assert(m1911.reloadTime == 2.635 and m1911.reloadEmptyTime == 3.333)
     local thompson = Omerta.Weapons.Get("weapon.thompson")
     assert(thompson.reloadTime == 3.333 and thompson.reloadEmptyTime == 4.762)
-
-    -- The balance argument the M1911's paragraph rests on still holds after
-    -- the move: its magazine change beats loading a cylinder by hand, and
-    -- running it dry does not.
     local revolver = Omerta.Weapons.Get("weapon.revolver")
+    assert(revolver.reloadTime == 5.375 and revolver.reloadEmptyTime == 6.031)
+
+    -- The balance argument the M1911's paragraph rests on survives the move
+    -- and gets louder: its magazine change beats loading a cylinder by hand,
+    -- and now by more than twice.
     assert(m1911.reloadTime < revolver.reloadTime,
         "the automatic stopped being the sidearm that is back in the fight first")
-    assert(m1911.reloadEmptyTime > revolver.reloadTime,
-        "running dry stopped costing anything")
+
+    -- WHAT THE MOVE COST, pinned so the next reader sees it as a decision
+    -- rather than as a number that drifted. Running the automatic dry used to
+    -- cost more than carrying a revolver at all (3.333s against 2.8s); against
+    -- the art's 5.375s it does not, and cannot. The cost of running dry is now
+    -- measured against the gun itself, which is the comparison a player
+    -- actually makes mid-fight.
+    assert(m1911.reloadEmptyTime > m1911.reloadTime,
+        "running the automatic dry stopped costing anything")
+    assert(revolver.reloadTime > thompson.reloadEmptyTime,
+        "the Model 10 stopped being the slowest gun in the arsenal to fill, " ..
+        "which is what its 5.375s of moon clip actually buys")
 end)
 
 check("an empty reload is its own duration, and defaults to the ordinary one", function()
@@ -1355,13 +1600,14 @@ check("an empty reload is its own duration, and defaults to the ordinary one", f
     assert(D(thompson, false) == 3.333, "the topped-up change")
     assert(D(thompson, true) == 4.762, "and the one from empty, which costs more")
 
-    -- One where it does not. A weapon that declares no reloadEmptyTime answers
-    -- reloadTime for BOTH cases, which is what every weapon in the arsenal did
-    -- before the field existed — the whole promise the field is allowed under.
+    -- And the Model 10, whose two are the closest together in the arsenal:
+    -- a cylinder is loaded whole, so having fired five rather than six saves
+    -- two thirds of a second and no more. The prose said that before the dump
+    -- did, which is the one place the art and the design agreed unprompted.
     local revolver = Omerta.Weapons.Get("weapon.revolver")
-    assert(revolver.reloadEmptyTime == revolver.reloadTime,
-        "an undeclared empty reload must default to the ordinary one")
-    assert(D(revolver, true) == 2.8 and D(revolver, false) == 2.8)
+    assert(D(revolver, false) == 5.375 and D(revolver, true) == 6.031)
+    assert(revolver.reloadEmptyTime - revolver.reloadTime < 1,
+        "the gap between a topped-up cylinder and an empty one grew a personality")
 
     -- Register resolves it once, so nothing downstream has to know which kind
     -- of weapon it is holding.

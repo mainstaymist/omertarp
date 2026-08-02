@@ -892,6 +892,29 @@ function Internal.DumpSequences(model)
         return
     end
 
+    -- The bodygroups, before the sequences, because they are short and because
+    -- they are now load-bearing: the arsenal builds holster props out of these
+    -- `c_` viewmodels (the port plan's §4b option (a)), and a `c_` model
+    -- standing on its own as a prop shows whatever its reference pose has in it
+    -- — commonly a pair of arms. If one of the groups below turns the arms off,
+    -- that is a data edit in the arsenal and the problem is solved; if there is
+    -- no such group, the honest answer is real `w_` models and we know that too.
+    --
+    -- Printed rather than acted on. Which SUBMODEL of a group is "no arms" is
+    -- not something a name tells us, and the port does not guess.
+    local groups = probe:GetBodyGroups() or {}
+    if #groups > 0 then
+        Omerta.Log.Info("weapons", "  %d bodygroup(s):", #groups)
+        for _, group in ipairs(groups) do
+            Omerta.Log.Info("weapons", "    [%d] %-24s %d submodel(s)",
+                tonumber(group.id) or -1, tostring(group.name),
+                tonumber(group.num) or 0)
+        end
+    else
+        Omerta.Log.Info("weapons", "  no bodygroups — nothing on this model can " ..
+            "be switched off, so what it renders as a prop is what it renders")
+    end
+
     Omerta.Log.Info("weapons", "  %d sequence(s):", count)
     for index = 0, count - 1 do
         local name = probe:GetSequenceName(index) or "?"

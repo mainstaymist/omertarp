@@ -6,6 +6,7 @@
 
 local MODULE_FILES = {
     "gamemodes/omertarp/gamemode/modules/hud/sh_module.lua",
+    "gamemodes/omertarp/gamemode/modules/hud/sh_gait.lua",
     "gamemodes/omertarp/gamemode/modules/hud/sh_hud.lua",
     "gamemodes/omertarp/gamemode/modules/hud/sh_theme.lua",
     "gamemodes/omertarp/gamemode/modules/menu/sh_module.lua",

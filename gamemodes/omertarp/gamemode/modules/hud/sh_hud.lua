@@ -105,6 +105,54 @@ end
 -- covers all of them and none of them can break it, because none of them is
 -- being called.
 --
+-- WHICH READING, AND WHY THE FIRST ONE WAS WRONG. This is the second attempt.
+--
+-- The first compared `Player:GetFOV()` against `fov_desired`, and its own
+-- header named the blind spot it turned out to have: "a base that narrows only
+-- inside CalcView is invisible to this". That is exactly what was reported from
+-- the field — the dot did not move on ANY weapon — and it is the signature of a
+-- framework that leaves the player's own field of view alone and narrows the
+-- picture as it hands the view to the renderer. `Player:GetFOV()` never changes,
+-- so the ratio is 1.000 forever and nothing can ever trigger.
+--
+-- The reading now is `render.GetViewSetup().fov`: THE FIELD OF VIEW THE FRAME
+-- WAS ACTUALLY DRAWN AT. It cannot have the same blind spot, and the reason is
+-- structural rather than lucky — CalcView's return value IS what the renderer is
+-- set up from, so a narrowing that lands there lands here by definition. So does
+-- one from SetFOV, and one from a SWEP's TranslateFOV, because those reach the
+-- renderer too. There is no third place for a field of view to come from: the
+-- picture is drawn once, at one angle, and this is that number.
+--
+-- THE OBJECTION THE FIRST PASS RAISED, AND THE ANSWER. It rejected this reading
+-- for being aspect-corrected — on a wide screen it hands back a horizontal
+-- field of view that is not the number in `fov_desired`. True, and it does not
+-- matter, because the correction is a CONSTANT FACTOR for a given screen and a
+-- ratio divides a constant factor out. What the first pass was missing was not a
+-- better reading; it was a baseline taken from the SAME reading.
+--
+-- SO THE BASELINE IS MEASURED, NOT ASSUMED. `scale` is the ratio of the drawn
+-- field of view to `fov_desired` observed while the player provably CANNOT be
+-- aiming; the resting picture is then `fov_desired * scale`. Nothing here has to
+-- know what the correction is, what aspect the monitor is, or what convention
+-- the renderer uses — a screen that corrects by 1.18 calibrates to 1.18 and one
+-- that corrects by nothing calibrates to 1. The one assumption left is that the
+-- correction is a property of the SCREEN rather than of the moment, which is
+-- what makes a number measured once good for every frame after it.
+--
+-- (The correction is tangent-based rather than linear, so `scale` drifts by a
+-- couple of per cent across a LARGE change of fov_desired — 90 to 75 moves it by
+-- about 3%. That is inside the hysteresis band below, in the harmless direction,
+-- and the next re-calibration removes it entirely.)
+--
+-- WHEN IT RE-CALIBRATES: at any moment the player provably cannot be looking
+-- down a sight. Every window in the game, the menu, the console, being dead,
+-- being on the floor — the crosshair's own `visible()` conditions, which are the
+-- same question asked for a different reason. That matters more than it looks:
+-- it is what makes a mis-calibration SELF-HEALING rather than permanent. A
+-- baseline that could only ever be measured once would, if it were ever taken at
+-- a bad moment, hide D-041's one permanent element for the rest of the session
+-- with no way back. This one is re-read every time somebody opens their pockets.
+--
 -- IT IS A RATIO, NOT A DIFFERENCE. A sight that takes a third off the picture
 -- takes a third off it whether the player runs at 75 degrees or at 120, so
 -- `fov / base` is the same number for both of them and `base - fov` is not.
@@ -113,6 +161,12 @@ end
 --
 -- IT IS ONE-SIDED. Only NARROWING counts. Sprint effects and damage kicks widen
 -- the field of view, and a wider picture is the opposite of a sight picture.
+-- One-sidedness also keeps a widening OUT OF THE CALIBRATION: the baseline never
+-- follows the picture, it is only ever snapped to it at a resting moment, so a
+-- transient sprint boost cannot leave a permanently wrong idea of rest behind
+-- it. (An earlier draft had the baseline track continuously and that was its
+-- whole failure: an excursion that raised it made every later resting frame look
+-- narrowed, and the dot went away for good.)
 --
 -- WHAT HAPPENS WHEN SOMETHING THAT IS NOT AIMING MOVES THE FIELD OF VIEW — a
 -- cinematic, a spectate camera, a future security-camera view. The honest
@@ -127,9 +181,11 @@ end
 -- have to be told about every camera anybody ever adds.
 --
 -- WHAT HAPPENS WHEN THE READING IS UNAVAILABLE — no player, a zero, a NaN, a
--- convar that is not there. It answers NOT AIMING, always. The dot is D-041's
--- one permitted permanent element and the expensive failure is losing it; a
--- broken reading must leave the interface as it was, never blank part of it.
+-- convar that is not there, a renderer that will not answer. It answers NOT
+-- AIMING, always, and leaves the calibration alone so one bad frame cannot cost
+-- the measurement. The dot is D-041's one permitted permanent element and the
+-- expensive failure is losing it; a broken reading must leave the interface as
+-- it was, never blank part of it.
 
 Omerta.HUD.AIM = {
     -- Narrowed to 95% of the field of view this player chose: aiming.
@@ -171,10 +227,12 @@ Omerta.HUD.AIM = {
 
 -- Is this player looking down a sight?
 --
---   fov    — their field of view this frame (Player:GetFOV)
---   base   — the field of view they play at with nothing narrowing it
---            (fov_desired). The SAME KIND of reading as `fov`, which is the
---            whole reason the pair is comparable.
+--   fov    — the field of view the frame was DRAWN at this frame
+--   base   — the same reading at rest: what this player's picture measures when
+--            nothing is narrowing it. The SAME KIND of reading as `fov`, which
+--            is the whole reason the pair is comparable, and the thing the
+--            first attempt got wrong by comparing a drawn field of view against
+--            a convar. StepAiming below is what produces it.
 --   aiming — the previous answer, so the hysteresis band above has somewhere
 --            to live without this function holding state. Same idiom as
 --            StepAlpha taking the current alpha: the caller owns the state and
@@ -193,6 +251,49 @@ function Omerta.HUD.IsAiming(fov, base, aiming)
     local A = Omerta.HUD.AIM
     if aiming then return ratio <= A.LEAVE end
     return ratio <= A.ENTER
+end
+
+-- One frame of the whole rule: the answer, and the calibration to carry into
+-- the next frame.
+--
+--   view    — render.GetViewSetup().fov, the field of view the frame was drawn
+--             at, or nil when the renderer would not answer
+--   desired — fov_desired. NOT compared against `view` — the two are different
+--             kinds of number and comparing them is the bug this replaces. It
+--             is here as the thing `scale` is measured AGAINST, so that a
+--             player who moves their field-of-view slider moves the baseline
+--             with it and needs no re-calibration to do it.
+--   scale   — the calibration: drawn / desired, observed at rest. nil until
+--             the first readable frame, which calibrates it.
+--   resting — TRUE when the player provably cannot be looking down a sight, in
+--             which case this frame's reading IS the resting picture and is
+--             taken as the new calibration.
+--   aiming  — the previous answer, for the hysteresis.
+--
+-- Returns: aiming, scale. The caller owns both, exactly as it owns StepAlpha's
+-- alpha and StepReveal's position, so this stays pure and the suite can drive a
+-- whole aim — calibrate, narrow, hold, release — without an engine.
+function Omerta.HUD.StepAiming(view, desired, scale, resting, aiming)
+    view = tonumber(view) or 0
+    desired = tonumber(desired) or 0
+    -- Nothing readable: not aiming, and the calibration is KEPT. A dropped
+    -- frame must not cost a measurement that is otherwise good for the session.
+    if view ~= view or desired ~= desired then return false, scale end
+    if view <= 0 or desired <= 0 then return false, scale end
+
+    -- A calibration that is missing, NaN or non-positive is no calibration.
+    scale = tonumber(scale)
+    if scale ~= nil and (scale ~= scale or scale <= 0) then scale = nil end
+
+    if resting == true or scale == nil then
+        -- Measured, never assumed. `resting` is the caller's promise that no
+        -- sight can be up; an absent calibration takes the first readable frame
+        -- because a rule with no baseline at all can only answer "not aiming",
+        -- and answering that forever is the one failure D-041 cannot afford.
+        return false, view / desired
+    end
+
+    return Omerta.HUD.IsAiming(view, desired * scale, aiming), scale
 end
 
 --------------------------------------------------------------------------------
