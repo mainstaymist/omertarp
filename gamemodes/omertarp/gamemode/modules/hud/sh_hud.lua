@@ -87,6 +87,184 @@ function Omerta.HUD.StepAlpha(alpha, wantVisible, dt, fadeSeconds)
 end
 
 --------------------------------------------------------------------------------
+-- Looking down a sight
+--------------------------------------------------------------------------------
+-- D-041 made the crosshair permanent and gave it its information by BRIGHTNESS
+-- rather than by presence. Aiming is the one state where it should go entirely:
+-- a sight picture IS the aiming instrument, and a dot painted over the middle
+-- of it is a second one disagreeing with the first by a pixel or two.
+--
+-- HOW AIMING IS DETECTED, AND WHY IT IS NOT A QUESTION FOR THE WEAPON.
+--
+-- Nothing here asks ARC9, or TFA, or our own base, whether the player is
+-- aiming. D-044's rule is that we detect by what we intend to READ, never by a
+-- name — and the reading is this: EVERY weapon system that puts a player into
+-- ironsights narrows their field of view, because that is what ironsights are.
+-- ARC9 does it, TFA does it, a scope nobody has written yet will do it, and our
+-- own base will do it on the day W0 §6's deferred ironsights land. One reading
+-- covers all of them and none of them can break it, because none of them is
+-- being called.
+--
+-- IT IS A RATIO, NOT A DIFFERENCE. A sight that takes a third off the picture
+-- takes a third off it whether the player runs at 75 degrees or at 120, so
+-- `fov / base` is the same number for both of them and `base - fov` is not.
+-- Comparing the difference would mean a player on a wide field of view never
+-- triggering it and a player on a narrow one triggering it constantly.
+--
+-- IT IS ONE-SIDED. Only NARROWING counts. Sprint effects and damage kicks widen
+-- the field of view, and a wider picture is the opposite of a sight picture.
+--
+-- WHAT HAPPENS WHEN SOMETHING THAT IS NOT AIMING MOVES THE FIELD OF VIEW — a
+-- cinematic, a spectate camera, a future security-camera view. The honest
+-- answer is that this reading CANNOT TELL THEM APART, and it does not try:
+-- there is no magnitude that distinguishes a four-power scope from a slow push
+-- in on a face, and inventing a threshold that claimed to would be exactly the
+-- guess D-044 forbids. What makes that acceptable is that all of them want the
+-- SAME OUTCOME. A camera that is not the player's own eyes has nothing for the
+-- player to aim at, so the dot going away is correct for the cinematic and the
+-- spectate camera for their own reasons. The reading's failure mode is right by
+-- coincidence, and saying so out loud is cheaper than a mechanism that would
+-- have to be told about every camera anybody ever adds.
+--
+-- WHAT HAPPENS WHEN THE READING IS UNAVAILABLE — no player, a zero, a NaN, a
+-- convar that is not there. It answers NOT AIMING, always. The dot is D-041's
+-- one permitted permanent element and the expensive failure is losing it; a
+-- broken reading must leave the interface as it was, never blank part of it.
+
+Omerta.HUD.AIM = {
+    -- Narrowed to 95% of the field of view this player chose: aiming.
+    --
+    -- Loose on purpose, and the asymmetry of the two mistakes is the argument.
+    -- A false positive costs a 1.2px dot fading for as long as the narrowing
+    -- lasts, which nobody will ever report. A false negative is the bug we were
+    -- asked to fix — a sight that only takes 6% never hides the crosshair — and
+    -- it is invisible from here because we cannot read what any sight does. So
+    -- the threshold sits below anything worth calling a sight and above
+    -- anything that happens by accident.
+    ENTER = 0.95,
+
+    -- And back out past 98%. TWO thresholds rather than one because a single
+    -- one chatters: an aim that settles near the boundary would cross it on
+    -- frame-time noise, and the thing it would flicker is a mark at the exact
+    -- centre of the screen. Three points of hysteresis is far narrower than any
+    -- real transition and far wider than any jitter.
+    LEAVE = 0.98,
+
+    -- Seconds, each way. QUICKER THAN THE ELEMENT'S OWN 0.15s, deliberately,
+    -- and the element keeps its 0.15 for everything else.
+    --
+    -- 0.15 is tuned for something appearing because the WORLD changed — a door
+    -- came into reach, a window opened — where a moment of travel reads as the
+    -- screen responding to a situation. Aiming is not that. It is a thing the
+    -- player is doing with their own hand, and an interface response to a
+    -- direct input has to land inside the window where the eye still reads it
+    -- as CAUSED BY the input; past about a tenth of a second it reads as the
+    -- interface catching up instead.
+    --
+    -- 0.06 is four frames at 60Hz: enough that it is a fade rather than a cut
+    -- at the centre of the screen (which is the jump-cut D-042 argues against),
+    -- and short enough that the dot is gone before the sight picture has
+    -- finished arriving. It is also comfortably under REVEAL.OUT's 0.10, so the
+    -- crosshair is never the slowest thing on screen.
+    FADE = 0.06,
+}
+
+-- Is this player looking down a sight?
+--
+--   fov    — their field of view this frame (Player:GetFOV)
+--   base   — the field of view they play at with nothing narrowing it
+--            (fov_desired). The SAME KIND of reading as `fov`, which is the
+--            whole reason the pair is comparable.
+--   aiming — the previous answer, so the hysteresis band above has somewhere
+--            to live without this function holding state. Same idiom as
+--            StepAlpha taking the current alpha: the caller owns the state and
+--            the rule stays pure and pinnable.
+function Omerta.HUD.IsAiming(fov, base, aiming)
+    fov, base = tonumber(fov) or 0, tonumber(base) or 0
+    -- NaN survives every comparison it touches, so it is caught rather than
+    -- compared. Everything degenerate answers "not aiming"; see the header for
+    -- why that direction is the safe one.
+    if fov ~= fov or base ~= base then return false end
+    if fov <= 0 or base <= 0 then return false end
+
+    local ratio = fov / base
+    if ratio > 1 then return false end -- widened, which is not aiming
+
+    local A = Omerta.HUD.AIM
+    if aiming then return ratio <= A.LEAVE end
+    return ratio <= A.ENTER
+end
+
+--------------------------------------------------------------------------------
+-- Is the player in the world?
+--------------------------------------------------------------------------------
+-- "A man standing in a street with pockets." It is the question every key poll
+-- and every window in the game is really asking before it puts something on
+-- screen, and until now each caller assembled its own answer out of whichever
+-- full-screen states it happened to remember.
+--
+-- The inventory key is what made that a bug. It knew about the console, the
+-- engine's own menu and the chat box — everything the ENGINE owns — and about
+-- nothing this gamemode owns, so pockets opened over the front end, over
+-- character creation and over the pause rail. The next screen to poll a key
+-- would have had to remember the same list, and would have remembered a
+-- different subset of it.
+--
+-- THE FACTS, and why each is a fact rather than three:
+--
+--   character  the client has a live character standing in the city. That one
+--              fact is the whole of the front end's absence: somebody at the
+--              menu with nobody to be, somebody mid-creation, somebody reading
+--              "no season is running", somebody who has just died — the server
+--              has put nobody in the city, so there are no pockets to look in.
+--              It is also what covers M4's own fallback window, which is the
+--              creation screen in a build with no menu module at all.
+--   menu       ONE question — Omerta.Menu.IsShowing() — and deliberately the
+--              broad one. The front end, character creation and the pause rail
+--              are the same panel in three states (phase / mode / screen), and
+--              IsShowing() is true for all three: IsPaused() is a strict subset
+--              of it, and creation is a SCREEN of it. Asking the three
+--              separately is how the fourth one gets forgotten.
+--   death      the death card, and the fade that carries it away. Not implied
+--              by `character`: the state message and the screen run on two
+--              different clocks, and the seconds between them are exactly when
+--              a window must not survive.
+--
+-- DEFAULT DENY. A fact that is missing, or is anything other than a plain
+-- boolean, reads as "not in the world" — the same discipline SoundStillWanted
+-- follows below. Being wrong in that direction costs a key that does nothing
+-- for a frame; being wrong in the other puts an inventory over a death scene.
+--
+-- Pure, so the suite can pin the rule; the client gathers the facts below.
+function Omerta.HUD.InWorldFrom(facts)
+    if type(facts) ~= "table" then return false end
+    if facts.character ~= true then return false end
+    if facts.menu == true then return false end
+    if facts.death == true then return false end
+    return true
+end
+
+if CLIENT then
+    -- The facts, gathered. Every reference is SOFT, for two different reasons:
+    -- this is a shared file and the modules it asks are client-only, and one of
+    -- them is genuinely optional — M4 still runs in a build with no menu.
+    -- A module that is not there cannot be showing anything.
+    function Omerta.HUD.InWorld()
+        local characters = Omerta.Characters
+        local menu = Omerta.Menu
+        local injury = Omerta.Injury and Omerta.Injury.Client
+
+        return Omerta.HUD.InWorldFrom({
+            character = characters ~= nil and characters.GetLocal ~= nil
+                and characters.GetLocal() ~= nil,
+            menu = menu ~= nil and menu.IsShowing ~= nil and menu.IsShowing() == true,
+            death = injury ~= nil
+                and (injury.death ~= nil or injury.leaving ~= nil),
+        })
+    end
+end
+
+--------------------------------------------------------------------------------
 -- The lens
 --------------------------------------------------------------------------------
 -- A slight, permanent darkening at the edges of the picture. It is there from

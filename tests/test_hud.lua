@@ -70,6 +70,98 @@ check("a zero fade time is instant, not a divide by zero", function()
 end)
 
 --------------------------------------------------------------------------------
+suite("hud.aiming")
+--------------------------------------------------------------------------------
+-- D-041's crosshair goes away down a set of sights, and the only thing this
+-- gamemode is allowed to know about a set of sights is that it narrows the
+-- picture. Nothing in the predicate touches a weapon, a class name or an addon;
+-- it is two field-of-view readings and a previous answer, which is exactly why
+-- it can be pinned here on a machine that has neither addon installed.
+
+check("aiming is a RATIO of the player's own field of view, not a difference", function()
+    loadModules()
+    local A = Omerta.HUD.IsAiming
+    -- The same 25% narrowing, at three very different player settings. A
+    -- difference-based rule would answer these three differently, which is the
+    -- bug the ratio exists to prevent.
+    assert(A(56.25, 75, false), "narrowed a quarter at 75")
+    assert(A(67.5, 90, false), "narrowed a quarter at 90")
+    assert(A(90, 120, false), "narrowed a quarter at 120")
+    -- And an untouched field of view is never aiming, at any setting.
+    assert(not A(75, 75, false))
+    assert(not A(90, 90, false))
+    assert(not A(120, 120, false))
+end)
+
+check("only NARROWING counts — a widened picture is the opposite of a sight", function()
+    loadModules()
+    local A = Omerta.HUD.IsAiming
+    -- Sprint effects and damage kicks push the field of view out. None of that
+    -- may take the crosshair away, and the rule is one-sided so none of it can.
+    assert(not A(100, 90, false), "widened")
+    assert(not A(140, 90, true), "widened, even coming out of an aim")
+end)
+
+check("the thresholds are the declared ones, and they hysteresise", function()
+    loadModules()
+    local AIM = Omerta.HUD.AIM
+    assert(AIM.ENTER == 0.95, "enter at 95% of the player's field of view")
+    assert(AIM.LEAVE == 0.98, "and leave past 98%")
+    assert(AIM.ENTER < AIM.LEAVE,
+        "leaving must be looser than entering or the band is inverted")
+
+    local A = Omerta.HUD.IsAiming
+    -- Inside the band the answer is whatever it already was: that is the whole
+    -- of the hysteresis, and it is what stops a mark at the exact centre of the
+    -- screen flickering when an aim settles near the boundary.
+    assert(not A(90 * 0.965, 90, false), "0.965 does not START an aim")
+    assert(A(90 * 0.965, 90, true), "but does not END one either")
+    -- Outside it, the previous answer is irrelevant.
+    assert(A(90 * 0.94, 90, false), "past ENTER, from not aiming")
+    assert(not A(90 * 0.99, 90, true), "past LEAVE, from aiming")
+end)
+
+check("the fade is quicker than the element's own, and still a fade", function()
+    loadModules()
+    local AIM = Omerta.HUD.AIM
+    -- The crosshair element fades at 0.15s for the reasons the world changes.
+    -- Aiming is the player's own hand and must land inside the window where the
+    -- eye reads it as caused by the input.
+    assert(AIM.FADE < 0.15, "an aim fade at or above the element's own is not 'fast'")
+    -- And not a cut: a hard switch on a mark at the centre of the screen is the
+    -- jump-cut D-042 argues against.
+    assert(AIM.FADE > 0, "a zero fade is a cut, not a fade")
+    assert(AIM.FADE <= 0.1, "past a tenth of a second it reads as the HUD catching up")
+    -- Never the slowest thing on screen: a window's play-out is 0.10s.
+    assert(AIM.FADE < Omerta.HUD.REVEAL.OUT, "slower than a window leaving")
+
+    -- It reaches the ends in the time it says it does, through the same stepper
+    -- every other fade in the interface uses.
+    local a = 1
+    for _ = 1, 4 do a = Omerta.HUD.StepAlpha(a, false, AIM.FADE / 4, AIM.FADE) end
+    assert(a == 0, "four steps of a quarter of the fade should finish it")
+end)
+
+check("an unreadable camera keeps the crosshair rather than losing it", function()
+    loadModules()
+    local A = Omerta.HUD.IsAiming
+    -- D-041's dot is the ONE permanent element and the expensive failure is
+    -- blanking it, so every degenerate reading answers "not aiming".
+    assert(not A(nil, 90, false), "no reading at all")
+    assert(not A(45, nil, false), "no player preference to compare against")
+    assert(not A(0, 90, false), "a zero field of view")
+    assert(not A(45, 0, false), "a zero base")
+    assert(not A(-45, 90, false), "a negative reading")
+    assert(not A("wide", 90, false), "something that is not a number")
+    local nan = 0 / 0
+    assert(not A(nan, 90, false), "NaN survives every comparison it touches")
+    assert(not A(45, nan, false), "and so does a NaN base")
+    -- Including while already aiming: a reading that breaks mid-aim brings the
+    -- crosshair back rather than leaving the screen blank forever.
+    assert(not A(nan, 90, true))
+end)
+
+--------------------------------------------------------------------------------
 suite("hud.reveal")
 --------------------------------------------------------------------------------
 -- The one animation every popup in the game shares. Pinned here rather than
@@ -605,4 +697,48 @@ check("a label that errors is skipped rather than fatal", function()
     local L = Omerta.HUD.LabelFor
     assert(L({ OmertaLabel = function() error("boom") end }) == nil)
     assert(L({ OmertaLabel = function() return 42 end }) == nil, "a number is not a label")
+end)
+
+--------------------------------------------------------------------------------
+suite("hud.in_world")
+--------------------------------------------------------------------------------
+
+-- "A man standing in a street with pockets" — the one question a key poll or a
+-- window asks before it puts anything on screen. The client gathers the facts;
+-- the rule that reads them is pure, and this is it.
+check("a live character, no rail, no death card: in the world", function()
+    loadModules()
+    assert(Omerta.HUD.InWorldFrom({ character = true, menu = false, death = false }),
+        "somebody standing in the city with nothing over the screen")
+end)
+
+check("each full-screen state on its own takes the player out of the world", function()
+    loadModules()
+    local inWorld = Omerta.HUD.InWorldFrom
+
+    assert(not inWorld({ character = false, menu = false, death = false }),
+        "nobody to be: the front end, creation, or a city with no season")
+    -- ONE question covers three screens. The front end, character creation and
+    -- the pause rail are the same panel in three states, and this is what stops
+    -- the fourth one being forgotten.
+    assert(not inWorld({ character = true, menu = true, death = false }),
+        "the rail is up — front end, creation screen or pause, all one fact")
+    assert(not inWorld({ character = true, menu = false, death = true }),
+        "the death card, and the fade that carries it away")
+end)
+
+-- Default deny: the cost of being wrong this way is a key that does nothing for
+-- a frame, and the cost of being wrong the other way is a window over a death.
+check("a fact nobody supplied reads as 'not in the world'", function()
+    loadModules()
+    local inWorld = Omerta.HUD.InWorldFrom
+
+    assert(not inWorld(nil), "no facts at all")
+    assert(not inWorld({}), "nobody said there was a character")
+    assert(not inWorld("yes"), "not even a table")
+    assert(not inWorld({ character = "yes" }), "a truthy value is not a boolean true")
+    -- ...and only a plain `true` closes a screen, so a soft reference that
+    -- returned a function or a table cannot silently hide the world.
+    assert(inWorld({ character = true, menu = "maybe" }),
+        "anything that is not true is not the rail being up")
 end)

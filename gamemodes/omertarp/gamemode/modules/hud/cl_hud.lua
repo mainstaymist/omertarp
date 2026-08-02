@@ -603,8 +603,63 @@ local function cursorHasScreen()
     return vgui.CursorVisible() or gui.IsGameUIVisible() or gui.IsConsoleVisible()
 end
 
+-- ...and where a sight takes over.
+--
+-- The rule and every number are in sh_hud.lua's "Looking down a sight"; this is
+-- the two engine readings it is fed, and they are both base GMod.
+--
+--   Player:GetFOV()   — the player's field of view THIS FRAME. It is the
+--     reading that catches every mechanism a weapon system might use, because
+--     they all end up here: SetFOV lands in it, and so does a SWEP's
+--     TranslateFOV, which is the engine hook the ironsight of every base worth
+--     the name is built on. We call neither of those; we read the result.
+--
+--   fov_desired       — the field of view the player chose to play at, which is
+--     the same kind of quantity as the reading above. That is the whole reason
+--     the two are comparable at all.
+--
+-- REJECTED: render.GetViewSetup(). It reports what the frame was actually drawn
+-- at, which sounds strictly better, and it is the wrong reading here because it
+-- is aspect-corrected — on a wide screen it hands back a horizontal field of
+-- view that has nothing to do with fov_desired, so the ratio would be junk in
+-- exactly the way that is hardest to notice. Two readings of the same kind beat
+-- one better reading and one that does not match it.
+--
+-- KNOWN BLIND SPOT, on the record: a weapon system that narrows the picture ONLY
+-- inside CalcView, never touching the player's own field of view, is invisible
+-- to this. The symptom of that is the dot staying exactly as it is today — the
+-- failure is a no-op rather than a wrong behaviour, which is the only kind of
+-- failure worth accepting from a reading we cannot verify without the addon.
+local aiming = false
+local sight = 1 -- 1 = the crosshair is the player's; 0 = the sight is
+
+-- Stepped in Think rather than in draw(), and that is not tidiness. draw() is
+-- not called on a frame the element is fully faded out, so a fade stepped there
+-- would freeze whenever a window was open and thaw stale — the dot would come
+-- back after the window closed still hidden by an aim the player let go of
+-- while they were reading it. Think runs every frame regardless of what is on
+-- screen, so the answer is always current by the time anything looks at it.
+hook.Add("Think", "omerta.hud.aiming", function()
+    local ply = LocalPlayer()
+    local fov = IsValid(ply) and ply:GetFOV() or nil
+    local desired = GetConVar("fov_desired")
+
+    aiming = Omerta.HUD.IsAiming(fov, desired and desired:GetFloat(), aiming)
+    sight = Omerta.HUD.StepAlpha(sight, not aiming, FrameTime(), Omerta.HUD.AIM.FADE)
+end)
+
+-- Is the player looking down a sight? Exposed because it is a fact about the
+-- camera rather than about the crosshair, and the next thing that wants it
+-- (a sway, a breath, a stamina cost for holding an aim) should read the same
+-- answer rather than taking its own reading of the same convar.
+function Omerta.HUD.Aiming() return aiming end
+
 Omerta.HUD.Register("interactable", {
     order = 40,
+    -- The element's own fade, for the reasons it appears and disappears: a
+    -- window opening, a character going down. Aiming does NOT use it — it has
+    -- its own, quicker one above, because it is the player's hand moving rather
+    -- than the world changing.
     fade = 0.15,
     visible = function()
         if cursorHasScreen() then return false end
@@ -618,6 +673,23 @@ Omerta.HUD.Register("interactable", {
         return true
     end,
     draw = function(alpha)
+        -- The sight's alpha MULTIPLIES the controller's rather than replacing
+        -- it, so the two stay separate facts: the controller's says whether
+        -- this element is on screen at all, and this one says how much of it a
+        -- sight picture is currently entitled to. Neither has to know about the
+        -- other, and a player who opens a window mid-aim gets one fade, not a
+        -- fight between two.
+        --
+        -- THE WHOLE ELEMENT, not just the dot. The ladder of hints underneath is
+        -- anchored to the crosshair by construction, and a name floating under
+        -- a mark that is not there reads as a bug — besides which nobody is
+        -- reading a label down a set of sights.
+        alpha = alpha * sight
+        -- draw() runs on fade-out frames after visible() went false, and now on
+        -- frames where the sight has taken the element to nothing as well. One
+        -- guard for both.
+        if alpha <= 0 then return end
+
         local scale = Omerta.HUD.Scale()
         -- A CIRCLE, with its own ring of ink. Small on purpose: this marks
         -- where you are looking, and anything bigger starts reading as an

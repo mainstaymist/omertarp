@@ -7,6 +7,10 @@
 -- exactly the omniscient furniture GDD §8 removed. So it fades in on the
 -- moments that mean "I am thinking about my gun" (drawing it, firing it,
 -- reloading it) and fades back out.
+--
+-- It also holds the one thing this module has to take AWAY from the engine: the
+-- sandbox context menu, and with it the C key. See the section at the foot of
+-- the file.
 
 Omerta.Weapons = Omerta.Weapons or {}
 
@@ -119,3 +123,84 @@ Omerta.HUD.Register("weapons.rounds", {
         end
     end,
 })
+
+--------------------------------------------------------------------------------
+-- The context menu, and the C key it takes
+--------------------------------------------------------------------------------
+-- C IS THE INVENTORY. GMod's default binding for it is `+menu_context`, which
+-- opens the sandbox context menu, and a mounted weapon framework hangs its
+-- customisation menu off that — so pressing C opened somebody else's attachment
+-- window over the top of the pockets.
+--
+-- THE POSITION, STATED PLAINLY: THIS GAMEMODE HAS NO CONTEXT MENU. Not "not
+-- yet", and not "not on that key". There is no spawn menu, no toolgun, no props
+-- to configure, no entity whose properties a player may edit, and no permission
+-- model under which any of that would be allowed — D-033 is a ban on omniscient
+-- information and the sandbox context menu is a window onto the whole map's
+-- entities. So this is not a workaround for a key clash that happens to be
+-- convenient; suppressing it wholesale is the correct behaviour for this
+-- gamemode and would be right even if no weapon framework were installed. The
+-- clash is what made somebody notice, not what makes it right.
+--
+-- NOTHING HERE READS OR CALLS ARC9 (D-043/D-044's rule, and the reason three
+-- unverified class strings never became a maintenance problem). Both hooks
+-- below are base Garry's Mod and both are about OUR gamemode's own facilities:
+-- one refuses to open a menu we do not have, the other refuses to run a command
+-- we do not want run. Whether an addon is listening to either is not asked and
+-- does not need to be.
+--
+-- BOTH HOOKS, AND WHY IN THAT ORDER.
+--
+-- ContextMenuOpen is the GATE and it is the real answer. It is asked at the
+-- moment something tries to open the menu, by whatever is trying — the bind, a
+-- console command typed by hand, an addon calling the open path itself — so it
+-- cannot be raced. Hook execution order in GMod is undefined (the hook table is
+-- iterated with pairs), and a gate that is CONSULTED does not care what order
+-- anything registered in, because it is asked as part of the act rather than
+-- alongside it. Anything that opens THROUGH the context menu is stopped here,
+-- including anything hanging off OnContextMenuOpen, which never fires.
+--
+-- PlayerBindPress swallowing the bind is the belt to that brace, and it is
+-- deliberately second because it is strictly weaker. It covers the case where a
+-- framework never touches the context menu at all and simply listens for the
+-- same bind — but if that listener happens to be iterated before ours it has
+-- already acted by the time we return true, and no ordering we can express
+-- fixes that. As a sole mechanism it would be a guess about somebody else's
+-- code; as a second one it costs a string compare and closes the case where the
+-- context menu is not involved.
+--
+-- Together they also close the case the gate alone leaves open: with no context
+-- menu to open, `+menu_context` would otherwise still run and do whatever else
+-- it does. Now the command does not run and the menu would refuse anyway.
+--
+-- THIS CANNOT BREAK THE INVENTORY, and the reason is worth being explicit about
+-- because the two look like they are fighting over one key and are not.
+-- cl_inventory.lua polls the PHYSICAL key with input.IsKeyDown(KEY_C); this
+-- suppresses a COMMAND named +menu_context. They are different questions about
+-- different things, and neither can answer the other's. Returning true from
+-- PlayerBindPress stops a bind from running its command; it does not stop the
+-- key from being down, and input.IsKeyDown does not consult the bind table at
+-- all. A player who rebinds the context menu onto some other key still opens
+-- their pockets with C, and still gets no context menu.
+--
+-- The spawn menu (Q, `+menu`) is deliberately NOT touched here. It is the same
+-- argument and it is not the same report, and a second suppression added on
+-- spec is a second thing to explain when somebody eventually wants a staff
+-- tool. If it needs doing it is one more hook, in this section, with its own
+-- sentence.
+hook.Add("ContextMenuOpen", "omerta.weapons.no_context", function()
+    return false
+end)
+
+hook.Add("PlayerBindPress", "omerta.weapons.no_context_bind", function(_, bind)
+    -- Matched as a SUBSTRING rather than compared to "+menu_context". A bind
+    -- arrives here with its sign attached and the release half of a +command is
+    -- reported by some builds as `-menu_context`; matching the command's name
+    -- catches both halves and cannot catch anything else, since no other bind
+    -- in the engine contains that string. Everything unmatched returns nil and
+    -- is left alone — this hook must never be the reason another bind stops
+    -- working.
+    if type(bind) == "string" and bind:find("menu_context", 1, true) then
+        return true
+    end
+end)

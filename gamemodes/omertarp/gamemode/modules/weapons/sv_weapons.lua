@@ -22,25 +22,155 @@ Omerta.Config.Define("weapons.damage_scale", {
 --------------------------------------------------------------------------------
 -- Where a gun rides when it is not in a hand
 --------------------------------------------------------------------------------
--- EVERY NUMBER IN THIS TABLE IS EYEBALLED. They were set by hanging a w_357
--- off a citizen model and looking at it, not measured against anything, and
--- Track E's art pass owns them properly. That is exactly why they are one
--- table with one comment rather than six constants buried in the function that
--- spawns the props: a pass over the hang of a Thompson should be a pass over
--- six numbers in one place.
+-- THE SIDEARM'S NUMBERS ARE EYEBALLED. They were set by hanging a w_357 off a
+-- citizen model and looking at it, not measured against anything, and Track E's
+-- art pass owns them properly. That is exactly why they are one table with one
+-- comment rather than six constants buried in the function that spawns the
+-- props: a pass over the hang of a Thompson should be a pass over six numbers
+-- in one place — which is what the primary's pass, below, turned out to be.
+--
+-- THE PRIMARY'S ARE NOT EYEBALLED ANY MORE, and could not be: nobody who can
+-- edit this file can see the result. They are derived from a stated frame and a
+-- stated field observation, and every one of them says what it is for. The
+-- derivation is directly below and it is as much the deliverable as the numbers
+-- — a number nobody can check is worth nothing without the reasoning that says
+-- how to check it.
 --
 -- Plain number triples rather than Vector/Angle literals because this file
 -- loads under the headless suite, where neither type exists.
+--
+--------------------------------------------------------------------------------
+-- THE FRAME THESE NUMBERS ARE IN, WHICH IS THE ONLY THING THAT MAKES THEM
+-- READABLE AT ALL
+--------------------------------------------------------------------------------
+-- SetLocalPos and SetLocalAngles on a bone-following prop are in the BONE's
+-- frame, not the world's and not the player's. A ValveBiped bone's axes are
+-- whatever the rig's author left them as, and for the spine chain they are not
+-- x-forward/z-up — so "3" in the third slot is not "3 units up" and no amount of
+-- staring at the numbers will say what it is.
+--
+-- The frame below was DERIVED, not looked up, and the derivation is the one
+-- measurement anybody has taken of it: the field report on the values these
+-- replace. Those were pos {-7, 1, 3}, ang {12, 0, 165}, and the gun they
+-- produced was reported as "on the player's left buttcheek pointing down and
+-- inside the player". Read that backwards:
+--
+--   * ang {12, 0, ...} points the prop's forward almost exactly along the
+--     bone's +X, because pitch and yaw alone decide forward and 12 degrees is
+--     nearly none. That forward was observed pointing DOWN. So on Spine2,
+--     BONE +X RUNS DOWN THE SPINE, toward the pelvis.
+--
+--   * pos -7 on that axis is therefore 7 units UP — the shoulder blades. A
+--     28-unit weapon hanging muzzle-down from there descends through the torso
+--     and comes out around the backside, which is precisely the gun that was
+--     reported, and it also explains "inside the player" without needing a
+--     second mistake to explain it.
+--
+--   * that leaves +1 and +3 on the other two axes to account for "left" and for
+--     the clipping. +3 is the better candidate for the three units of LEFT that
+--     were actually visible, and +1 for one unit of depth that was nowhere near
+--     enough to clear a back. So: BONE +Z IS THE MODEL'S LEFT, BONE +Y IS OUT OF
+--     THE BACK. (Those two, with +X down, are a right-handed set, which is the
+--     one thing here that is arithmetic rather than inference.)
+--
+-- So, for ValveBiped.Bip01_Spine2, and for the numbers below:
+--
+--     pos[1]  +down the spine       pos[2]  +out of the back   pos[3]  +left
+--     ang[1]  pitch, about pos[2]   ang[2]  yaw               ang[3]  roll
+--
+-- THE PART THAT IS INFERRED RATHER THAN OBSERVED is which of pos[2] and pos[3]
+-- is depth and which is lateral — the report only ever said "left" and "inside",
+-- and 1 and 3 are both small. So it is written down here as a claim with its two
+-- possible failures NAMED, because a wrong number that says how it is wrong
+-- costs one look and a one-line edit, and a wrong number that says nothing costs
+-- another round trip to somebody with the game open.
+--
+--   * The gun rides on the back but canted to the player's LEFT. Then the
+--     lateral axis is mirrored and everything else stands: negate the cant,
+--     which with the cant carried in the pitch means 150 -> 210 (still muzzle
+--     up, tilted the other way).
+--
+--   * The gun stands OFF the back at an angle, or lies flat but sunk into it.
+--     Then pos[2] and pos[3] have swapped jobs: depth is the third slot and
+--     lateral is the second, so the pitch is tilting the muzzle out of the back
+--     instead of across it. That is a two-line fix and both lines are here —
+--     pos { 6, 0, -5 }, ang { 180, 30, 180 }: pitch 180 is straight up the
+--     spine and the 30 degrees of cant moves into the yaw.
+--
+-- Nothing outside those two can be wrong, because pos[1] and the pitch flip are
+-- pinned by the observation above rather than inferred from it.
+--------------------------------------------------------------------------------
 local HOLSTER = {
-    -- Slung across the back, muzzle down past the left hip. Spine2 is the
-    -- upper back on every ValveBiped rig, which is every player model the
-    -- gamemode ships.
+    -- CENTRE OF THE BACK, RUNNING DIAGONALLY UP TO THE RIGHT, MUZZLE UP.
+    -- (Project lead, 2026-08-02, replacing "muzzle down past the left hip",
+    -- which is the pose the numbers above produced and nobody wanted.)
+    --
+    -- Spine2 is the upper back on every ValveBiped rig, which is every player
+    -- model the gamemode ships. The bone does not move.
+    --
+    --   pos[1] = 6   SIX UNITS DOWN THE SPINE from Spine2, so the weapon's
+    --     receiver — which is roughly where a w_ model's origin sits — lands at
+    --     the middle of the back. With the muzzle up, the gun grows UPWARD from
+    --     its origin: a Thompson's twenty-odd units of barrel then reach the top
+    --     of the shoulder rather than a foot above the player's head, and its
+    --     stock hangs to about the belt. This is the number that depends on the
+    --     MODEL's length, so it is the number to revisit when §4b's ruling
+    --     changes what model is hanging there.
+    --
+    --   pos[2] = 5   FIVE UNITS OUT OF THE BACK, and this is the fix for
+    --     "inside the player". It was 1, which put the prop's centre-line
+    --     inside the torso and left the gun to clip its way out. Spine2 to the
+    --     skin of the back is about four units on a citizen frame; five puts
+    --     the gun a unit proud of the coat, which is where a sling holds it.
+    --     Too small and it sinks; too large and it floats. It is the one number
+    --     here that is a body measurement rather than a geometric one.
+    --
+    --   pos[3] = 0   DEAD CENTRE. The lead asked for the centre of the back and
+    --     this is that request, whole: the mount point is on the spine and every
+    --     bit of the diagonal comes from the ANGLES. That decomposition is the
+    --     point — a mount is a place and a cant is a rotation, and mixing the
+    --     two is how the old numbers ended up with a lateral offset AND a roll
+    --     both half-doing the same job.
+    --
+    --   ang[1] = 150  PITCH, and it is doing two things at once, which is why
+    --     it moved so far from 12. Under the frame above, pitch 12 pointed the
+    --     muzzle down the spine; 180 minus a pitch reverses it. So 180 would be
+    --     straight up the spine, and 180 - 30 = 150 is straight up the spine
+    --     TILTED 30 DEGREES TOWARD THE MODEL'S RIGHT. That tilt is the diagonal:
+    --     butt low and left, muzzle high and right, which is how a long gun
+    --     actually rides on a back. Thirty degrees rather than forty-five
+    --     because a Thompson is long and the steeper the cant the further the
+    --     muzzle swings off the shoulder into open air.
+    --
+    --   ang[2] = 0    YAW, unused and deliberately left at zero. With the cant
+    --     expressed as pitch, yaw would only swing the muzzle away from the
+    --     player's back — which is the one direction nothing about a slung
+    --     weapon wants to go. A second non-zero rotation here would make the
+    --     pose impossible to reason about from the numbers, which is the state
+    --     this table was in.
+    --
+    --   ang[3] = 180  ROLL: which way up the weapon lies against the back. Roll
+    --     never changes where the muzzle points, only how the gun is spun about
+    --     its own barrel, so it is free to be chosen for one thing — keeping the
+    --     FLAT of the weapon against the player. At 180 the thin axis faces out
+    --     of the back (so the gun stands off the body as little as pos[2]
+    --     allows) and the magazine and grip hang toward the right flank rather
+    --     than digging into the left shoulder blade, which is what 0 does. It
+    --     was already 165, so this is the one number that was very nearly right.
     primary = {
         bone = "ValveBiped.Bip01_Spine2",
-        pos  = { -7, 1, 3 },
-        ang  = { 12, 0, 165 },
+        pos  = { 6, 5, 0 },
+        ang  = { 150, 0, 180 },
     },
     -- On the right hip, pointing at the ground, where a holster sits.
+    --
+    -- UNTOUCHED, deliberately. The field report names one thing wrong and it is
+    -- the primary; the sidearm was not mentioned, which is the only evidence
+    -- anybody has about it and it says it is fine. A thigh bone is a different
+    -- frame from a spine bone besides — the derivation above is about Spine2 and
+    -- claims nothing at all about R_Thigh — so "improving" these numbers by
+    -- analogy would be replacing a pose somebody has actually looked at with one
+    -- nobody has, which is the wrong direction to move.
     sidearm = {
         bone = "ValveBiped.Bip01_R_Thigh",
         pos  = { 2, 4, 1 },
@@ -620,12 +750,22 @@ local function attachHolster(ply, weapon)
     local bone = ply:LookupBone(spec.bone)
     if not bone then return nil end
 
-    -- The world model the arsenal already declares (D-039: adding a weapon is
-    -- data, and that includes what it looks like on a back). A weapon whose
-    -- model does not resolve gets NOTHING: ResolveModel's fallback is a wooden
-    -- crate, and a crate strapped to a man's shoulder is a worse lie than an
-    -- empty shoulder.
-    local model = Omerta.Util.ResolveModel(weapon.worldModel)
+    -- What the arsenal declares this weapon hangs on a body AS (D-039: adding a
+    -- weapon is data, and that includes what it looks like on a back).
+    --
+    -- Through HolsterModel rather than off `weapon.worldModel` directly, and
+    -- that indirection is the whole of what this change is allowed to do about
+    -- the port plan's §4b. `worldModel` also decides what our own generated SWEP
+    -- renders in a hand and what a dropped weapon lies on the pavement as, and
+    -- §4b's ruling is about none of those — so the field it will move is now a
+    -- field of its own. Today nothing declares one and the answer is still
+    -- `worldModel`, unchanged, which is the point: the ruling stays open and
+    -- lands as a data edit whichever way it goes.
+    --
+    -- A weapon whose model does not resolve gets NOTHING: ResolveModel's
+    -- fallback is a wooden crate, and a crate strapped to a man's shoulder is a
+    -- worse lie than an empty shoulder.
+    local model = Omerta.Util.ResolveModel(Omerta.Weapons.HolsterModel(weapon))
     if not model or model == Omerta.Util.FALLBACK_MODEL then return nil end
 
     local ent = ents.Create("prop_dynamic")

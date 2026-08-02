@@ -178,6 +178,78 @@ check("class names are deterministic and collision-free by construction", functi
 end)
 
 --------------------------------------------------------------------------------
+suite("weapons.holster_model")
+--------------------------------------------------------------------------------
+-- What a gun hangs off a back AS is now its own declarable field, because the
+-- port plan's §4b ruling moves exactly that and must not be forced to move what
+-- a DROPPED weapon looks like along with it. The ruling is still open, so the
+-- thing pinned hardest here is that today's behaviour did not change.
+
+check("with nothing declared, a holster prop is still the world model", function()
+    loadModules()
+    for _, def in ipairs(Omerta.Weapons.All()) do
+        assert(def.holsterModel == nil,
+            def.id .. " declares a holsterModel — §4b's ruling is still open " ..
+            "and nothing may pre-empt it")
+        local list = Omerta.Weapons.HolsterModel(def)
+        assert(list and list[1] == def.worldModel[1],
+            def.id .. " no longer hangs off a back as its world model")
+    end
+end)
+
+check("a weapon may declare what it hangs on a back as, without moving anything else", function()
+    loadModules()
+    Omerta.Weapons.Register("weapon.slung", {
+        name = "Slung", slot = "primary", bulk = 9,
+        damage = 20, rpm = 100, clip = 5, ammo = "ammo.45",
+        worldModel = { "models/weapons/w_smg1.mdl" },
+        holsterModel = { "models/weapons/absent.mdl", "models/weapons/w_357.mdl" },
+    })
+    local def = Omerta.Weapons.Get("weapon.slung")
+    local list = Omerta.Weapons.HolsterModel(def)
+    assert(list[1] == "models/weapons/absent.mdl", "best first, like every other list")
+    assert(list[2] == "models/weapons/w_357.mdl", "and the fallbacks behind it")
+    -- The other two things worldModel answers are untouched, which is the
+    -- entire reason the field is separate from it.
+    assert(def.worldModel[1] == "models/weapons/w_smg1.mdl",
+        "declaring a holster model must not change what a dropped weapon is")
+    assert(Omerta.Items.Get("weapon.slung").model == "models/weapons/w_smg1.mdl",
+        "nor what the M9 item lies on the pavement as")
+end)
+
+check("a single path is accepted, the same way a model list is anywhere else", function()
+    loadModules()
+    Omerta.Weapons.Register("weapon.one_path", {
+        name = "One Path", slot = "primary", bulk = 9,
+        damage = 20, rpm = 100, clip = 5, ammo = "ammo.45",
+        worldModel = { "models/weapons/w_smg1.mdl" },
+        holsterModel = "models/weapons/w_357.mdl",
+    })
+    local list = Omerta.Weapons.HolsterModel(Omerta.Weapons.Get("weapon.one_path"))
+    assert(#list == 1 and list[1] == "models/weapons/w_357.mdl")
+end)
+
+expectError("a holster model that is not a model path is refused at boot",
+    "holsterModel", function()
+    loadModules()
+    Omerta.Weapons.Register("weapon.bad_holster", {
+        name = "Bad", slot = "primary", bulk = 9,
+        damage = 20, rpm = 100, clip = 5, ammo = "ammo.45",
+        holsterModel = { 7 },
+    })
+end)
+
+expectError("an empty holster model list is refused rather than silently ignored",
+    "holsterModel", function()
+    loadModules()
+    Omerta.Weapons.Register("weapon.empty_holster", {
+        name = "Empty", slot = "primary", bulk = 9,
+        damage = 20, rpm = 100, clip = 5, ammo = "ammo.45",
+        holsterModel = {},
+    })
+end)
+
+--------------------------------------------------------------------------------
 suite("weapons.ballistics")
 --------------------------------------------------------------------------------
 

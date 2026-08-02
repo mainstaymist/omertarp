@@ -343,6 +343,25 @@ function Omerta.Weapons.Validate(id, def)
         return false, "weapon '" .. id .. "' viewModelFOV must be a field of " ..
             "view between 0 and 180 degrees, as the pack's own SWEP declares it"
     end
+    -- What the prop hanging off a back or a hip is built from, when that is not
+    -- the same model as the one a dropped weapon lies on the pavement as.
+    -- OPTIONAL; see Omerta.Weapons.HolsterModel for why it exists and what it
+    -- defaults to. Same shape as viewModel/worldModel — one path or a list of
+    -- them, best first — because it goes through the same resolver.
+    if def.holsterModel ~= nil then
+        local list = def.holsterModel
+        if type(list) == "string" then list = { list } end
+        if type(list) ~= "table" or #list == 0 then
+            return false, "weapon '" .. id .. "' holsterModel must be a model path "
+                .. "or a list of them, best first — exactly as worldModel is"
+        end
+        for _, path in ipairs(list) do
+            if type(path) ~= "string" or path == "" then
+                return false, "weapon '" .. id .. "' holsterModel contains "
+                    .. tostring(path) .. ", which is not a model path"
+            end
+        end
+    end
     if def.external ~= nil then
         if type(def.external) ~= "string" or not def.external:find(CLASS_PATTERN) then
             return false, "weapon '" .. id .. "' names external SWEP class '"
@@ -534,6 +553,38 @@ function Omerta.Weapons.All()
     for _, def in pairs(weapons_) do out[#out + 1] = def end
     table.sort(out, function(a, b) return a.id < b.id end)
     return out
+end
+
+--------------------------------------------------------------------------------
+-- What a holstered weapon is made of
+--------------------------------------------------------------------------------
+-- The candidates for the PROP that hangs off a back or a hip, best first, ready
+-- for Omerta.Util.ResolveModel.
+--
+-- It used to be `def.worldModel` read straight, and the two are not the same
+-- question even though they answer the same today. `worldModel` is three things
+-- at once: the model our own generated SWEP renders in a hand, the model the M9
+-- item lies on the pavement as, and — until now — the model on a back. The port
+-- (docs/review/06_weapon_art_port.md §4b) is going to move ONE of those three
+-- and must not be forced to move the other two with it, because a decision
+-- about what a slung Thompson looks like is not a decision about what a dropped
+-- one looks like.
+--
+-- SO THIS IS A DECLARABLE ARSENAL FIELD, and §4b's ruling — bonemerge the `c_`
+-- model, source proper `w_` models, keep D-044's bridge, or ship placeholders —
+-- becomes a data edit in sh_weapons_arsenal.lua whichever way it goes, exactly
+-- as D-039 promises. NOTHING HERE PRE-EMPTS THAT RULING: with no `holsterModel`
+-- declared the answer is `worldModel`, which is byte for byte what every weapon
+-- got before this function existed, and no weapon declares one today.
+--
+-- Returns a LIST, never a resolved path: the resolver is an engine call and
+-- this file loads headless.
+function Omerta.Weapons.HolsterModel(def)
+    if type(def) ~= "table" then return nil end
+    local candidates = def.holsterModel or def.worldModel
+    if type(candidates) == "string" then return { candidates } end
+    if type(candidates) ~= "table" or #candidates == 0 then return nil end
+    return candidates
 end
 
 --------------------------------------------------------------------------------

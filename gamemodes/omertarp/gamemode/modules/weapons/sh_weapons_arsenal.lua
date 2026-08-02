@@ -203,6 +203,16 @@ Omerta.Weapons.Register("weapon.m1911", {
     -- AK-47), so pointing at theirs would put the wrong gun in every observer's
     -- hands and on every holster prop. That ruling — bonemerge the c_ model,
     -- source proper w_ models, or ship placeholders — is still open.
+    --
+    -- WHAT MOVED IN PREPARATION FOR IT, WITHOUT PRE-EMPTING IT: the prop that
+    -- hangs off a back or a hip now reads an OPTIONAL `holsterModel` on this
+    -- table and falls back to `worldModel` when there is none — which is what
+    -- every weapon here does, so nothing about today's behaviour changed. It
+    -- exists because `worldModel` is three answers in one (the model our own
+    -- SWEP renders in a hand, the model a dropped weapon lies on the pavement
+    -- as, and the model on a back) and §4b moves exactly one of them. When the
+    -- ruling lands it is a line here, of the same shape as the viewModel list
+    -- above, and nothing outside this file is edited.
     worldModel = { "models/weapons/w_pistol.mdl" },
     -- What the pack authored the viewmodel for. Our base sets none and inherits
     -- the engine's 54, which makes a ported model sit visibly wrong.
