@@ -90,7 +90,12 @@ Omerta.Weapons.Register("weapon.revolver", {
     recoil = 2.2,
     reloadTime = 2.8,
 
-    external = "tfa_ins2_wpn_38revolver",
+    -- CORRECTED 2026-08-02 from a real server's class list. There is no
+    -- TFA pack mounted and no .38 anywhere; the S&W M1917 is the only
+    -- revolver installed. It is a .45 in life and this one stays .38 —
+    -- the model is art and the caliber is ours, and nobody in a gunfight
+    -- has ever counted the chambers.
+    external = "arc9_doi_sw1917",
 
     holdType = "revolver",
     sound = "Weapon_357.Single",
@@ -148,7 +153,9 @@ Omerta.Weapons.Register("weapon.m1911", {
     recoil = 1.6,
     reloadTime = 2.2,     -- a magazine change, not a cylinder
 
-    external = "arc9_waw_m1911",
+    -- CORRECTED 2026-08-02: the pack installed is Day of Infamy, not
+    -- World at War. Exact match, different prefix.
+    external = "arc9_doi_m1911",
 
     holdType = "pistol",
     sound = "Weapon_Pistol.Single",
@@ -179,7 +186,11 @@ Omerta.Weapons.Register("weapon.thompson", {
     reloadTime = 3.6,
     automatic = true,
 
-    external = "arc9_bo2_thompson",
+    -- CORRECTED 2026-08-02: Day of Infamy, not Black Ops 2. The pack has
+    -- two — `arc9_doi_thompson` is the military M1A1 with a stick
+    -- magazine, `arc9_doi_tommy` is the drum-magazine Tommy Gun. This
+    -- game wants the one a bootlegger carries.
+    external = "arc9_doi_tommy",
 
     holdType = "smg",
     sound = "Weapon_SMG1.Single",

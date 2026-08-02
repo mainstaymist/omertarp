@@ -445,9 +445,9 @@ suite("weapons.external")
 check("naming a third party's SWEP is a line in the arsenal and nothing else", function()
     loadModules()
     for id, class in pairs({
-        ["weapon.thompson"] = "arc9_bo2_thompson",
-        ["weapon.revolver"] = "tfa_ins2_wpn_38revolver",
-        ["weapon.m1911"]    = "arc9_waw_m1911",
+        ["weapon.thompson"] = "arc9_doi_tommy",
+        ["weapon.revolver"] = "arc9_doi_sw1917",
+        ["weapon.m1911"]    = "arc9_doi_m1911",
     }) do
         local def = Omerta.Weapons.Get(id)
         assert(def, id .. " is missing")
@@ -490,14 +490,14 @@ check("with the addon present the third party's class is what gets given", funct
     -- is: an addon can be conjured and taken away again on a machine that has
     -- neither, which is the only way this path is ever exercised.
     local installed = {
-        arc9_bo2_thompson = true,
-        arc9_waw_m1911 = true,
+        arc9_doi_tommy = true,
+        arc9_doi_m1911 = true,
     }
     local count = Omerta.Weapons.ResolveExternal(function(class) return installed[class] end)
-    assert(count == 1, "only the TFA revolver should have fallen back, " .. count .. " did")
+    assert(count == 1, "only the revolver should have fallen back, " .. count .. " did")
 
     local thompson = Omerta.Weapons.Get("weapon.thompson")
-    assert(Omerta.Weapons.ClassOf(thompson) == "arc9_bo2_thompson",
+    assert(Omerta.Weapons.ClassOf(thompson) == "arc9_doi_tommy",
         "gave " .. tostring(Omerta.Weapons.ClassOf(thompson)))
     assert(Omerta.Weapons.IsExternal(thompson))
 
@@ -534,7 +534,7 @@ check("both halves of the pair answer to the same weapon", function()
     -- The hotbar, the round readout, the reserve and the holster props all ask
     -- this one question, and none of them should have to know which class won.
     assert(Omerta.Weapons.ForClass("weapon_omerta_thompson") == thompson)
-    assert(Omerta.Weapons.ForClass("arc9_bo2_thompson") == thompson)
+    assert(Omerta.Weapons.ForClass("arc9_doi_tommy") == thompson)
     assert(Omerta.Weapons.ForClass("weapon_physgun") == nil,
         "a gun the arsenal does not know is not ours to reconcile")
     assert(Omerta.Weapons.ForClass(nil) == nil)
@@ -567,7 +567,7 @@ expectError("two weapons cannot claim the same third-party class", "already clai
     Omerta.Weapons.Register("weapon.copycat", {
         name = "Copycat", slot = "sidearm", bulk = 3,
         damage = 20, rpm = 100, clip = 5, ammo = "ammo.38",
-        external = "arc9_bo2_thompson",
+        external = "arc9_doi_tommy",
     })
 end)
 

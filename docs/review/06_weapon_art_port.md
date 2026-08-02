@@ -47,9 +47,67 @@ If a gun's feel is mostly (1), the port is straightforward and mostly data entry
 
 **I expect mostly (1)** — ARC9's `SWEP.Animations` table names sequences by `Source`, which means they exist in the model. But that is an expectation, not a finding, and it is cheap to check, so we check it first.
 
+## 4b. Phase 0 result (2026-08-02) — read this before the phases below
+
+`omerta_weapon_dump arc9_doi_thompson` came back from a real server. Three findings, and two of them change the plan.
+
+### The animations are baked. The port is viable.
+
+25 named sequences on the viewmodel, with durations:
+
+| sequence | length | our event |
+|---|---|---|
+| `base_draw` | 1.321s | draw |
+| `idle` / `base_idle` | 1.000s | idle |
+| `base_fire`, `base_fire_2`, `base_fire_3` | 1.667s | fire (three variants) |
+| `base_dryfire` | 0.667s | dry |
+| `base_reload` | 3.968s | reload |
+| `base_reloadempty_1`, `_2` | 5.397s | reload_empty |
+| `base_holster` | 0.559s | holster |
+
+Plus iron-sight variants, `base_ready`, `base_sprint`, `base_crawl`, `base_melee_bash`, `base_fireselect`. This is the good case: everything our base needs exists as a playable sequence, and Phase 3 is data entry.
+
+### The pack is Day of Infamy, not Black Ops 2 or World at War
+
+The three class strings in the arsenal were **all wrong** — no `arc9_bo2_*` or `arc9_waw_*` exists on that server. What is installed is `arc9_doi_*`, a **Second World War** pack, which is a considerably better fit for this game's period than Black Ops 2 was ever going to be. The relevant classes:
+
+| our weapon | candidate | note |
+|---|---|---|
+| M1921 AC Thompson | `arc9_doi_tommy` ("Tommy Gun") | the drum-magazine gangster Thompson — almost certainly the right one |
+| | `arc9_doi_thompson` ("M1A1 Thompson") | the military stick-magazine version; the one dumped above |
+| M1911 | `arc9_doi_m1911` | exact |
+| Model 10 | `arc9_doi_sw1917` (S&W M1917) | the only revolver in the pack. Chambered .45 in reality; ours stays .38 — the model is art, the caliber is ours |
+
+Also present and period-plausible for later: `arc9_doi_bar` (the 1918 BAR, a genuine gangster-era weapon), `arc9_doi_c96`, `arc9_doi_luger`, `arc9_doi_springfield`.
+
+**No TFA classes were checked.** The revolver's `tfa_ins2_wpn_38revolver` is still unconfirmed and probably wants replacing with the S&W above regardless.
+
+### The world model is a placeholder, and this is the real problem
+
+```
+arc9_doi_thompson worldmodel: models/weapons/w_rif_ak47.mdl   (2 sequences)
+```
+
+**The Thompson's third-person model is an AK-47.** That is not a bug in the pack — ARC9 renders what other players see from the `c_` viewmodel through its own framework, so the declared `WorldModel` is a stand-in nothing is expected to look at.
+
+Drop their framework and that stand-in becomes what everybody sees: an AK-47 in a 1930s gangster's hands, and an AK-47 slung across his back on W0's holster props.
+
+So the port gets first person right and third person badly wrong, and that is a decision rather than a detail:
+
+- **(a) Bonemerge the `c_` model as the world model.** A `c_` model is built to be bonemerged onto a rig and this is what ARC9 itself effectively does. Most work, best result, and it is work on our side rather than theirs.
+- **(b) Source proper `w_` models separately** for three guns. Cleanest to render, but it means finding or commissioning art.
+- **(c) Keep D-044's external bridge for these three** and accept the ammunition-accounting risk in exchange for a framework that already solves the world model.
+- **(d) Ship the port with placeholder world models** and treat third person as a later pass.
+
+This needs a ruling. It did not exist as a question before the dump, which is exactly why the dump came first.
+
+### Also learned
+
+`UseHands=true`, `ViewModelFOV=62` (our base does not set one, so it inherits the default 54 — a ported gun will look wrong until this moves with it), `HoldType=ar2`. The `base_`/`iron_` prefixes are ARC9's own convention for pose sets; only the `base_` half matters to us.
+
 ## 5. Phases
 
-### Phase 0 — find out what we are dealing with (no upload needed)
+### Phase 0 — find out what we are dealing with (no upload needed) — **DONE, see §4b**
 
 I add `omerta_weapon_dump <class>`: spawns the class's viewmodel server-side, enumerates every sequence with its name, duration and framerate, and prints the list. Run it on all three weapons and paste the output.
 
