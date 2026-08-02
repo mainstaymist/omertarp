@@ -52,6 +52,36 @@ Omerta.Environment.WORKSHOP = {
     },
 }
 
+-- Anything else the operator wants clients to download, one id per line, in
+-- `data/omerta_workshop.txt` on the server.
+--
+-- The table above is content the GAMEMODE depends on and is versioned with it.
+-- This is content a particular SERVER runs — a weapon pack, a playermodel pack,
+-- props for a map — and that list is not the same on two servers, changes
+-- without the gamemode changing, and is nobody's business to hold in a Lua
+-- file under source control. An operator adding a pack should not need a
+-- commit, and a server whose list differs should not be a fork.
+--
+-- Ids only. Comments after `//` and blank lines are skipped, so the file can
+-- say what each one is.
+local EXTRA_FILE = "omerta_workshop.txt"
+
+function Omerta.Environment.ReadExtraWorkshop()
+    if not Omerta.InEngine then return {} end
+    local body = file.Read(EXTRA_FILE, "DATA")
+    if not body then return {} end
+
+    local ids = {}
+    for line in string.gmatch(body, "[^\r\n]+") do
+        -- Everything after a comment marker goes, then the id is whatever
+        -- digits are left. A Workshop URL pasted whole therefore works, which
+        -- is what somebody will actually paste.
+        local id = string.match(string.gsub(line, "//.*$", ""), "(%d%d%d+)")
+        if id then ids[#ids + 1] = id end
+    end
+    return ids
+end
+
 function Omerta.Environment.MountContent()
     Omerta.AssertServer("Omerta.Environment.MountContent")
     if not Omerta.InEngine then return end
@@ -60,6 +90,22 @@ function Omerta.Environment.MountContent()
         resource.AddWorkshop(item.id)
         Omerta.Log.Info("environment",
             "clients will download workshop %s (believed: %s)", item.id, item.believed)
+    end
+
+    local extra = Omerta.Environment.ReadExtraWorkshop()
+    for _, id in ipairs(extra) do
+        resource.AddWorkshop(id)
+    end
+    if #extra > 0 then
+        Omerta.Log.Info("environment", "clients will also download %d id(s) from data/%s",
+            #extra, EXTRA_FILE)
+    else
+        -- Not a warning: an empty list is the normal state for a server running
+        -- nothing but the gamemode's own dependencies. Said once so the file's
+        -- existence is discoverable from the boot log rather than from this
+        -- comment.
+        Omerta.Log.Info("environment", "no data/%s — add workshop ids there " ..
+            "(one per line) for anything else clients should download", EXTRA_FILE)
     end
 
     -- Said once, at Info rather than Warn, because it is not a fault — it is
