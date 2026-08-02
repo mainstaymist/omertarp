@@ -739,32 +739,50 @@ end
 
 check("a weapon that declares no animation block resolves to exactly what the base did before", function()
     loadModules()
-    -- The whole arsenal, because this is the promise being made to it.
+    -- Every weapon that has NOT been ported, because this is the promise being
+    -- made to it — and the promise did not expire when two of its neighbours
+    -- were ported. The Model 10 is in this state today and anything added
+    -- before its art is read will be too.
+    local bare = 0
     for _, def in ipairs(Omerta.Weapons.All()) do
-        assert(def.anim == nil, def.id ..
-            " grew an animation block — no sequence name may be typed before a dump exists")
+        if def.anim == nil then
+            bare = bare + 1
 
-        local fire = Omerta.Weapons.AnimEntry(def, "fire")
-        assert(fire.sequence == nil, def.id .. " invented a firing sequence")
-        assert(fire.activity == "ACT_VM_PRIMARYATTACK",
-            def.id .. " lost the activity the base falls back to")
-        assert(fire.sound == def.sound,
-            def.id .. " stopped using its own gunshot: " .. tostring(fire.sound))
+            local fire = Omerta.Weapons.AnimEntry(def, "fire")
+            assert(fire.sequence == nil, def.id .. " invented a firing sequence")
+            assert(fire.activity == "ACT_VM_PRIMARYATTACK",
+                def.id .. " lost the activity the base falls back to")
+            assert(fire.sound == def.sound,
+                def.id .. " stopped using its own gunshot: " .. tostring(fire.sound))
 
-        -- The dry click is NOT the weapon's `sound` field and never was: an
-        -- empty gun clicks, it does not fire quietly.
-        local dry = Omerta.Weapons.AnimEntry(def, "dry")
-        assert(dry.sound == "Weapon_Pistol.Empty",
-            def.id .. "'s dry click changed to " .. tostring(dry.sound))
-        assert(dry.sequence == nil)
+            -- The dry click is NOT the weapon's `sound` field and never was: an
+            -- empty gun clicks, it does not fire quietly.
+            local dry = Omerta.Weapons.AnimEntry(def, "dry")
+            assert(dry.sound == "Weapon_Pistol.Empty",
+                def.id .. "'s dry click changed to " .. tostring(dry.sound))
+            assert(dry.sequence == nil)
 
-        -- Reloading emits nothing in this base and must keep emitting nothing:
-        -- inventing foley for a placeholder is a change to a gun nobody asked
-        -- to change.
-        local reload = Omerta.Weapons.AnimEntry(def, "reload")
-        assert(reload.sound == nil, def.id .. " grew a reload sound")
-        assert(reload.activity == "ACT_VM_RELOAD")
+            -- Reloading emits nothing in this base and must keep emitting
+            -- nothing: inventing foley for a placeholder is a change to a gun
+            -- nobody asked to change.
+            local reload = Omerta.Weapons.AnimEntry(def, "reload")
+            assert(reload.sound == nil, def.id .. " grew a reload sound")
+            assert(reload.activity == "ACT_VM_RELOAD")
+
+            -- And it reloads in ONE duration, both ways round, exactly as
+            -- every weapon did before there were two.
+            assert(Omerta.Weapons.ReloadDuration(def, true)
+                == Omerta.Weapons.ReloadDuration(def, false),
+                def.id .. " grew a second reload duration without art to justify one")
+
+            -- No field of view either: the field is absent, so the generated
+            -- class does not set one and the engine's own default stands.
+            assert(def.viewModelFOV == nil,
+                def.id .. " declared a viewModelFOV without a ported model")
+        end
     end
+    -- The promise is worth nothing if there is nobody left it is made to.
+    assert(bare > 0, "no weapon is left without an animation block to test the promise on")
 end)
 
 check("a weapon with no block asks the model nothing at all", function()
@@ -1019,16 +1037,18 @@ check("an animation is fitted to OUR clock, and says so when it cannot be", func
     loadModules()
     local R = Omerta.Weapons.AnimRate
 
-    -- `reloadTime` wins and the art is stretched to it: a 3.0s reload
-    -- animation inside the M1911's 2.2s magazine change plays at 1.36x. The
-    -- number is a balance position argued for in the arsenal and it gates real
-    -- inventory work; an animation's length is neither.
+    -- For a RELOAD — the only kind of event that is fitted at all — the
+    -- arsenal's number wins and the art is stretched to it: a 3.0s animation
+    -- inside a 2.2s window plays at 1.36x. The number is a balance position
+    -- argued for in the arsenal and it gates real inventory work; an
+    -- animation's length is neither. Which events are fitted is a separate
+    -- fact, pinned in the weapons.port suite.
     local rate, clamped = R(3.0, 2.2)
     assert(math.abs(rate - 3.0 / 2.2) < 1e-9, "the fit is length over target")
     assert(not clamped)
 
-    -- Already agreeing: nothing is stretched, which is the state Phase 3
-    -- should be aiming the arsenal's numbers at.
+    -- Already agreeing: nothing is stretched, which is the state both ported
+    -- guns' reload numbers were moved onto the art to reach.
     assert(R(2.2, 2.2) == 1)
 
     -- A short animation in a long window slows down rather than finishing
@@ -1058,21 +1078,342 @@ check("an animation is fitted to OUR clock, and says so when it cannot be", func
     end
 end)
 
-check("the three ported weapons are still waiting for their dump", function()
+check("only the weapons that were actually dumped carry sequence names", function()
     loadModules()
-    -- The gate the port plan set, made into something a machine checks. These
-    -- three name a third party's SWEP class, which means their art is the
-    -- whole point of the exercise — and NOT ONE sequence name may be typed for
-    -- them until `omerta_weapon_dump` has been run on a server that has the
-    -- packs. A guessed name is silently wrong forever (D-044's asymmetry); a
-    -- weapon with no block plays the activities it always has.
-    local waiting = 0
+    -- The gate the port plan set, made into something a machine checks, and it
+    -- did not open when two of the three went through it. NOT ONE sequence name
+    -- may be typed for a weapon until `omerta_weapon_dump` has been run against
+    -- its class on a server that has the pack — a guessed name is silently
+    -- wrong forever (D-044's asymmetry), where a weapon with no block plays the
+    -- activities it always has.
+    --
+    -- `arc9_doi_tommy` and `arc9_doi_m1911` came back on 2026-08-02.
+    -- `arc9_doi_sw1917` did not, and the Model 10 is bare until it does.
+    local DUMPED = { ["weapon.thompson"] = true, ["weapon.m1911"] = true }
+
+    local external, ported = 0, 0
     for _, def in ipairs(Omerta.Weapons.All()) do
-        if def.external then
-            waiting = waiting + 1
+        if def.external then external = external + 1 end
+        if DUMPED[def.id] then
+            ported = ported + 1
+            assert(type(def.anim) == "table",
+                def.id .. " was dumped but has no animation block")
+        else
             assert(def.anim == nil, def.id ..
                 " has an animation block but its sequences have never been read")
         end
     end
-    assert(waiting == 3, "expected three weapons awaiting a dump, found " .. waiting)
+    assert(external == 3, "expected three weapons naming a third party's SWEP, found " .. external)
+    assert(ported == 2, "expected two dumped weapons, found " .. ported)
+
+    -- Said plainly, because it is the one still outstanding and the report it
+    -- came from names it: the revolver needs a dump, not a guess.
+    local revolver = Omerta.Weapons.Get("weapon.revolver")
+    assert(revolver.anim == nil and revolver.external == "arc9_doi_sw1917",
+        "the Model 10's art is still unread — do not invent it")
+end)
+
+--------------------------------------------------------------------------------
+suite("weapons.port")
+--------------------------------------------------------------------------------
+-- Phase 3 of docs/review/06_weapon_art_port.md: the first two guns wearing
+-- somebody else's art, driven by our own base.
+--
+-- The dumps below are the ONLY facts this suite is built on, and they are
+-- transcribed from `omerta_weapon_dump` output taken on a live server on
+-- 2026-08-02. Neither pack is installed on this machine and never has been, so
+-- a model conjured out of this table is exactly as much model as the resolver
+-- is entitled to see — the same trick ResolveExternal's detector and
+-- ResolveModel's validator are exercised with.
+--
+-- sequence name -> duration in seconds. The names include the ones the arsenal
+-- deliberately does NOT use (the drum family, the firing variants), because a
+-- test that only offered the right answers could not catch the wrong one being
+-- asked for.
+local DUMP = {
+    -- arc9_doi_tommy, 83 sequences, of which these are the ones that matter.
+    ["weapon.thompson"] = {
+        base_idle             = 0.000,
+        idle                  = 0.000,
+        base_draw             = 0.710,
+        base_holster          = 0.559,
+        base_fire_1           = 1.333,
+        base_fire_2           = 1.333,
+        base_fire_last        = 1.333,
+        base_fire_last_drum   = 1.333,
+        base_dryfire          = 0.667,
+        base_dryfire_drum     = 0.667,
+        base_reload           = 3.333,
+        base_reloadempty      = 4.762,
+        base_reload_drum      = 5.477,
+        base_reloadempty_drum = 6.923,
+    },
+    -- arc9_doi_m1911, 38 sequences. Note the naming: `base_fire` where the
+    -- Thompson says `base_fire_1`, and `base_firelast` with no underscore.
+    -- There is no convention here, only a dump.
+    ["weapon.m1911"] = {
+        base_idle        = 4.000,
+        base_draw        = 0.429,
+        base_holster     = 0.429,
+        base_fire        = 1.000,
+        base_fire2       = 1.000,
+        base_fire3       = 1.000,
+        base_firelast    = 1.000,
+        base_dryfire     = 0.667,
+        base_reload      = 2.635,
+        base_reloadempty = 3.333,
+    },
+}
+
+local PORTED = { "weapon.m1911", "weapon.thompson" }
+
+-- A model built from a dump: names in, indices out, -1 for anything else.
+-- Indices are assigned in sorted order so they are stable between runs and so
+-- index 0 lands on a real sequence — the case a `<= 0` miss test would break.
+local function dumpedModel(id)
+    local names = {}
+    for name in pairs(DUMP[id]) do names[#names + 1] = name end
+    table.sort(names)
+    local index = {}
+    for position, name in ipairs(names) do index[name] = position - 1 end
+    return fakeModel(index)
+end
+
+check("both ported blocks resolve, event for event, against the model that was dumped", function()
+    loadModules()
+    for _, id in ipairs(PORTED) do
+        local def = Omerta.Weapons.Get(id)
+        assert(type(def.anim) == "table", id .. " lost its animation block")
+        local model = dumpedModel(id)
+
+        -- EVERY event this base has, because both models turned out to carry
+        -- all eight and a half-filled block is a gun that plays HL2 activities
+        -- on somebody else's viewmodel for the events it forgot.
+        for _, event in ipairs(Omerta.Weapons.ANIM_EVENT_ORDER) do
+            local plan = Omerta.Weapons.ResolveAnim(def, event, model)
+            assert(plan, id .. " has no plan for " .. event)
+            assert(type(plan.wanted) == "string",
+                id .. " names no sequence for its " .. event .. " animation")
+            assert(DUMP[id][plan.wanted],
+                id .. "'s " .. event .. " names '" .. tostring(plan.wanted) ..
+                "', which is not in the dump — that is a guess, and a guess is " ..
+                "silently wrong forever")
+            assert(plan.missing == nil,
+                id .. "'s " .. event .. " sequence went missing: " .. tostring(plan.missing))
+            assert(type(plan.sequence) == "number" and plan.sequence >= 0,
+                id .. "'s " .. event .. " did not resolve to an index")
+        end
+
+        -- The model and the field of view it was posed against are one piece
+        -- of art; 54 is what the engine assumes and 62 is what the pack drew.
+        assert(def.viewModelFOV == 62,
+            id .. " lost the field of view its viewmodel was authored for")
+        -- And the viewmodel is theirs, with ours still behind it for a server
+        -- that does not have the pack mounted.
+        assert(def.viewModel[1]:find("arc9_doi", 1, true),
+            id .. " points at no ported viewmodel")
+        assert(def.viewModel[#def.viewModel]:find("models/weapons/", 1, true),
+            id .. " lost its placeholder fallback")
+    end
+end)
+
+check("the Thompson plays the stick magazine, never the drum", function()
+    loadModules()
+    -- The clip is 20, which is a stick. The drum sequences belong to an ARC9
+    -- attachment bodygroup we drop and never set, so playing one would animate
+    -- hands working a magazine the model is not displaying — and the model
+    -- would answer for those names perfectly happily, which is exactly why this
+    -- is checked against a dump that contains them.
+    local def = Omerta.Weapons.Get("weapon.thompson")
+    for _, event in ipairs(Omerta.Weapons.ANIM_EVENT_ORDER) do
+        local wanted = Omerta.Weapons.AnimEntry(def, event).sequence
+        assert(not tostring(wanted):find("drum", 1, true),
+            "the Thompson's " .. event .. " names the drum sequence '" ..
+            tostring(wanted) .. "' — our clip is a stick magazine")
+    end
+    assert(def.clip == 20, "the stick magazine is what the drum test rests on")
+end)
+
+check("the ported reload numbers are the art's own, so nothing is stretched", function()
+    loadModules()
+    -- The port plan's preference, made checkable: where an animation's length
+    -- is defensible as balance, move OUR number onto it rather than stretching
+    -- the art to ours. Both guns did, so AnimRate answers 1.0 for both reloads
+    -- of both weapons and the clamp never bites.
+    for _, id in ipairs(PORTED) do
+        local def = Omerta.Weapons.Get(id)
+        for _, case in ipairs({
+            { event = "reload",       empty = false },
+            { event = "reload_empty", empty = true },
+        }) do
+            local wanted = Omerta.Weapons.AnimEntry(def, case.event).sequence
+            local length = DUMP[id][wanted]
+            local window = Omerta.Weapons.ReloadDuration(def, case.empty)
+            local rate, clamped = Omerta.Weapons.AnimRate(length, window)
+            assert(math.abs(rate - 1) < 1e-9,
+                id .. "'s " .. case.event .. " plays at " .. rate ..
+                "x — the arsenal's number and the art disagree")
+            assert(not clamped, id .. "'s " .. case.event .. " had to be clamped")
+        end
+    end
+
+    -- And the numbers themselves, stated once so a later edit to the arsenal
+    -- has to come past this line.
+    local m1911 = Omerta.Weapons.Get("weapon.m1911")
+    assert(m1911.reloadTime == 2.635 and m1911.reloadEmptyTime == 3.333)
+    local thompson = Omerta.Weapons.Get("weapon.thompson")
+    assert(thompson.reloadTime == 3.333 and thompson.reloadEmptyTime == 4.762)
+
+    -- The balance argument the M1911's paragraph rests on still holds after
+    -- the move: its magazine change beats loading a cylinder by hand, and
+    -- running it dry does not.
+    local revolver = Omerta.Weapons.Get("weapon.revolver")
+    assert(m1911.reloadTime < revolver.reloadTime,
+        "the automatic stopped being the sidearm that is back in the fight first")
+    assert(m1911.reloadEmptyTime > revolver.reloadTime,
+        "running dry stopped costing anything")
+end)
+
+check("an empty reload is its own duration, and defaults to the ordinary one", function()
+    loadModules()
+    local D = Omerta.Weapons.ReloadDuration
+
+    -- Two durations where the art draws the distinction.
+    local thompson = Omerta.Weapons.Get("weapon.thompson")
+    assert(D(thompson, false) == 3.333, "the topped-up change")
+    assert(D(thompson, true) == 4.762, "and the one from empty, which costs more")
+
+    -- One where it does not. A weapon that declares no reloadEmptyTime answers
+    -- reloadTime for BOTH cases, which is what every weapon in the arsenal did
+    -- before the field existed — the whole promise the field is allowed under.
+    local revolver = Omerta.Weapons.Get("weapon.revolver")
+    assert(revolver.reloadEmptyTime == revolver.reloadTime,
+        "an undeclared empty reload must default to the ordinary one")
+    assert(D(revolver, true) == 2.8 and D(revolver, false) == 2.8)
+
+    -- Register resolves it once, so nothing downstream has to know which kind
+    -- of weapon it is holding.
+    Omerta.Weapons.Register("weapon.plainreload", {
+        name = "Plain Reload", slot = "sidearm", bulk = 4,
+        damage = 20, rpm = 120, clip = 6, ammo = "ammo.38",
+        reloadTime = 1.7,
+    })
+    local plain = Omerta.Weapons.Get("weapon.plainreload")
+    assert(plain.reloadEmptyTime == 1.7 and D(plain, true) == 1.7)
+
+    -- And a weapon that declares neither still gets the base default, both ways.
+    Omerta.Weapons.Register("weapon.defaultreload", {
+        name = "Default Reload", slot = "sidearm", bulk = 4,
+        damage = 20, rpm = 120, clip = 6, ammo = "ammo.38",
+    })
+    local fallback = Omerta.Weapons.Get("weapon.defaultreload")
+    assert(D(fallback, true) == fallback.reloadTime)
+
+    -- Nothing an odd table can hand us produces a negative or a NaN window,
+    -- because a reload window is something the server counts real seconds
+    -- against and hands rounds out of.
+    assert(D(nil, true) == 0 and D("gun", false) == 0)
+    assert(D({ reloadTime = 2 }, true) == 2, "no empty time falls back")
+    assert(D({ reloadTime = 2, reloadEmptyTime = 0 / 0 }, true) == 2, "NaN falls back")
+    assert(D({ reloadTime = 2, reloadEmptyTime = -1 }, true) == 2, "negative falls back")
+
+    -- An empty reload that is FASTER than a topped-up one would be a gun that
+    -- rewards running dry. Nothing in the arsenal does it, and the day one
+    -- does it should be an argument rather than a typo.
+    for _, def in ipairs(Omerta.Weapons.All()) do
+        assert(def.reloadEmptyTime >= def.reloadTime,
+            def.id .. " reloads FASTER from empty, which rewards running dry")
+    end
+end)
+
+check("a shot is never fitted to a rate of fire, and a reload always is to its window", function()
+    loadModules()
+    -- The rule, stated where the base states it: ANIM_EVENTS' `fitted` column.
+    -- Two events are duration-bound because the SERVER puts a clock on them;
+    -- the other six play at their natural speed and are restarted by whatever
+    -- happens next.
+    local FITTED = { reload = true, reload_empty = true }
+    for _, event in ipairs(Omerta.Weapons.ANIM_EVENT_ORDER) do
+        local expected = FITTED[event] == true
+        assert(Omerta.Weapons.AnimIsFitted(event) == expected,
+            event .. " is on the wrong side of the fitting rule")
+        assert(Omerta.Weapons.AnimEntry({}, event).fitted == expected,
+            event .. "'s entry disagrees with ANIM_EVENTS")
+        -- And it survives resolution, which is what PlayAnim actually reads.
+        assert(Omerta.Weapons.ResolveAnim({}, event, nil).fitted == expected,
+            event .. "'s plan disagrees with its entry")
+    end
+    -- An event the base does not have is not fitted either, and does not error.
+    assert(Omerta.Weapons.AnimIsFitted("ironsights") == false)
+    assert(Omerta.Weapons.AnimIsFitted(nil) == false)
+
+    -- WHY, in the arithmetic that produced the rule. The Thompson cycles every
+    -- 0.111s at 540rpm against a 1.333s firing animation: fitting one to the
+    -- other asks for 12x, three times outside the clamp, so a fitted `fire`
+    -- would clamp, warn on every burst, and still be wrong — there is no
+    -- playback speed at which a bolt cycle fits in a ninth of a second.
+    local thompson = Omerta.Weapons.Get("weapon.thompson")
+    local cycle = Omerta.Weapons.CycleDelay(thompson.rpm)
+    local length = DUMP["weapon.thompson"].base_fire_1
+    assert(length / cycle > 10, "the Thompson stopped being the example")
+    local rate, clamped = Omerta.Weapons.AnimRate(length, cycle)
+    assert(clamped and rate == Omerta.Weapons.ANIM_RATE.max,
+        "fitting a shot to a rate of fire is supposed to be absurd")
+
+    -- So it is never asked for: `fire` is not a fitted event, on the very gun
+    -- whose numbers make the case.
+    assert(Omerta.Weapons.AnimEntry(thompson, "fire").fitted == false)
+    assert(Omerta.Weapons.AnimEntry(thompson, "fire_empty").fitted == false)
+    assert(Omerta.Weapons.AnimEntry(thompson, "dry").fitted == false)
+    assert(Omerta.Weapons.AnimEntry(thompson, "reload").fitted == true)
+    assert(Omerta.Weapons.AnimEntry(thompson, "reload_empty").fitted == true)
+
+    -- And a weapon cannot buy its way in. Whether an animation is stretched is
+    -- a fact about the EVENT, not a preference a gun holds — a per-weapon
+    -- override would be the branch the column exists to avoid.
+    Omerta.Weapons.Register("weapon.pushy", {
+        name = "Pushy", slot = "sidearm", bulk = 4,
+        damage = 20, rpm = 120, clip = 6, ammo = "ammo.38",
+        anim = { fire = { sequence = "shoot", fitted = true, rate = 2 } },
+    })
+    local pushy = Omerta.Weapons.Get("weapon.pushy")
+    assert(Omerta.Weapons.AnimEntry(pushy, "fire").fitted == false,
+        "a weapon talked its way into having its shots stretched")
+    -- A declared `rate` is still honoured: that is a preference about how the
+    -- art looks, not a claim on the server's clock.
+    assert(Omerta.Weapons.AnimEntry(pushy, "fire").rate == 2)
+end)
+
+check("a ported viewmodel carries the field of view it was authored for", function()
+    loadModules()
+    local base = {
+        name = "FOV", slot = "sidearm", bulk = 4,
+        damage = 20, rpm = 120, clip = 6, ammo = "ammo.38",
+    }
+    local function spec(extra)
+        local out = {}
+        for k, v in pairs(base) do out[k] = v end
+        for k, v in pairs(extra) do out[k] = v end
+        return out
+    end
+    local V = Omerta.Weapons.Validate
+
+    assert(V("weapon.fov", spec({ viewModelFOV = 62 })))
+    assert(V("weapon.fov", spec({})), "declaring none stays legal and is the default")
+    assert(V("weapon.fov", spec({ reloadEmptyTime = 3.5 })))
+
+    local function refused(extra, mention)
+        local ok, why = V("weapon.badfov", spec(extra))
+        assert(not ok, "accepted " .. mention)
+        assert(tostring(why):find(mention, 1, true),
+            "the refusal did not mention '" .. mention .. "': " .. tostring(why))
+    end
+
+    refused({ viewModelFOV = "62" }, "field of view")
+    refused({ viewModelFOV = 0 }, "field of view")
+    refused({ viewModelFOV = 180 }, "field of view")
+    refused({ viewModelFOV = 0 / 0 }, "field of view")
+    refused({ reloadEmptyTime = 0 }, "reloadEmptyTime")
+    refused({ reloadEmptyTime = "3" }, "reloadEmptyTime")
+    refused({ reloadEmptyTime = 0 / 0 }, "reloadEmptyTime")
 end)

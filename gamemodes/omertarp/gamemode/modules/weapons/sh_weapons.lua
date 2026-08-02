@@ -321,6 +321,28 @@ function Omerta.Weapons.Validate(id, def)
     if def.spread ~= nil and (type(def.spread) ~= "number" or def.spread < 0) then
         return false, "weapon '" .. id .. "' spread must be at least 0"
     end
+    -- The reload that starts from an empty gun, when the art distinguishes one.
+    -- OPTIONAL, and it defaults to `reloadTime` in Register — a weapon that says
+    -- nothing here reloads in one duration exactly as every weapon did before
+    -- this field existed.
+    if def.reloadEmptyTime ~= nil and (type(def.reloadEmptyTime) ~= "number"
+        or def.reloadEmptyTime ~= def.reloadEmptyTime
+        or def.reloadEmptyTime <= 0) then
+        return false, "weapon '" .. id .. "' reloadEmptyTime must be a duration " ..
+            "above 0 — the seconds a reload from EMPTY takes, where reloadTime " ..
+            "is the seconds a topped-up one takes"
+    end
+    -- What the viewmodel is authored for. Ours are HL2 placeholders and want
+    -- the engine's own default, so this is absent for them and the generated
+    -- class does not set the field at all; a ported model carries its pack's
+    -- number (both Day of Infamy guns are authored for 62) and would sit wrong
+    -- at 54 without it.
+    if def.viewModelFOV ~= nil and (type(def.viewModelFOV) ~= "number"
+        or def.viewModelFOV ~= def.viewModelFOV
+        or def.viewModelFOV <= 0 or def.viewModelFOV >= 180) then
+        return false, "weapon '" .. id .. "' viewModelFOV must be a field of " ..
+            "view between 0 and 180 degrees, as the pack's own SWEP declares it"
+    end
     if def.external ~= nil then
         if type(def.external) ~= "string" or not def.external:find(CLASS_PATTERN) then
             return false, "weapon '" .. id .. "' names external SWEP class '"
@@ -436,6 +458,11 @@ function Omerta.Weapons.Register(id, def)
     def.spread = def.spread or 1
     def.recoil = def.recoil or 1
     def.reloadTime = def.reloadTime or 2.5
+    -- Resolved once, here, rather than at every call site: after this line
+    -- every weapon has both durations and nothing else has to know that a gun
+    -- whose art draws no distinction declared only one. Never the other way
+    -- round — `reloadTime` is the number the arsenal argues about.
+    def.reloadEmptyTime = def.reloadEmptyTime or def.reloadTime
     def.automatic = def.automatic == true
     def.holdType = def.holdType or "revolver"
     weapons_[id] = def
@@ -478,6 +505,13 @@ function Omerta.Weapons.Register(id, def)
             OmertaId = id,
             ViewModel = Omerta.Util.ResolveModel(def.viewModel),
             WorldModel = Omerta.Util.ResolveModel(def.worldModel),
+            -- nil for a weapon that declares none, which leaves the field
+            -- absent from this table entirely and the engine on its own
+            -- default — byte for byte what every weapon got before the field
+            -- existed. A ported viewmodel authored for a wider field of view
+            -- says so in the arsenal and the number travels with it, because
+            -- the model and the FOV it was posed against are one piece of art.
+            ViewModelFOV = def.viewModelFOV,
             HoldType = def.holdType,
             Primary = {
                 ClipSize = def.clip,
@@ -532,6 +566,39 @@ end
 function Omerta.Weapons.PlanReload(clipSize, currentClip, available)
     local need = math.max(0, (clipSize or 0) - math.max(0, currentClip or 0))
     return math.min(need, math.max(0, available or 0))
+end
+
+-- And how long it takes, which is TWO numbers on a weapon whose art says so.
+--
+-- Every model we have read distinguishes a magazine change with a round still
+-- chambered from one that starts with the working parts locked back, and the
+-- empty one is substantially longer — the M1911's 2.635s against 3.333s, the
+-- Thompson's 3.333s against 4.762s. That gap is good design rather than an
+-- inconvenience: running a gun dry should cost something, and this is the cost,
+-- paid in the one currency a gunfight actually spends.
+--
+-- So the server has to know WHICH reload it is timing, and this is the one
+-- place it is decided. Reading `def.reloadTime` directly is now a bug: it is
+-- the topped-up case only, and it would silently squeeze an empty reload into
+-- the shorter window — the lockout would end with the hands still working, and
+-- the animation would be stretched to hide it.
+--
+-- `reloadEmptyTime` is OPTIONAL and defaults to `reloadTime` in Register, so
+-- every weapon that does not declare one — the revolver, and anything added
+-- before its art is read — answers exactly what it answered before this
+-- function existed, for both cases.
+--
+-- Pure, and it takes the emptiness as an argument rather than reading a live
+-- weapon, so the suite can pin both branches without an engine.
+function Omerta.Weapons.ReloadDuration(def, empty)
+    if type(def) ~= "table" then return 0 end
+    local full = tonumber(def.reloadTime) or 0
+    if not empty then return full end
+    local dry = tonumber(def.reloadEmptyTime)
+    -- NaN survives arithmetic and poisons every comparison downstream, and a
+    -- non-positive window is a reload that has already finished.
+    if not dry or dry ~= dry or dry <= 0 then return full end
+    return dry
 end
 
 -- The serial number stamped on a weapon, derived from its M9 instance id: no

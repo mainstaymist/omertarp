@@ -39,8 +39,10 @@
 -- D-044's SWEP bridge work under, for the same reason: neither addon is
 -- installed on the machine this was written on, so the only safe integration is
 -- one that guesses nothing about them. Sequence NAMES are data supplied by a
--- dump from a real server; they are deliberately absent from the arsenal until
--- that dump exists, because a guessed name is silently wrong forever.
+-- dump from a real server; not one may be typed into the arsenal before that
+-- dump exists, because a guessed name is silently wrong forever. Two weapons
+-- have been dumped and carry blocks (the Thompson and the M1911, 2026-08-02);
+-- the revolver has not and carries none.
 --
 -- The resolution — which sequence for which event, with which fallback and
 -- which sound — is PURE and lives above the engine line, so the headless suite
@@ -90,35 +92,61 @@ Omerta.Weapons.ANIM_CALLS = {
 --     A pack whose gun has one firing animation declares `fire` and is done;
 --     one whose slide locks back declares `fire_empty` beside it.
 --
+--   fitted — whether this event's animation is STRETCHED to a duration the
+--     server is enforcing, or plays at its own natural speed. The whole of
+--     that argument is in the ANIM_RATE section below, and this column is
+--     where the answer lives: a rule stated once, per event, in the same table
+--     the events are declared in, rather than a condition somebody has to find
+--     inside PlayAnim. Two events are fitted. Six are not, and `false` is
+--     written out for all six on purpose — an absent column reads as an
+--     oversight, and this one was a decision.
+--
 --   soundField / sound — where the sound comes from when the block names none.
 --     THESE ARE TODAY'S VALUES, so a weapon with no animation block at all
 --     resolves to precisely the sounds the base emits now.
 --
 -- `reload` has no default sound on purpose: our base emits nothing on a reload
 -- today (HL2 viewmodels carry their own sound events), and inventing foley for
--- the three placeholder weapons would be a change to guns nobody asked to
--- change. A ported weapon declares its own and gets it.
+-- the placeholder weapons would be a change to guns nobody asked to change. A
+-- ported weapon declares its own and gets it — and NEITHER PORTED WEAPON DOES
+-- YET, because the dump that named their sequences did not name their sound
+-- files. Their gunshots are still the HL2 placeholders their `sound` field has
+-- always held. A sound path is a name like any other, and a guessed one is
+-- silently wrong forever.
 Omerta.Weapons.ANIM_EVENTS = {
     -- The gun coming up. NOT the equip ceremony: W0's draw is a timed,
     -- interruptible commitment that runs BEFORE the weapon exists at all
     -- (sv_weapons' BeginEquip -> completeEquip -> M9's Equip -> the Give), so
     -- there is no viewmodel to animate while it runs. This is what plays once
     -- the gun is in the hand, and it gates nothing — see PlayAnim's header.
-    draw         = { activity = "ACT_VM_DRAW" },
-    idle         = { activity = "ACT_VM_IDLE" },
-    fire         = { activity = "ACT_VM_PRIMARYATTACK",
+    -- Nothing is waiting on it, so there is no clock to fit it to.
+    draw         = { activity = "ACT_VM_DRAW", fitted = false },
+    -- A loop. Fitting one would mean deciding how long "at rest" lasts.
+    idle         = { activity = "ACT_VM_IDLE", fitted = false },
+    -- NEVER FITTED, and this is the load-bearing one. See ANIM_RATE.
+    fire         = { activity = "ACT_VM_PRIMARYATTACK", fitted = false,
                      soundField = "sound", sound = "Weapon_Pistol.Single" },
     -- The shot that EMPTIES the gun (a slide locking back), not the click of
     -- an empty one — that is `dry`. A model that draws no distinction declares
     -- only `fire` and inherits it here.
     fire_empty   = { activity = "ACT_VM_PRIMARYATTACK", inherit = "fire",
+                     fitted = false,
                      soundField = "sound", sound = "Weapon_Pistol.Single" },
     -- The trigger pulled on nothing. Sound-only in our base today; a model
-    -- with a dryfire sequence may name one and it will play.
-    dry          = { activity = "ACT_VM_DRYFIRE", sound = "Weapon_Pistol.Empty" },
-    reload       = { activity = "ACT_VM_RELOAD" },
-    reload_empty = { activity = "ACT_VM_RELOAD", inherit = "reload" },
-    holster      = { activity = "ACT_VM_HOLSTER" },
+    -- with a dryfire sequence may name one and it will play. Its lockout is a
+    -- flat 0.4s of "you pulled the trigger and nothing happened" rather than a
+    -- duration anybody promised the art, so it is not fitted either.
+    dry          = { activity = "ACT_VM_DRYFIRE", fitted = false,
+                     sound = "Weapon_Pistol.Empty" },
+    -- The two the server puts a clock on: OmertaReloadUntil and
+    -- SetNextPrimaryFire are set from the arsenal's number the moment the
+    -- reload is allowed, and the hands must be back before that window ends.
+    reload       = { activity = "ACT_VM_RELOAD", fitted = true },
+    reload_empty = { activity = "ACT_VM_RELOAD", inherit = "reload",
+                     fitted = true },
+    -- The engine owns weapon switching and does not wait for us (see the base
+    -- SWEP's Holster).
+    holster      = { activity = "ACT_VM_HOLSTER", fitted = false },
 }
 
 -- Deterministic order, for validation messages and for anything that wants to
@@ -133,16 +161,48 @@ Omerta.Weapons.ANIM_EVENT_ORDER = {
 --------------------------------------------------------------------------------
 -- Fitting somebody else's animation to our clock
 --------------------------------------------------------------------------------
--- WHICH ONE WINS: `reloadTime` DOES, AND THE ANIMATION IS STRETCHED TO IT.
+-- ONLY A DURATION-BOUND EVENT IS EVER FITTED, AND ONLY TWO OF THE EIGHT ARE.
+--
+-- This is the first thing the real dump corrected, so it goes first.
+--
+-- A RELOAD IS A WINDOW. The server decides a reload may happen, writes
+-- OmertaReloadUntil and SetNextPrimaryFire from the arsenal's number, and takes
+-- rounds out of a pocket against that clock. The animation is the visible half
+-- of a promise the server has already made, so it must finish inside the
+-- window: too long and the hands are still working after the gun can fire
+-- again, too short and they are frozen on the last frame waiting for it. That
+-- is what stretching is for, and it is the only thing it is for.
+--
+-- A SHOT IS AN EVENT. Nothing is waiting on a firing animation. It plays at its
+-- natural speed and the NEXT SHOT RESTARTS IT — you see the first fraction of
+-- the bolt cycle, and on an automatic that is not a compromise, it is what
+-- automatic fire looks like. The arithmetic makes the point by itself: the
+-- Thompson cycles at 540rpm, which is 0.111s, against a 1.333s firing
+-- animation. Fitting one to the other asks for 12x — three times outside the
+-- clamp below — so a fitted `fire` would clamp to 4x, warn on every burst, and
+-- still be wrong, because there is no playback speed at which a full bolt cycle
+-- fits in a ninth of a second. The animation was never the thing that was too
+-- long; the request was the thing that was wrong.
+--
+-- So the two kinds are distinguished in ANIM_EVENTS' `fitted` column, one row
+-- per event, and PlayAnim reads it. NOT as a condition inside PlayAnim: a rule
+-- that lives in a branch is a rule that gets a second branch beside it the next
+-- time somebody adds an event, and this one is a property OF THE EVENT.
+-- `opts.fit` from a caller is offered, never obeyed — an event that is not
+-- fitted ignores it, so no future call site can reintroduce this by passing a
+-- number in good faith.
+--
+-- WHICH ONE WINS FOR THE TWO THAT ARE FITTED: `reloadTime` DOES, AND THE
+-- ANIMATION IS STRETCHED TO IT.
 --
 -- Three reasons, in the order they mattered:
 --
 -- 1. `reloadTime` is a BALANCE number, argued for in the arsenal against the
---    other guns — the M1911's 2.2s magazine change against the Model 10's 2.8s
---    of loading a cylinder by hand is a design position with a paragraph
---    attached. Letting an animation's length redefine it would move balance
---    whenever a pack updates, and would make the same gun a different gun on a
---    server that has the addon and one that does not. Their art, our rules.
+--    other guns — the M1911's magazine change against the Model 10's 2.8s of
+--    loading a cylinder by hand is a design position with a paragraph attached.
+--    Letting an animation's length redefine it would move balance whenever a
+--    pack updates, and would make the same gun a different gun on a server that
+--    has the addon and one that does not. Their art, our rules.
 --
 -- 2. It gates real server work: OmertaReloadUntil, SetNextPrimaryFire, and the
 --    M9 rows that come out of a pocket. Server authority cannot hang off a
@@ -157,14 +217,26 @@ Omerta.Weapons.ANIM_EVENT_ORDER = {
 -- CycleDelay and EquipDuration are — a mismatch should produce a brisk reload
 -- or a languid one, never a strobe and never a frozen hand.
 --
--- WHAT I WOULD RATHER DO, ONCE THE DUMP EXISTS. Stretching is a compensation
--- for not knowing. When the real durations are in hand the honest move is to
--- re-derive each `reloadTime` from its animation where the animation's length
--- is defensible as balance, at which point this formula returns 1.0 by itself
--- and nothing is being stretched at all. The clamp-bite warning below is the
--- worklist for that conversation: it names exactly the guns whose declared
+-- AND THE HONEST MOVE, WHICH IS NOW TAKEN FOR THE TWO GUNS WE HAVE READ.
+-- Stretching is a compensation for not knowing. With the real durations in hand
+-- the arsenal's numbers were moved onto the art wherever the art's length was
+-- defensible as balance — the M1911 reloads in 2.635s and the Thompson in
+-- 3.333s because that is how long their reloads take — so this formula returns
+-- 1.0 for both and nothing is stretched at all. The clamp-bite warning below is
+-- the worklist for the next gun: it names exactly the weapon whose declared
 -- number and whose art disagree by more than a stretch can hide.
 Omerta.Weapons.ANIM_RATE = { min = 0.25, max = 4 }
+
+-- Is this event's animation stretched to a duration the server is enforcing?
+--
+-- The one reading of ANIM_EVENTS' `fitted` column, so the rule is asked for by
+-- name rather than by indexing a table two files away — and so the headless
+-- suite can pin "fire is never fitted" as a fact about the base rather than as
+-- a side effect of which call sites happen to pass `opts.fit` today.
+function Omerta.Weapons.AnimIsFitted(event)
+    local spec = Omerta.Weapons.ANIM_EVENTS[type(event) == "string" and event or ""]
+    return spec ~= nil and spec.fitted == true
+end
 
 -- Returns the playback rate, and whether the clamp had to bite.
 -- Pure. A degenerate pair answers 1 — an animation that plays at its own speed
@@ -271,10 +343,15 @@ local function entryOf(map, key)
     return nil
 end
 
--- Returns { event, sequence, sound, activity, rate } or nil for an event this
--- base does not have. `sequence` is nil when the weapon declares none, which
--- is the state EVERY weapon in the arsenal is in today and the state the whole
--- fallback exists to keep working.
+-- Returns { event, sequence, sound, activity, rate, fitted } or nil for an event
+-- this base does not have. `sequence` is nil when the weapon declares none,
+-- which is the state the revolver is in today and the state the whole fallback
+-- exists to keep working.
+--
+-- `fitted` comes from the EVENT and never from the weapon: whether a reload is
+-- stretched to the server's clock is a fact about what a reload is, not a
+-- preference a gun gets to hold, and a per-weapon override would be the branch
+-- ANIM_EVENTS' column exists to avoid.
 --
 -- Sound resolves whether or not there is an animation block, so the base can
 -- read its firing sound and its dry click through one function: a weapon with
@@ -320,6 +397,7 @@ function Omerta.Weapons.AnimEntry(def, event)
         sound = sound,
         activity = spec.activity,
         rate = rate,
+        fitted = spec.fitted == true,
     }
 end
 
@@ -336,9 +414,10 @@ end
 -- perfectly ordinary sequence, so the test is `< 0` and not `<= 0` — a base
 -- that treated 0 as absent would refuse the first animation in every model.
 --
--- Returns { event, sequence, activity, sound, rate, wanted, missing }:
+-- Returns { event, sequence, activity, sound, rate, fitted, wanted, missing }:
 --   sequence — the INDEX to play, or nil when there is nothing to play by name
 --   activity — the ACT_VM_* name to fall back on, always present
+--   fitted   — whether a caller's clock may stretch this one (ANIM_EVENTS)
 --   wanted   — the name that was asked for, for the log line
 --   missing  — that same name IF the model does not have it, and nil otherwise
 --
@@ -355,6 +434,7 @@ function Omerta.Weapons.ResolveAnim(def, event, lookup)
         activity = want.activity,
         sound = want.sound,
         rate = want.rate,
+        fitted = want.fitted,
         wanted = want.sequence,
         missing = nil,
     }
@@ -420,7 +500,11 @@ end
 -- weapon that DOES declare a block, whose named sequence the model turns out
 -- not to have.
 --
--- opts.fit    — seconds this animation must occupy (see ANIM_RATE's header)
+-- opts.fit    — seconds this animation must occupy, OFFERED not obeyed: it is
+--               used only for an event ANIM_EVENTS marks `fitted` (the two
+--               reloads), and ignored for every other. See ANIM_RATE's header
+--               for why a firing animation must never be stretched to a rate of
+--               fire.
 -- opts.settle — do nothing if that sequence is already the one running, so an
 --               idle can be re-asserted every tick for the price of a compare
 function Internal.PlayAnim(wep, def, event, opts)
@@ -443,10 +527,20 @@ function Internal.PlayAnim(wep, def, event, opts)
     if plan.missing then
         -- The one clear line the port plan asked for: which weapon, which
         -- event, which name, on which model, and what is playing instead.
+        --
+        -- The model is named because it is usually the whole answer, and there
+        -- are exactly two ways to get here. Either the pack is not mounted and
+        -- the viewmodel is the HL2 placeholder the arsenal keeps behind it — in
+        -- which case nothing is wrong with the block and the fix is the addon —
+        -- or the pack is mounted and the name has gone stale, which is the case
+        -- the dump exists for. Saying both stops the second sentence sending an
+        -- operator to correct data that is already correct.
         Internal.AnimWarnOnce(tostring(def.id) .. "." .. tostring(event),
             "'%s' wants sequence '%s' for its %s animation, and %s does not " ..
-            "have one — falling back to %s. Re-run 'omerta_weapon_dump %s' and " ..
-            "correct the arsenal's anim block.",
+            "have one — falling back to %s. If that is our placeholder model, " ..
+            "the pack is not mounted and the block is fine; if it is the pack's, " ..
+            "the name is stale — re-run 'omerta_weapon_dump %s' and correct the " ..
+            "arsenal.",
             tostring(def.id), plan.missing, tostring(event),
             tostring(vm:GetModel()), tostring(plan.activity),
             tostring(Omerta.Weapons.ClassOf(def)))
@@ -457,6 +551,11 @@ function Internal.PlayAnim(wep, def, event, opts)
         if opts and opts.settle and vm:GetSequence() == plan.sequence then
             return 0
         end
+        -- SetCycle(0) unconditionally, INCLUDING when that sequence is already
+        -- the one running: this is what makes the second shot of a burst
+        -- RESTART the firing animation rather than let it run on from where it
+        -- had got to. `settle` is the one opt-out and it exists for idle, which
+        -- is the one event that means "keep doing what you were doing".
         vm:SetSequence(plan.sequence)
         vm:SetCycle(0)
         length = tonumber(vm:SequenceDuration(plan.sequence)) or 0
@@ -467,12 +566,20 @@ function Internal.PlayAnim(wep, def, event, opts)
         length = tonumber(vm:SequenceDuration()) or 0
     end
 
-    -- Fitted to our clock where a caller owns one, at its declared speed
-    -- otherwise. A caller's clock beats a declared rate deliberately: the
-    -- clock is a rule the server is already enforcing and the rate is a
-    -- preference about how the art looks while it does.
+    -- Fitted to our clock where the EVENT is one the server puts a clock on and
+    -- a caller supplied one; at its declared speed, or its own, otherwise. A
+    -- caller's clock beats a declared rate deliberately: the clock is a rule the
+    -- server is already enforcing and the rate is a preference about how the art
+    -- looks while it does.
+    --
+    -- `plan.fitted` is the gate, and it comes from ANIM_EVENTS rather than from
+    -- here. A caller that passes `fit` for a shot is not corrected, argued with
+    -- or warned at — it is simply not obeyed, because a firing animation has no
+    -- window to fit into and a rate of fire is not a duration the art was ever
+    -- promised. See ANIM_RATE's header for the Thompson arithmetic that settles
+    -- it.
     local rate = tonumber(plan.rate) or 1
-    local fit = opts and tonumber(opts.fit) or nil
+    local fit = plan.fitted and opts and tonumber(opts.fit) or nil
     if fit then
         local fitted, clamped = Omerta.Weapons.AnimRate(length, fit)
         rate = fitted

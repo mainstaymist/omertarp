@@ -105,9 +105,38 @@ This needs a ruling. It did not exist as a question before the dump, which is ex
 
 `UseHands=true`, `ViewModelFOV=62` (our base does not set one, so it inherits the default 54 — a ported gun will look wrong until this moves with it), `HoldType=ar2`. The `base_`/`iron_` prefixes are ARC9's own convention for pose sets; only the `base_` half matters to us.
 
+## 4c. The two real dumps, and Phase 3 for the guns they cover (2026-08-02)
+
+`arc9_doi_tommy` and `arc9_doi_m1911` came back from the live server. Both are `UseHands=true`, `ViewModelFOV=62`, and both are fully baked — every event our base has exists as a named sequence. Both are now ported: the sequence names, the two viewmodel paths and the field of view are data in `sh_weapons_arsenal.lua`, and nothing else was edited to add them.
+
+| event | `arc9_doi_tommy` (83 seq) | `arc9_doi_m1911` (38 seq) |
+|---|---|---|
+| draw | `base_draw` 0.710 | `base_draw` 0.429 |
+| idle | `base_idle` 0.000 (a rest pose) | `base_idle` 4.000 |
+| fire | `base_fire_1` 1.333 | `base_fire` 1.000 |
+| fire_empty | `base_fire_last` 1.333 | `base_firelast` 1.000 |
+| dry | `base_dryfire` 0.667 | `base_dryfire` 0.667 |
+| reload | `base_reload` 3.333 | `base_reload` 2.635 |
+| reload_empty | `base_reloadempty` 4.762 | `base_reloadempty` 3.333 |
+| holster | `base_holster` 0.559 | `base_holster` 0.429 |
+
+**The naming is not shared between the two models.** `base_fire_1` against `base_fire`; `base_firelast` with no underscore. There is no convention to derive, only a dump to read.
+
+**The Thompson's drum family is deliberately unused.** `base_reload_drum` (5.477), `base_reloadempty_drum` (6.923), `base_fire_last_drum` and `base_dryfire_drum` belong to an attachment bodygroup we drop and never set, and our clip is 20 — a stick. `foregrip_*` and `iron_*` are ignored for the same reason one step out: attachment and sight poses, and we have neither.
+
+Three things the data changed:
+
+1. **Firing animations are never fitted.** 540rpm is a 0.111s cycle against a 1.333s firing animation — 12x, three times outside the playback clamp. A firing animation plays at its natural rate and is *restarted* by the next shot. The distinction is now a `fitted` column in `ANIM_EVENTS`: two events (both reloads) are stretched to a window the server enforces, six are not, and `PlayAnim` ignores a `fit` offered for any of the six.
+2. **`reloadEmptyTime`**, optional, defaulting to `reloadTime`. Both models make an empty reload substantially longer and that is a real cost for running dry, so `Internal.Reload` now decides which case it is in *before* setting `OmertaReloadUntil` and `SetNextPrimaryFire`. A weapon that declares none is unchanged in both cases.
+3. **`viewModelFOV`**, optional, absent by default so the engine's own default stands. Both ported guns declare 62.
+
+Our numbers moved onto the art where its length was defensible as balance, per §2's principle: the M1911 2.2 → 2.635/3.333, the Thompson 3.6 → 3.333/4.762. Nothing is stretched — the playback rate is 1.0 for all four reloads. No `damage`, `rpm` or `clip` was touched.
+
+**Still open.** The revolver: `arc9_doi_sw1917` has not been dumped, so `weapon.revolver` has no animation block and must not be given one until it is. Sounds: the dump named sequences, not sound files, so both ported guns still fire HL2 placeholders. The world-model ruling in §4b. And the `external` seam still **wins** over all of this — a server with the packs runs `arc9_doi_*` and never reaches our base — so the blocks above are inert until an operator sets `weapons.external 0`, which is Phase 4's decision to make.
+
 ## 5. Phases
 
-### Phase 0 — find out what we are dealing with (no upload needed) — **DONE, see §4b**
+### Phase 0 — find out what we are dealing with (no upload needed) — **DONE, see §4b and §4c**
 
 I add `omerta_weapon_dump <class>`: spawns the class's viewmodel server-side, enumerates every sequence with its name, duration and framerate, and prints the list. Run it on all three weapons and paste the output.
 
@@ -137,11 +166,11 @@ The arsenal entry for a gun grows one block. Adding a weapon stays one `Register
 
 Sound moves with it: firing sound, dry click, and the reload's foley become data on the same entry instead of the HL2 placeholders they are now.
 
-### Phase 3 — per-weapon data, one gun at a time
+### Phase 3 — per-weapon data, one gun at a time — **the M1911 and the Thompson are done, see §4c**
 
-The Model 10 first — it is the simplest action and the one most likely to expose a bad assumption cheaply. Then the M1911, then the Thompson (automatic fire, longest reload, most animation states).
+The Model 10 was meant to go first — simplest action, cheapest place to expose a bad assumption. The dump decided the order instead: the two guns that came back are the two that are ported, and the revolver waits on `omerta_weapon_dump arc9_doi_sw1917`.
 
-Each gun is: model paths, the sequence map, the sound map, and the existing balance numbers left alone.
+Each gun is: model paths, the sequence map, the sound map, and the balance numbers — which turned out not to be "left alone" but *moved onto the art* wherever the animation's length was defensible as balance, which is what §2 asks for and what makes the playback rate 1.0. The sound map is still empty for both: the dump named sequences, not `.wav` paths.
 
 ### Phase 4 — decide what happens to D-044
 

@@ -163,6 +163,13 @@ function SWEP:PrimaryAttack()
     -- The shot that EMPTIES the gun is its own animation on a model that has
     -- one (a slide locking back); a model that draws no distinction inherits
     -- `fire` and nothing here has to know which kind it is.
+    --
+    -- NO `fit` HERE, AND THERE MUST NEVER BE ONE. A firing animation plays at
+    -- its natural speed and the next shot restarts it — on the Thompson you see
+    -- the first ninth of a 1.333s bolt cycle sixty times a burst, which is what
+    -- automatic fire looks like. Stretching it to CycleDelay would ask for 12x.
+    -- The rule is not enforced by this line's silence: `fire` is marked
+    -- unfitted in ANIM_EVENTS, so a `fit` passed here would be ignored anyway.
     self.OmertaAnimUntil = CurTime()
         + self:PlayAnim(self:Clip1() <= 0 and "fire_empty" or "fire")
 
