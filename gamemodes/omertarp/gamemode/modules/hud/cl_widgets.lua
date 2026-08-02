@@ -304,6 +304,26 @@ function Omerta.HUD.Cycler(parent, items, index, onChange)
     arrow(">", RIGHT, 1)
 
     function panel:GetSelected() return items[index], index end
+
+    -- RE-ROSTER: the same control, showing a different list.
+    --
+    -- It exists because a choice made ELSEWHERE on a screen can change what
+    -- this one is choosing from — creation's life path decides which
+    -- appearances exist at all — and the obvious alternative, throwing the
+    -- panel away and building another, drops the replacement to the END of its
+    -- parent's dock order. The cycler would come back underneath the control
+    -- that changed it, which is a layout that rearranges itself while somebody
+    -- is reading it.
+    --
+    -- Deliberately does NOT fire onChange. The caller is the one who already
+    -- knew — it is the reason the list changed — and a re-roster that calls
+    -- back is a re-roster that can be made to loop.
+    function panel:SetItems(newItems, newIndex)
+        items = newItems or {}
+        index = math.Clamp(newIndex or 1, 1, math.max(1, #items))
+        return items[index], index
+    end
+
     return panel
 end
 

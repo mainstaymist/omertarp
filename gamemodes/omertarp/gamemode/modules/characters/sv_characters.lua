@@ -20,14 +20,34 @@ Omerta.Config.Define("characters.portrait_max_bytes", {
 --------------------------------------------------------------------------------
 
 -- Validates a creation request's non-name fields. Returns spec, or nil+reason.
+--
+-- THE PATH IS RESOLVED FIRST, AND THAT ORDER IS THE SECURITY PROPERTY.
+--
+-- An appearance index is only meaningful relative to a roster, and a roster
+-- belongs to a path (sh_characters' ModelsFor). So the path index is checked
+-- against PATHS, and the appearance index is then looked up in the roster of
+-- THAT path — the path this character is actually being created with — and
+-- never in a flat list, and never in whichever roster the client believes it
+-- was showing the player.
+--
+-- Validating the two numbers INDEPENDENTLY is the hole a per-path roster opens,
+-- and it is worth naming because the old code did exactly that and was correct
+-- while there was one list: an index checked against "any roster" accepts 7
+-- from somebody creating a criminal, and 7 is a police uniform. The client's
+-- own re-rostering is a convenience and is trusted for nothing; this refusal is
+-- what actually holds.
+--
+-- Still an INDEX on the wire, never a model path — a client-supplied path would
+-- set arbitrary models on players, which is the rule this whole indirection
+-- exists for and which per-path rosters do not soften.
 function Internal.ValidateSpec(modelIndex, skin, pathIndex)
-    local model = Omerta.Characters.MODELS[modelIndex]
+    local path = Omerta.Characters.PATHS[pathIndex]
+    if not path then return nil, "unknown path selection" end
+    local model = Omerta.Characters.ResolveModel(path, modelIndex)
     if not model then return nil, "unknown model selection" end
     if type(skin) ~= "number" or skin % 1 ~= 0 or skin < 0 or skin > 15 then
         return nil, "invalid skin"
     end
-    local path = Omerta.Characters.PATHS[pathIndex]
-    if not path then return nil, "unknown path selection" end
     return { model = model, skin = skin, path = path }
 end
 

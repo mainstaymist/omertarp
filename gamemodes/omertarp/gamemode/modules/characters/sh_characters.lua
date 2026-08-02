@@ -27,23 +27,49 @@ Omerta.Characters.STATE = {
     AWAITING_ENTRY = 4,
 }
 
+-- The three life paths a season can be played on (D-009). Declared above the
+-- rosters because a roster now belongs to one.
+Omerta.Characters.PATHS = { "criminal", "police", "independent" }
+
+--------------------------------------------------------------------------------
+-- Appearance rosters, per path
+--------------------------------------------------------------------------------
 -- Selectable models, by index. A client sends the INDEX; the server maps it.
 -- Never accept a model path from a client — it would set arbitrary models on
 -- players.
+--
+-- WHAT AN INDEX MEANS CHANGED, AND IT IS THE SECURITY-RELEVANT SENTENCE HERE.
+-- The department dresses differently from everybody else, so the roster depends
+-- on the path, and an index is only meaningful RELATIVE TO ONE. The client
+-- still sends nothing but two numbers and the server still trusts neither: it
+-- resolves the path first and looks the appearance up in THAT path's roster —
+-- the roster of the path the character is actually being created with, never
+-- whichever list the client believes it was showing. Index 7 is an officer and
+-- is nobody at all to a criminal, and `Internal.ValidateSpec` in
+-- sv_characters.lua is the one place that decides which of those it is.
 --
 -- The period pack, chosen by the project lead. This retires the HL2 citizens
 -- D-005 allowed as placeholders: these are the first assets in the game that
 -- actually look like the city the design describes, and the placeholder rule
 -- was always "until the real thing exists".
 --
--- What is STORED is the resolved path, not this index (see sv_characters'
--- creation path), which is what makes editing this list safe: a character
+-- What is STORED is the resolved model FILE, not this index (see sv_characters'
+-- creation path), which is what makes editing these lists safe: a character
 -- created against an older roster keeps the model they were made with rather
--- than silently becoming whoever now occupies that slot.
+-- than silently becoming whoever now occupies that slot. That property is why
+-- adding a second roster costs no migration.
 --
--- The pack is Workshop content and is NOT mounted by this repository. A server
--- without it renders these as errors; the addon has to be in the collection
--- beside the map and the weather system.
+-- BOTH PACKS ARE WORKSHOP CONTENT AND NEITHER IS MOUNTED BY THIS REPOSITORY. A
+-- server without them renders these as errors. The gamemode's own dependencies
+-- (the map, the weather system) are declared in modules/environment/
+-- sv_content.lua; playermodel packs are a particular SERVER's content and go
+-- one id per line in `data/omerta_workshop.txt` on that server, which is what
+-- makes clients download them.
+--
+-- The default roster: the one criminals and independents choose from. Kept
+-- under the name MODELS because it is what every other reader in the tree
+-- already asks for, and because "the roster with nothing special about it" is
+-- exactly what a default is.
 Omerta.Characters.MODELS = {
     "models/sentry/sentryoldmob/mafia/sentrymobmale2pm.mdl",
     "models/sentry/sentryoldmob/mafia/sentrymobmale4pm.mdl",
@@ -53,6 +79,47 @@ Omerta.Characters.MODELS = {
     "models/sentry/sentryoldmob/mafia/sentrymobmale9pm.mdl",
 }
 
+-- Rosters that differ from the default, keyed by path name. A path with no
+-- entry here uses MODELS, which is what lets criminal and independent share one
+-- list without it being written out twice and drifting.
+Omerta.Characters.PATH_MODELS = {
+    -- The department, in the project lead's order. The file numbering skips 01
+    -- and 03; that is the pack's, not a mistake here, and the ordinal a player
+    -- sees comes from the position in this list rather than from the filename.
+    police = {
+        "models/humans/nypd1940/male_02.mdl",
+        "models/humans/nypd1940/male_04.mdl",
+        "models/humans/nypd1940/male_05.mdl",
+        "models/humans/nypd1940/male_06.mdl",
+        "models/humans/nypd1940/male_07.mdl",
+        "models/humans/nypd1940/male_08.mdl",
+        "models/humans/nypd1940/male_09.mdl",
+    },
+}
+
+-- The roster a path chooses from. Takes a path NAME ("police") or an index into
+-- PATHS, because the client holds the index and the server holds the name, and
+-- neither should have to convert before asking.
+--
+-- NEVER RETURNS NIL, including for a path that does not exist. A caller that
+-- got nil would have to decide what to do about it at every call site, and the
+-- honest answer everywhere is "the ordinary list" — the one place where an
+-- unknown path must be a refusal rather than a fallback is creation, and that
+-- refusal is made against PATHS by the server before this is ever consulted.
+function Omerta.Characters.ModelsFor(path)
+    if type(path) == "number" then path = Omerta.Characters.PATHS[path] end
+    return Omerta.Characters.PATH_MODELS[path] or Omerta.Characters.MODELS
+end
+
+-- THE ONE PLACE a number becomes a model. Returns the model file that a life
+-- path and an index name together, or nil when the index is not on that path's
+-- roster — a refusal, because that nil is what the server's rejection is built
+-- on and a fallback to something plausible would quietly dress somebody in it.
+function Omerta.Characters.ResolveModel(path, index)
+    if type(index) ~= "number" or index % 1 ~= 0 then return nil end
+    return Omerta.Characters.ModelsFor(path)[index]
+end
+
 -- What the creation screen calls each one.
 --
 -- The form used to label a model with its own filename, which was tolerable
@@ -60,14 +127,15 @@ Omerta.Characters.MODELS = {
 -- "sentrymobmale7pm". A player choosing a face is not choosing a file, and the
 -- number in the filename is an artist's ordering that means nothing to them.
 --
--- Deliberately just numbers. Naming these six would be inventing six
--- characters the player has not made yet — the name is the next field down and
--- it is theirs to fill in.
+-- Deliberately just numbers, and deliberately still just an ORDINAL now that
+-- there are two rosters: the index is a position in whichever list is on
+-- screen, so "Appearance 3" is the third face the player can see either way.
+-- Naming them would be inventing characters the player has not made yet — the
+-- name is the next field down and it is theirs to fill in — and calling the
+-- police ones "Officer 3" would name a rank the department has not given them.
 function Omerta.Characters.ModelLabel(index)
     return "Appearance " .. tostring(index)
 end
-
-Omerta.Characters.PATHS = { "criminal", "police", "independent" }
 
 local NAME_MIN, NAME_MAX = 2, 24
 

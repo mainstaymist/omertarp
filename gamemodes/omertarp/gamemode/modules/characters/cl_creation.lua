@@ -10,6 +10,13 @@
 -- Everything visual comes from the design standard (sh_theme via cl_widgets):
 -- Carbon text inputs, cyclers instead of stock dropdowns, one primary button.
 --
+-- The APPEARANCE picker is a choice of the LIFE PATH's roster, not of a global
+-- list: the department has its own uniforms, so picking Police re-rosters the
+-- cycler and puts the booth on the first officer. What travels is still an
+-- index and the server still maps it — against the roster of the path being
+-- created with, which is the part that matters and the part that lives in
+-- sv_characters.lua rather than here.
+--
 -- The booth capture is the one genuinely fiddly part. A dedicated server has
 -- no renderer, so the mugshot must be produced here and uploaded (D-011):
 -- draw the character model to a known screen rectangle, capture that
@@ -23,6 +30,24 @@ local capturedPortrait -- base64 JPEG held until the character actually exists
 
 local PORTRAIT_SIZE = 128
 local PORTRAIT_QUALITY = 70
+
+-- The soft focus behind the confirmation. ONE material, reused: rebuilding it
+-- per frame is what makes a blur expensive. The same material and the same
+-- multi-pass idea the inventory window and the pause rail already use —
+-- deliberately, because a third implementation of a blur is a third set of
+-- numbers to get wrong and a third thing to fix when this stops working.
+local BLUR = Material("pp/blurscreen")
+
+-- Passes and strength. Between the inventory's two-at-three (a window glanced
+-- at over a street the player may still need to read) and the pause rail's
+-- three-at-six (the game has stopped). This box interrupts and expects an
+-- answer, so it goes further than the inventory and stops short of a pause.
+local BLUR_PASSES, BLUR_STRENGTH = 3, 5
+
+-- How much ink goes over the softened screen. The same weight the rail lays
+-- over the city, so a modal over the front end reads as one more layer of the
+-- same interface rather than as a second opinion about how dark a scrim is.
+local BLUR_SCRIM = 90
 
 --------------------------------------------------------------------------------
 -- Booth capture
@@ -101,10 +126,37 @@ function Omerta.Characters.BuildCreationForm(formParent, boothParent, opts)
 
     local fieldH, gap = 40 * scale, H.Space(4)
 
+    -- WHICH PATH'S ROSTER IS ON SCREEN.
+    --
+    -- The one piece of state the two pickers below share, and it has to be
+    -- shared because an appearance is a choice OF a path: the department has
+    -- its own uniforms, so the list of faces changes when the life path does
+    -- and the number the player lands on means nothing without knowing which
+    -- list it counted along.
+    --
+    -- Held as an INDEX because that is what goes on the wire. The server
+    -- re-derives the same pairing from the same two numbers and refuses any
+    -- appearance that is not on the chosen path's roster, so everything here is
+    -- a convenience — it keeps the player from being able to ASK for a refusal,
+    -- and it is trusted for nothing (sv_characters' ValidateSpec).
+    local pathIndex = 1
+    local function roster() return Omerta.Characters.ModelsFor(pathIndex) end
+
+    -- The cycler's items for the roster now showing. Rebuilt rather than
+    -- filtered: a roster is a list, not a subset of a bigger one, and the label
+    -- is the position in it.
+    local function appearances()
+        local items = {}
+        for i in ipairs(roster()) do
+            items[i] = { label = Omerta.Characters.ModelLabel(i), value = i }
+        end
+        return items
+    end
+
     -- The booth. This panel is also the portrait framing (D-011).
     local booth = vgui.Create("DModelPanel", boothParent)
     booth:Dock(FILL)
-    booth:SetModel(Omerta.Characters.MODELS[1])
+    booth:SetModel(roster()[1])
     booth:SetFOV(28)
     booth:SetCamPos(Vector(42, 0, 62))
     booth:SetLookAt(Vector(0, 0, 62)) -- head height: a mugshot, not a full body
@@ -160,23 +212,35 @@ function Omerta.Characters.BuildCreationForm(formParent, boothParent, opts)
     end
 
     fieldLabel("Appearance")
-    local models = {}
-    for i in ipairs(Omerta.Characters.MODELS) do
-        models[i] = { label = Omerta.Characters.ModelLabel(i), value = i }
-    end
-    local modelChoice = H.Cycler(formParent, models, 1, function(item)
-        booth:SetModel(Omerta.Characters.MODELS[item.value]
-            or Omerta.Characters.MODELS[1])
+    local modelChoice = H.Cycler(formParent, appearances(), 1, function(item)
+        booth:SetModel(roster()[item.value] or roster()[1])
     end)
     modelChoice:Dock(TOP)
     modelChoice:SetTall(fieldH)
 
     fieldLabel("Path for this season")
+    -- CHOOSING A PATH RE-ROSTERS THE APPEARANCES ABOVE and puts the booth on
+    -- the first face of the new list (project lead: "when they click Police in
+    -- character creation change the portrait view to the first available police
+    -- playermodel"). The booth is set from here as well as from the cycler,
+    -- because SetItems deliberately does not fire the cycler's own callback —
+    -- the thing that knew the list changed is the thing that shows the result.
+    --
+    -- RESET TO 1 RATHER THAN KEPT. Index 5 is a different person on each
+    -- roster and index 7 is somebody on one and nobody on the others, so
+    -- carrying the number across a path change would be carrying a choice the
+    -- player never made — and on the police-to-anything direction the server
+    -- would refuse it outright, which is a refusal the form should not be able
+    -- to walk somebody into.
     local pathChoice = H.ProseList(formParent, {
         { label = "Criminal", detail = "Eligible for family life. You cannot switch freely.", value = 1 },
         { label = "Police",   detail = "The department.", value = 2 },
         { label = "Independent", detail = "Civilian, business, trade.", value = 3 },
-    }, 1)
+    }, 1, function(item)
+        pathIndex = item.value
+        modelChoice:SetItems(appearances(), 1)
+        booth:SetModel(roster()[1])
+    end)
     pathChoice:Dock(TOP)
 
     -- Server rejections and live validation both land here. The guide keeps
@@ -257,8 +321,16 @@ function Omerta.Characters.BuildCreationForm(formParent, boothParent, opts)
 
     -- What Confirm actually does, once the warning has been read and agreed.
     local function commit()
+        -- THE TWO NUMBERS GO AS A PAIR, and so does the fallback. An appearance
+        -- index only means something against the path it was counted along, so
+        -- defaulting one of them on its own would send an index read off one
+        -- roster under the name of another. The server refuses that — correctly
+        -- — and the player would be told their appearance was unknown for no
+        -- reason they could see on the screen in front of them.
         local model = modelChoice:GetSelected()
         local path = pathChoice:GetSelected()
+        local pathValue = path and path.value or 1
+        local modelValue = (path and model and model.value) or 1
         submit:SetEnabled(false)
         submit:SetLabel("Creating…")
         -- The booth is still on screen; take the mugshot now, at creation,
@@ -273,9 +345,9 @@ function Omerta.Characters.BuildCreationForm(formParent, boothParent, opts)
         Omerta.Net.Request("characters.create", {
             first = firstEntry:GetValue(),
             last = lastEntry:GetValue(),
-            model = model and model.value or 1,
+            model = modelValue,
             skin = 0,
-            path = path and path.value or 1,
+            path = pathValue,
         })
         timer.Simple(5, reenable)
     end
@@ -341,6 +413,111 @@ end
 -- roles stacked in one plate is exactly the arithmetic that put "NEW ARRIVAL"
 -- inside "WHO ARE YOU" on the screen behind it.
 
+--------------------------------------------------------------------------------
+-- The soft screen behind it
+--------------------------------------------------------------------------------
+-- Everything on screen except the box goes out of focus while it is up — the
+-- city behind the rail, and THE INTERFACE, which is the part worth being
+-- precise about.
+--
+-- WHY IT IS A PANEL OF ITS OWN rather than four lines inside the modal's Paint,
+-- which is where the inventory keeps its blur. VGUI clips a panel's drawing to
+-- that panel, so a blur drawn inside the modal can only ever appear INSIDE the
+-- modal — which is the one rectangle on the screen that has to stay sharp. The
+-- inventory gets away with it because it wants exactly that: a softened patch
+-- showing through its own near-opaque plate. Wanting the REST of the screen
+-- soft is a different shape and it needs a surface the size of the screen.
+--
+-- WHY THAT SURFACE IS A POPUP, AND MADE FIRST. The rail is a popup, and the
+-- only way to be drawn over a popup is to be one. Popups paint in the order
+-- they were raised, so the soft screen is created and raised BEFORE the box,
+-- which is created and raised after it and therefore sits in front of it — the
+-- ordering is the whole mechanism and it is the reason these two are built in
+-- this order rather than the readable one.
+--
+-- WHAT ACTUALLY GETS BLURRED, since "blur the UI" is not one thing.
+-- render.UpdateScreenEffectTexture copies the frame buffer AS IT STANDS. By the
+-- time this panel paints, everything painted before it this frame is already in
+-- there: the world and the orbiting camera, the rail's ink plate, the wordmark,
+-- the form, its text in the fields the player just typed, and the portrait
+-- booth's character — a DModelPanel renders into that same buffer, so the model
+-- softens with everything around it rather than staying sharp inside a blurred
+-- frame, which would have been the obvious way for this to look broken.
+--
+-- WHAT DOES NOT, and cannot: anything drawn AFTER this panel. That is the box
+-- itself, which is the point; the mouse cursor, which the engine draws last and
+-- which should stay sharp anyway; and whatever PostRenderVGUI puts on top —
+-- the handover fade to black, which is drawn over everything deliberately and
+-- must not be softened into a grey wash. It is a screen-space effect and it has
+-- no way to treat one panel differently from another: everything under the
+-- soft screen goes soft together, and nothing tries to pick.
+local function softScreenUnder(box)
+    local screen = vgui.Create("DPanel")
+    screen:SetSize(ScrW(), ScrH())
+    screen:SetPos(0, 0)
+    -- SetPaintBackground, not `Paint = nil`: clearing the field only removes an
+    -- instance override and the lookup then finds DPanel's own Paint on the
+    -- class table, which draws the stock Derma background under everything.
+    screen:SetPaintBackground(false)
+    screen:MakePopup()
+    -- MakePopup turns the keyboard on, and the keyboard belongs to the box in
+    -- front of this. The MOUSE stays on, and that is a real change rather than
+    -- an oversight: a full-screen panel under a modal is what makes it modal —
+    -- a click that misses the box lands here and does nothing, instead of
+    -- reaching the form the player is being asked about.
+    screen:SetKeyboardInputEnabled(false)
+
+    screen.Paint = function(self, w, h)
+        -- The reveal's curve, 0..1. The blur's STRENGTH rides it, so the screen
+        -- goes soft over the same tenth of a second the box takes to rise —
+        -- which the panel's own alpha could not do for it, since fading a
+        -- blurred copy in over a sharp one is a cross-mix and not a focus pull.
+        -- Both together is what makes it read as arriving rather than snapping.
+        local eased = self.OmertaEased or 0
+        if eased <= 0.01 then return end
+
+        surface.SetMaterial(BLUR)
+        surface.SetDrawColor(255, 255, 255, 255)
+        for pass = 1, BLUR_PASSES do
+            BLUR:SetFloat("$blur", (pass / BLUR_PASSES) * BLUR_STRENGTH * eased)
+            BLUR:Recompute()
+            -- Re-captured every pass on purpose: each one reads back what the
+            -- last one drew, which is what makes a cheap material iterate into
+            -- a genuine blur instead of three copies of the same softening.
+            render.UpdateScreenEffectTexture()
+            surface.DrawTexturedRect(0, 0, w, h)
+        end
+
+        surface.SetDrawColor(Omerta.HUD.Colour("plate", BLUR_SCRIM))
+        surface.DrawRect(0, 0, w, h)
+    end
+
+    -- The soft screen lives exactly as long as the box does, and it ASKS rather
+    -- than being told, which is what covers both ways out: Close (either button,
+    -- which plays the sink) and Remove (something taking the whole screen down
+    -- underneath it). Revealed() is false for a panel that is on its way out as
+    -- well as one that is gone, so the two sink together instead of the blur
+    -- snapping off a box that is still visibly leaving.
+    --
+    -- Set BEFORE the reveal is installed. Reveal WRAPS whatever Think is there;
+    -- one assigned afterwards replaces the wrapper instead of being wrapped.
+    screen.Think = function(self)
+        -- nil is "not built yet", which cannot happen (the box is created on
+        -- the same call, before any Think runs) and is answered anyway, because
+        -- the alternative reading of nil is Revealed()'s — not up — and that
+        -- would close this before it ever appeared.
+        local panel = box()
+        if panel == nil or Omerta.HUD.Revealed(panel) then return end
+        self:OmertaClose()
+    end
+
+    -- No rise. This panel is the whole screen, and a full-screen panel that
+    -- travels leaves a band of bare, unblurred world along the edge it moved
+    -- away from — the same reason the rail and the fallback window fade only.
+    Omerta.HUD.Reveal(screen, { rise = 0 })
+    return screen
+end
+
 -- What the box says. Up here because it is copy, and copy is reviewed.
 local CONFIRM_HEADER = "NO SECOND COPY"
 local CONFIRM_PROSE = {
@@ -384,7 +561,13 @@ function Omerta.Characters.ConfirmModal(fullName, onConfirm)
     local dangerY = dangerRuleY + 1 + H.Space(2)
     local height = dangerY + dangerTall + H.Space(5) + buttonTall + pad
 
-    local modal = vgui.Create("DFrame")
+    -- Declared before it is built so the soft screen has something to watch,
+    -- and BUILT AFTER IT so it is raised second and therefore sits in front —
+    -- see softScreenUnder. The ordering here is load-bearing, not stylistic.
+    local modal
+    softScreenUnder(function() return modal end)
+
+    modal = vgui.Create("DFrame")
     modal:SetSize(width, height)
     modal:Center()
     modal:SetTitle("")
@@ -421,6 +604,11 @@ function Omerta.Characters.ConfirmModal(fullName, onConfirm)
     -- The full rise. This is the one modal in the game that interrupts, and
     -- arriving with a direction is exactly what stops it reading as the screen
     -- glitching over the form the player was mid-way through.
+    --
+    -- The soft screen behind it was installed on the same reveal a few lines
+    -- above, so the focus pull runs on the same curve over the same tenth of a
+    -- second: the screen goes soft AS the box rises, rather than a blur
+    -- switching on under a box that is still on its way.
     H.Reveal(modal)
 
     local buttons = vgui.Create("DPanel", modal)

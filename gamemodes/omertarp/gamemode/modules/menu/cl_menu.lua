@@ -527,6 +527,56 @@ function Omerta.Menu.Client.Masthead()
     }
 end
 
+--------------------------------------------------------------------------------
+-- The footer, and the floor above it
+--------------------------------------------------------------------------------
+-- THE ONE PLACE THAT SAYS WHERE THE RAIL'S CONTENT MUST STOP.
+--
+-- Masthead's opposite number, and it is here for the same reason that one is.
+-- The rail paints a line of its own chrome at the foot of the screen — "THE
+-- CITY · SEASON 1", in the mono system voice — and a screen OF the rail docks
+-- its button row to the bottom of its column. Neither knew the other existed,
+-- so the season line was drawn straight through BACK and CONFIRM on the
+-- creation screen: two correct layouts, measured from opposite edges of the
+-- same screen, meeting in the middle of each other.
+--
+-- The fix is the one the masthead already established, applied to the other
+-- end. A SCREEN DOES NOT LEARN THE FOOTER'S HEIGHT — it asks where its content
+-- may end. THE FOOTER DOES NOT LEARN WHICH SCREEN IS UP — the paint that draws
+-- the words asks this same function where they go. There is one number and both
+-- of them read it, so they cannot drift apart; the alternative is a screen
+-- carrying a copy of a margin plus a font size, which is the arrangement that
+-- produced this bug and produced the masthead's twice before it.
+--
+-- Returns { baseline, contentBottom }:
+--
+--   baseline       the TEXT_ALIGN_BOTTOM baseline of the season line, which is
+--                  the only thing the rail's own paint wants from here.
+--   contentBottom  the largest Y content may reach: a full step of clear air
+--                  above the TOP of the footer's box, which is where a docked
+--                  commit row belongs.
+--
+-- ONE NUMBER, NOT A REST/LIMIT PAIR like the masthead's contentTop and
+-- contentCeiling. That pair exists because Settings genuinely borrows into it —
+-- its column outgrows the screen at the largest interface scale — and no screen
+-- borrows downward today. If one ever does, the second number goes here beside
+-- this one and the masthead is the pattern to copy; inventing it now would be
+-- shipping a boundary nobody is measured against, which is how a boundary comes
+-- to be wrong without anybody noticing.
+--
+-- MEASURED, like every other gap in this rail. The footer is exactly as tall as
+-- the mono font says it is at the player's scale — the interface scale is a
+-- multiple of a base of 1.75 with READABILITY 1.3 over it, so a remembered
+-- number here is a number that was true at some other scale on somebody else's
+-- monitor. This screen has already been overlapped twice by exactly that.
+function Omerta.Menu.Client.Footer()
+    local baseline = ScrH() - Omerta.HUD.Space(5)
+    return {
+        baseline = baseline,
+        contentBottom = baseline - typeTall("mono") - Omerta.HUD.Space(4),
+    }
+end
+
 function Omerta.Menu.Client.Build()
     if IsValid(frame) then frame:Remove() end
     if M.phase ~= "menu" then return end
@@ -605,11 +655,16 @@ function Omerta.Menu.Client.Build()
         -- know. The number never comes from `label` on this side — the client
         -- has never seen that column, which is exactly why it cannot read the
         -- wrong field of it.
+        --
+        -- Placed from Footer(), which is also where every screen of the rail
+        -- learns to stop. `h - margin` was the same arithmetic written out a
+        -- second time, and a second copy of a number is how this line came to
+        -- be drawn through the creation screen's buttons.
         local seasons = Omerta.Seasons
         local number = seasons and seasons.GetNumber and seasons.GetNumber() or nil
         draw.SimpleText(string.upper(number and ("The city · Season " .. number)
                 or "The city"),
-            Omerta.HUD.Font("mono"), margin, h - margin,
+            Omerta.HUD.Font("mono"), margin, Omerta.Menu.Client.Footer().baseline,
             Omerta.HUD.Colour("dim"), TEXT_ALIGN_LEFT, TEXT_ALIGN_BOTTOM)
     end
 
@@ -749,15 +804,26 @@ function Omerta.Menu.Client.BuildCreation(parent)
     local margin = Omerta.HUD.Space(5)
     local columnW = 560 * scale - margin * 2
 
-    -- The column runs from under the heading to the bottom margin, and the
-    -- form docks its button row to the BOTTOM of it. Sized from the viewport
-    -- rather than from a fixed height: the fixed one ran off the screen at
-    -- 1.5x and took Confirm with it.
+    -- The column runs from under the heading to where the rail's own footer
+    -- says content must stop, and the form docks its button row to the BOTTOM
+    -- of it. Sized from the viewport rather than from a fixed height: the fixed
+    -- one ran off the screen at 1.5x and took Confirm with it.
+    --
+    -- IT USED TO END AT `ScrH() - margin`, WHICH IS THE SEASON LINE'S OWN
+    -- BASELINE. So the button row was docked to the bottom of a column that
+    -- reached exactly as far as the rail's chrome did, and "THE CITY · SEASON
+    -- 1" was printed through BACK and CONFIRM. This screen does not know what
+    -- is down there or how tall it is; it asks where it may end (Footer above).
     local top = Omerta.Menu.Client.Masthead().contentTop
+    local bottom = Omerta.Menu.Client.Footer().contentBottom
     local column = vgui.Create("DPanel", parent)
     column.OmertaOwned = true
     column:SetPos(margin, top)
-    column:SetSize(columnW, ScrH() - top - margin)
+    -- Never negative. On a display too short to hold the masthead and the
+    -- footer at once the column has nothing left to give, and a negative size
+    -- is a panel that lays its children out in undefined places rather than an
+    -- honest empty one.
+    column:SetSize(columnW, math.max(0, bottom - top))
     column:SetPaintBackground(false)
 
     local boothSize = math.min(400 * scale, ScrH() * 0.5)
@@ -925,12 +991,18 @@ function Omerta.Menu.Client.BuildSettings(parent)
     -- The old clamp centred the column and then pulled it off the bottom edge,
     -- which is what printed INTERFACE SCALE across the tagline. This one moves
     -- between the masthead's two numbers and no further: it rests at
-    -- contentTop, and only if the column will not otherwise reach the bottom
-    -- margin — which happens on a 1080p screen at the largest interface scale,
-    -- where four settings and a Back button come to more than half the height
-    -- of the display — does it borrow upward, stopping dead at contentCeiling.
-    -- Past that the column simply runs long, and ESCAPE (above) is the way out
-    -- rather than a Back button dragged over the wordmark to be reachable.
+    -- contentTop, and only if the column will not otherwise reach the FOOTER's
+    -- boundary — which happens on a 1080p screen at the largest interface
+    -- scale, where four settings and a Back button come to more than half the
+    -- height of the display — does it borrow upward, stopping dead at
+    -- contentCeiling. Past that the column simply runs long, and ESCAPE (above)
+    -- is the way out rather than a Back button dragged over the wordmark to be
+    -- reachable.
+    --
+    -- The bottom used to be `ScrH() - margin`, which is where the season line
+    -- is drawn, so this screen had the creation screen's collision waiting for
+    -- it the moment a fifth setting was added. Same one number, asked for
+    -- rather than rewritten.
     --
     -- Vignette is the setting that took it past. At 1080p and 1.4x the column
     -- now comes to about 966px against a ceiling of 282, so Back sits below the
@@ -940,9 +1012,10 @@ function Omerta.Menu.Client.BuildSettings(parent)
     -- that has outgrown a hand-laid column is a settings WINDOW that scrolls,
     -- not a fifth opinion about where the column starts.
     local head = Omerta.Menu.Client.Masthead()
+    local foot = Omerta.Menu.Client.Footer()
     list:SetSize(width, y)
     list:SetPos(margin, math.max(head.contentCeiling,
-        math.min(head.contentTop, ScrH() - margin - y)))
+        math.min(head.contentTop, foot.contentBottom - y)))
 end
 
 --------------------------------------------------------------------------------

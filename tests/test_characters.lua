@@ -130,6 +130,104 @@ check("creation spec validation", function()
     assert(V(1, 1.5, 1) == nil, "fractional skin must fail")
 end)
 
+--------------------------------------------------------------------------------
+suite("characters.rosters")
+--------------------------------------------------------------------------------
+-- The appearance roster depends on the life path, which turns an index from a
+-- global fact into a fact ABOUT A PATH. Everything here exists because that is
+-- the kind of change that is easy to make correct on the screen and wrong on
+-- the wire.
+
+check("each path has a roster, and two of them share one", function()
+    loadModules()
+    local C = Omerta.Characters
+
+    -- The department's seven, in the order the project lead gave them. Pinned
+    -- literally: a roster is content, the order is what an index means, and
+    -- "the seventh one" has to keep being the same officer between sessions.
+    local police = C.ModelsFor("police")
+    assert(#police == 7, "the department has seven, not " .. #police)
+    assert(police[1] == "models/humans/nypd1940/male_02.mdl", police[1])
+    assert(police[7] == "models/humans/nypd1940/male_09.mdl", police[7])
+    for i, path in ipairs(police) do
+        assert(path:find("^models/humans/nypd1940/male_%d%d%.mdl$"),
+            "police roster slot " .. i .. " is not a department model: " .. path)
+    end
+
+    -- Criminal and independent share the ordinary list, and share the SAME
+    -- list rather than two copies of it — a copy is a thing that can be edited
+    -- once.
+    assert(C.ModelsFor("criminal") == C.MODELS, "criminals use the default roster")
+    assert(C.ModelsFor("independent") == C.MODELS, "independents use it too")
+    assert(#C.MODELS == 6, "the default roster is unchanged at six")
+
+    -- Callable with an index, because the client holds indices and the server
+    -- holds names, and neither should have to convert before asking.
+    assert(C.ModelsFor(1) == C.ModelsFor("criminal"))
+    assert(C.ModelsFor(2) == C.ModelsFor("police"))
+    assert(C.ModelsFor(3) == C.ModelsFor("independent"))
+
+    -- Never nil, for anything. A caller handed nil would have to invent an
+    -- answer at every call site; refusing an unknown path is creation's job and
+    -- it does it against PATHS, before this is ever consulted.
+    assert(C.ModelsFor("bogus") == C.MODELS, "an unknown path falls back, not nil")
+    assert(C.ModelsFor(nil) == C.MODELS)
+    assert(C.ModelsFor(99) == C.MODELS)
+end)
+
+check("a label is a position in the roster on screen, never a filename", function()
+    loadModules()
+    local C = Omerta.Characters
+    for i = 1, #C.ModelsFor("police") do
+        local label = C.ModelLabel(i)
+        assert(label == "Appearance " .. i, label)
+        assert(not label:find("nypd") and not label:find("%.mdl"),
+            "a filename reached the player: " .. label)
+    end
+end)
+
+check("an index is only valid for the path it was chosen under", function()
+    loadModules()
+    local V = Omerta.Characters.Internal.ValidateSpec
+    local C = Omerta.Characters
+    -- PATHS order: 1 criminal, 2 police, 3 independent.
+    assert(C.PATHS[1] == "criminal" and C.PATHS[2] == "police"
+        and C.PATHS[3] == "independent", "the path order is what these indices mean")
+
+    -- THE ONE THAT MATTERS. Seven exists on the department's roster and on
+    -- nobody else's, so it creates an officer for somebody creating a police
+    -- character and is refused outright for everybody else. Validating the two
+    -- numbers independently — an index checked against "any roster" — would
+    -- accept all three of these.
+    local officer = V(7, 0, 2)
+    assert(officer and officer.model == "models/humans/nypd1940/male_09.mdl",
+        "index 7 is the department's seventh")
+    assert(V(7, 0, 1) == nil, "a police index must not create a criminal")
+    assert(V(7, 0, 3) == nil, "a police index must not create an independent")
+    assert(select(2, V(7, 0, 1)) == "unknown model selection",
+        "and it is refused as an appearance, not blamed on the path")
+
+    -- The same index is two different people depending on the path, which is
+    -- exactly why it cannot be resolved without one.
+    assert(V(1, 0, 1).model == C.MODELS[1])
+    assert(V(1, 0, 2).model == C.ModelsFor("police")[1])
+    assert(V(1, 0, 1).model ~= V(1, 0, 2).model, "index 1 is not one model")
+    for i = 1, 6 do
+        assert(V(i, 0, 1) and V(i, 0, 2) and V(i, 0, 3),
+            "every slot of the shorter roster is valid on all three paths")
+    end
+
+    -- An unknown path is refused before an appearance is even looked up: there
+    -- is no roster to look it up IN, and a fallback there would be the flat
+    -- list this replaced.
+    assert(select(2, V(1, 0, 99)) == "unknown path selection")
+    -- And the resolver refuses a number that is not one.
+    assert(C.ResolveModel("police", 1.5) == nil, "fractional index")
+    assert(C.ResolveModel("police", "1") == nil, "a string index")
+    assert(C.ResolveModel("police", 0) == nil, "zero")
+    assert(C.ResolveModel("police", 8) == nil, "past the end")
+end)
+
 check("portrait validation enforces size, base64 and JPEG magic", function()
     loadModules()
     local V = Omerta.Characters.Internal.ValidatePortrait
@@ -225,6 +323,46 @@ check("creation validates, persists, sets the path, and caches", function()
     assert(logContains(mock, "INSERT INTO omerta_characters"), "insert missing")
     -- The path went through M3's matrix, not around it.
     assert(Omerta.Seasons.GetPath(ply) == "independent", tostring(Omerta.Seasons.GetPath(ply)))
+end)
+
+check("a police character is created from the department's roster", function()
+    local state = { value = "setup" }
+    local mock = boot(seasonResponder(state))
+    local ply = activeSeasonAndAccount(mock, "90000000000000017")
+
+    local created, err
+    Omerta.Characters.Create(ply, { first = "Frank", last = "Doyle",
+        modelIndex = 7, skin = 0, pathIndex = 2 }, function(c, e) created, err = c, e end)
+
+    assert(created, "creation failed: " .. tostring(err))
+    -- What is STORED is the resolved model PATH, not the index — which is what
+    -- makes editing a roster later safe for characters already made against it.
+    assert(created.model == Omerta.Characters.ModelsFor("police")[7], tostring(created.model))
+    assert(created.model:find("nypd1940", 1, true), tostring(created.model))
+    assert(Omerta.Seasons.GetPath(ply) == "police", tostring(Omerta.Seasons.GetPath(ply)))
+end)
+
+check("an appearance from another path's roster never reaches the database", function()
+    local state = { value = "setup" }
+    local mock = boot(seasonResponder(state))
+    local ply = activeSeasonAndAccount(mock, "90000000000000018")
+    local before = #mock.log
+
+    -- The whole point of the per-path check, exercised through the real
+    -- creation path rather than the validator alone: a client that re-rosters
+    -- itself and then sends a police index under the criminal path is asking
+    -- for a uniform it may not have, and it is refused before the insert.
+    local created, err
+    Omerta.Characters.Create(ply, { first = "Tony", last = "Marino",
+        modelIndex = 7, skin = 0, pathIndex = 1 }, function(c, e) created, err = c, e end)
+
+    assert(created == nil, "a smuggled appearance created a character")
+    assert(err == "unknown model selection", tostring(err))
+    for i = before + 1, #mock.log do
+        assert(not mock.log[i]:find("INSERT INTO omerta_characters", 1, true),
+            "a refused appearance produced an insert")
+    end
+    assert(Omerta.Characters.Get(ply) == nil, "and cached nothing")
 end)
 
 -- Regression: a replacement character picking the track its account already
