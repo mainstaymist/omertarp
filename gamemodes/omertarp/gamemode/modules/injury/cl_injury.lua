@@ -11,6 +11,9 @@ C.state = Omerta.Injury.STATE.HEALTHY
 C.deadline = nil   -- CurTime() the clock runs out; counted down locally
 C.total = 0        -- the whole window, so a fraction can be drawn
 C.bodyIndex = 0    -- resolved lazily; see C.Body()
+C.legBroken = false
+C.legDeadline = nil -- CurTime() the leg has knitted; also counted down locally
+C.gait = 0          -- units walked, for the limp phase
 
 local prompt, promptUntil = nil, 0
 local promptStart, promptTotal = 0, 0
@@ -89,9 +92,63 @@ end)
 hook.Add("Omerta.CharactersState", "omerta.injury.reset", function()
     C.state = Omerta.Injury.STATE.HEALTHY
     C.deadline, C.total, C.bodyIndex = nil, 0, 0
+    C.legBroken, C.legDeadline, C.gait = false, nil, 0
     promptShown = false
     Omerta.HUD.StopRustle()
 end)
+
+--------------------------------------------------------------------------------
+-- The leg
+--------------------------------------------------------------------------------
+-- One bit and a clock. Everything else about the limp — the stride, the shape
+-- of the gait, how far the camera moves — is a shared pure rule the client runs
+-- against its own movement, exactly as it does for the drag rope. Nothing about
+-- how badly somebody is walking travels over the wire.
+
+hook.Add("Omerta.InjuryLegUpdated", "omerta.injury.leg", function(broken, seconds)
+    C.legBroken = broken and true or false
+    -- Counted down locally, like the bleed-out clock: a value pushed once and
+    -- never again is the defect §14b was written about. This is only a backstop
+    -- — the server sends a fresh message the moment the leg mends — but a
+    -- backstop is what stops a lost packet limping somebody forever.
+    C.legDeadline = (C.legBroken and (seconds or 0) > 0)
+        and (CurTime() + seconds) or nil
+end)
+
+function C.LegBroken()
+    if not C.legBroken then return false end
+    if C.legDeadline and CurTime() >= C.legDeadline then return false end
+    return true
+end
+
+-- The gait phase is DISTANCE, not time, so standing still cannot limp. The
+-- server accumulates the same quantity from the same movement and neither is
+-- told the other's number; they do not have to match to the unit, because
+-- nobody can see both.
+hook.Add("Think", "omerta.injury.gait", function()
+    local ply = LocalPlayer()
+    if not (IsValid(ply) and C.LegBroken()) then C.gait = 0 return end
+    -- Airborne, the phase holds. The arc of a jump is not a step.
+    if not ply:OnGround() then return end
+    -- Reduced modulo the stride as it goes, so the number never grows and there
+    -- is no wrap point at which the gait would skip. Same arithmetic the server
+    -- does with its own measurement of the same walk.
+    C.gait = (C.gait + ply:GetVelocity():Length2D() * FrameTime())
+        % Omerta.Injury.LIMP.STRIDE
+end)
+
+function C.LimpPhase()
+    return Omerta.Injury.LimpPhase(C.gait)
+end
+
+-- How much bob is wanted right now. Zero standing still, zero in the air, and
+-- easing in with the speed rather than switching on, so coming to a halt brings
+-- the camera to rest instead of stopping it mid-lurch.
+function C.LimpIntensity()
+    local ply = LocalPlayer()
+    if not (IsValid(ply) and ply:OnGround()) then return 0 end
+    return Omerta.Injury.LimpIntensity(ply:GetVelocity():Length2D())
+end
 
 -- Seconds left on the clock right now, counted locally.
 function C.SecondsLeft()
@@ -120,7 +177,11 @@ end
 Omerta.HUD.RegisterInjuryProvider(function()
     -- While down, the big centred treatment below says it better.
     if Omerta.Injury.IsDown(C.state) then return nil end
-    return Omerta.Injury.Describe(C.state)
+    -- No new element for the leg. M8's injury seam is exactly a line of prose
+    -- about your own condition and a broken leg is one, so it goes through the
+    -- sentence rather than joining the screen — the empty-screen rule (GDD §8)
+    -- is not a ban on information, it is a ban on a second permanent thing.
+    return Omerta.Injury.Describe(C.state, C.LegBroken())
 end)
 
 --------------------------------------------------------------------------------

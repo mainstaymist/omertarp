@@ -201,9 +201,95 @@ local function buildSteps()
         pass()
     end }
 
+    -- Falls. The headless suite pins the curve; this pins the parts of it that
+    -- only exist once there is an engine — the hooks, and the fact that a
+    -- broken leg actually reaches the database and the movement seam.
+    steps[#steps + 1] = { name = "the engine's own fall damage is off, and ours is on",
+        fn = function(pass, fail)
+        if not hook.GetTable().OnPlayerHitGround
+                or not hook.GetTable().OnPlayerHitGround["omerta.injury.fall"] then
+            fail("nothing is watching landings — no fall costs anything") return
+        end
+        if not hook.GetTable().GetFallDamage
+                or not hook.GetTable().GetFallDamage["omerta.injury.no_engine_fall"] then
+            fail("the engine still bills fall damage of its own") return
+        end
+        -- The reason both exist: CBasePlayer never reaches GetFallDamage below
+        -- its own safe-fall speed of 580, so the configured safe height would
+        -- be unreachable through it.
+        local engineFloor = Omerta.Injury.FallHeight(580, Omerta.Injury.FALL_GRAVITY)
+        if Omerta.Config.Get("injury.fall_safe_height") >= engineFloor then
+            fail("the safe height is above the engine's own; the hook choice is stale")
+            return
+        end
+        pass(string.format("safe under %d units, engine's floor is %d",
+            Omerta.Config.Get("injury.fall_safe_height"), math.floor(engineFloor)))
+    end }
+
+    steps[#steps + 1] = { name = "a leg breaks, persists, limps, and is set again",
+        fn = function(pass, fail)
+        Omerta.Injury.BreakLeg(FAKE_CHARACTER, { cause = "selftest" }, function(ok, err)
+            if not ok then fail("could not break a leg: " .. tostring(err)) return end
+            if not Omerta.Injury.HasBrokenLeg(FAKE_CHARACTER) then
+                fail("the leg broke and nothing remembers it") return
+            end
+            local deadline = Omerta.Injury.LegBrokenUntil(FAKE_CHARACTER)
+            if not deadline or deadline <= os.time() then
+                fail("no deadline, or one already past") return
+            end
+
+            -- It reached the row, which is what makes it survive a restart.
+            Repo.ListImpairments(function(rows)
+                local stored = nil
+                for _, row in ipairs(rows) do
+                    if row.character_id == FAKE_CHARACTER
+                            and row.impairment == Omerta.Injury.IMPAIRMENT.LEG then
+                        stored = row
+                    end
+                end
+                if not stored then fail("the broken leg was never written down") return end
+
+                Omerta.Injury.HealLeg(FAKE_CHARACTER, "selftest", function(healed)
+                    if not healed then fail("the leg could not be set") return end
+                    if Omerta.Injury.HasBrokenLeg(FAKE_CHARACTER) then
+                        fail("it is still broken after being set") return
+                    end
+                    pass(string.format("%ds to knit unaided",
+                        Omerta.Config.Get("injury.leg_break_seconds")))
+                end)
+            end)
+        end)
+    end }
+
+    steps[#steps + 1] = { name = "the limp goes through M8's seam and survives its floor",
+        fn = function(pass, fail)
+        local mid = Omerta.Config.Get("injury.limp_speed_scale")
+        local swing = Omerta.Config.Get("injury.limp_swing")
+        if swing <= 0 then fail("no swing — that is a flat penalty, not a limp") return end
+        local floor = Omerta.HUD.Internal.MIN_SPEED_FRACTION
+        if (mid - swing) * Omerta.Config.Get("injury.recovery_speed_scale") <= floor then
+            fail("limping while recovering clamps against the movement floor") return
+        end
+        -- The two ends of one stride have to be different walk speeds after the
+        -- floor and its integer maths, or there is nothing to feel.
+        local base = Omerta.HUD.Internal.BaseMovement()
+        local slow = Omerta.HUD.Internal.MovementFor(base,
+            Omerta.Injury.LimpSpeedMultiplier(0, mid, swing), false)
+        local fast = Omerta.HUD.Internal.MovementFor(base,
+            Omerta.Injury.LimpSpeedMultiplier(Omerta.Injury.LIMP.PUSH_SHARE, mid, swing),
+            false)
+        if fast - slow < 10 then
+            fail(string.format("the stride runs %d..%d — too flat to read as a limp",
+                slow, fast)) return
+        end
+        pass(string.format("%d..%d units/second across a stride", slow, fast))
+    end }
+
     steps[#steps + 1] = { name = "cleanup", always = true, fn = function(pass)
         Internal.States[FAKE_CHARACTER] = nil
+        Internal.Legs[FAKE_CHARACTER] = nil
         Internal.RemoveBody(FAKE_CHARACTER, true)
+        Repo.ClearImpairment(FAKE_CHARACTER, Omerta.Injury.IMPAIRMENT.LEG)
         Omerta.DB.Query("DELETE FROM {character_injury} WHERE character_id = ?",
             { FAKE_CHARACTER }, function()
             Omerta.DB.Query("DELETE FROM {injury_events} WHERE character_id = ?",

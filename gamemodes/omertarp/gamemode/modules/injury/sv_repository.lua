@@ -45,6 +45,43 @@ function Repo.ListActive(cb)
 end
 
 --------------------------------------------------------------------------------
+-- Impairments
+--------------------------------------------------------------------------------
+-- A broken leg, and whatever Tech §17 adds after it. One row per (character,
+-- impairment), so the second impairment is a row rather than a migration.
+--
+-- `expires_at` is absolute, like every other clock in this module: a restart
+-- resumes a leg that was halfway to knitting instead of mending it, and one
+-- that finished knitting while the server was down is cleared on load rather
+-- than resurrected.
+
+-- cb(ok, err)
+function Repo.SetImpairment(characterId, impairment, since, expiresAt, cb)
+    Omerta.DB.Upsert("character_impairments", {
+        character_id = characterId,
+        impairment = impairment,
+        since = since,
+        expires_at = expiresAt or Omerta.DB.NULL,
+    }, { "character_id", "impairment" }, cb)
+end
+
+-- cb(ok, err)
+function Repo.ClearImpairment(characterId, impairment, cb)
+    cb = cb or function() end
+    Omerta.DB.Query(
+        "DELETE FROM {character_impairments} WHERE character_id = ? AND impairment = ?",
+        { characterId, impairment }, function(_, err) cb(err == nil, err) end)
+end
+
+-- Every impairment there is. Read once at boot; the caller decides which are
+-- still live. Unfiltered because "what is still running" is a question about
+-- the clock, and the clock belongs to the module rather than to the query.
+function Repo.ListImpairments(cb)
+    Omerta.DB.Query("SELECT * FROM {character_impairments}", {},
+        function(rows, err) cb(rows or {}, err) end)
+end
+
+--------------------------------------------------------------------------------
 -- Bodies
 --------------------------------------------------------------------------------
 

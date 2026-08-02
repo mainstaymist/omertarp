@@ -72,8 +72,10 @@ local MODULE_FILES = {
     "gamemodes/omertarp/gamemode/modules/business/sv_trade.lua",
     "gamemodes/omertarp/gamemode/modules/injury/sh_module.lua",
     "gamemodes/omertarp/gamemode/modules/injury/sh_injury.lua",
+    "gamemodes/omertarp/gamemode/modules/injury/sh_injury_falls.lua",
     "gamemodes/omertarp/gamemode/modules/injury/sh_supplies.lua",
     "gamemodes/omertarp/gamemode/modules/injury/sv_repository.lua",
+    "gamemodes/omertarp/gamemode/modules/injury/sv_falls.lua",
     "gamemodes/omertarp/gamemode/modules/injury/sv_injury.lua",
     "gamemodes/omertarp/gamemode/modules/injury/sv_bodies.lua",
     "gamemodes/omertarp/gamemode/modules/injury/sv_treatment.lua",
@@ -885,4 +887,488 @@ check("the edge is wider than a tick and narrower than a decision", function()
     -- the bug. Above a third of a second it starts eating deliberate presses.
     assert(gap > 2 * (1 / 22), "must survive a slow server's tick")
     assert(gap <= 0.35, "must not swallow a second press")
+end)
+
+--------------------------------------------------------------------------------
+suite("injury.falls")
+--------------------------------------------------------------------------------
+
+-- The fall curve is the thing in this milestone most likely to be retuned in
+-- the field, which is exactly why the band edges are pinned to the unit. An
+-- off-by-one at a threshold is the classic failure here: a leg that breaks one
+-- unit early, or a height that is configured "safe" and is not.
+
+check("how far you fell is how fast you arrived, converted exactly", function()
+    loadModules()
+    local H = Omerta.Injury.FallHeight
+    -- h = v^2 / 2g, and nothing else.
+    assert(H(600, 600) == 300, "600 units/second under 600 gravity is 300 units")
+    assert(H(0, 600) == 0, "a step off nothing is nothing")
+    assert(H(-400, 600) == 0, "travelling upward is not a fall")
+    -- Halving gravity doubles the height a given speed represents, which is
+    -- why the cvar is read at the moment of the fall rather than assumed.
+    assert(H(600, 300) == 600, "low gravity, longer fall for the same impact")
+    assert(H(600, 0) == H(600, Omerta.Injury.FALL_GRAVITY),
+        "an impossible gravity falls back rather than dividing by zero")
+    assert(H(nil, nil) == 0, "nonsense in, nothing out")
+end)
+
+-- The edges, one unit either side, on a curve with round numbers so the
+-- assertions are readable. A configured height is the height at which the thing
+-- the key is NAMED for happens.
+check("the band edges are exact, and each threshold owns its own height", function()
+    loadModules()
+    local curve = Omerta.Injury.FallCurve(100, 200, 400, 30, 100)
+    local B = function(h) return Omerta.Injury.FallBand(h, curve) end
+    local BAND = Omerta.Injury.FALL_BAND
+
+    assert(B(0) == BAND.NONE, "standing still is not falling")
+    assert(B(99) == BAND.NONE, "one unit inside the safe height")
+    assert(B(100) == BAND.LOW, "AT the safe height the band has opened")
+    assert(B(199) == BAND.LOW, "one unit short of the break")
+    assert(B(200) == BAND.MEDIUM, "AT the break height the leg goes")
+    assert(B(399) == BAND.MEDIUM, "one unit short of going down")
+    assert(B(400) == BAND.HIGH, "AT the down height you are on the floor")
+    assert(B(400000) == BAND.HIGH, "and there is nothing worse to be")
+end)
+
+check("the damage climbs continuously across the bands, never in steps", function()
+    loadModules()
+    local curve = Omerta.Injury.FallCurve(100, 200, 400, 30, 100)
+    local D = function(h) return Omerta.Injury.FallDamage(h, curve) end
+
+    assert(D(50) == 0 and D(100) == 0, "nothing below the safe height, and nothing at it")
+    assert(D(150) == 15, "half way through the low band is half the low damage")
+    assert(D(200) == 30, "the knot is the configured number, exactly")
+    assert(D(300) == 65, "half way through the medium band is half of what is left")
+    assert(D(400) == 100, "and the second knot likewise")
+    assert(D(4000) == 100, "clamped: past the down height nothing gets worse")
+
+    -- The band edge must not be a cliff. One unit of height may not cost a
+    -- meaningful amount of health, or the threshold becomes a bug report.
+    assert(D(200) - D(199) <= 1, "a step at the break height")
+    assert(D(400) - D(399) <= 1, "a step at the down height")
+
+    local previous = -1
+    for height = 0, 500, 1 do
+        local value = D(height)
+        assert(value >= previous, "falling further must never hurt less")
+        previous = value
+    end
+end)
+
+-- Omerta.Config validates each key against its own bounds and cannot see the
+-- relationship between two of them. A mistyped config must degrade, not invert.
+check("a nonsense configuration is straightened out rather than obeyed", function()
+    loadModules()
+    -- Break above down, and the light fall hurting more than the heavy one.
+    local curve = Omerta.Injury.FallCurve(500, 900, 200, 80, 10)
+    assert(curve.safe < curve.breakAt, "the safe height must come first")
+    assert(curve.breakAt < curve.downAt, "and the break before the fall")
+    assert(curve.downDamage >= curve.breakDamage,
+        "a higher fall that hurt less would make jumping from further up the safe play")
+
+    local previous = -1
+    for height = 0, 1200, 10 do
+        local value = Omerta.Injury.FallDamage(height, curve)
+        assert(value >= previous, "the straightened curve still has to rise")
+        previous = value
+    end
+end)
+
+--------------------------------------------------------------------------------
+suite("injury.falls_calibration")
+--------------------------------------------------------------------------------
+
+-- The shipped numbers, against M19's own bands (below 70% hurt, below 35%
+-- critical, 0 down) the way the arsenal calibrates a weapon.
+
+local function shippedCurve()
+    return Omerta.Injury.Internal.FallCurve()
+end
+
+check("a low fall takes health and leaves the leg alone", function()
+    loadModules()
+    local curve = shippedCurve()
+    local BAND = Omerta.Injury.FALL_BAND
+    local S = Omerta.Injury.STATE
+
+    local topOfLow = curve.breakAt - 1
+    assert(Omerta.Injury.FallBand(topOfLow, curve) == BAND.LOW)
+
+    -- The low band is not a free band: it opens at no damage and crosses into
+    -- M19's injured band before it ends, so the worst survivable fall that
+    -- leaves you walking properly still costs you something you can feel.
+    assert(Omerta.Injury.FallDamage(curve.safe, curve) == 0, "the safe height is free")
+    local worst = Omerta.Injury.FallDamage(topOfLow, curve)
+    assert(worst > 0 and worst < 100, "a low fall is survivable and not free")
+    assert(Omerta.Injury.StateForHealth(100 - worst, 100, S.HEALTHY) == S.INJURED,
+        "the worst low fall should leave a full-health character hurt")
+
+    -- And the crossing into hurt happens INSIDE the band, not on its edge: an
+    -- outcome that depends on which way a comparison rounds is an outcome that
+    -- gets reported as a bug (the arsenal's rule about the M1911, applied here).
+    local crossing = nil
+    for height = math.floor(curve.safe), math.floor(curve.breakAt) do
+        local left = 100 - Omerta.Injury.FallDamage(height, curve)
+        if Omerta.Injury.StateForHealth(left, 100, S.HEALTHY) == S.INJURED then
+            crossing = height
+            break
+        end
+    end
+    assert(crossing, "a low fall never manages to hurt anybody")
+    assert(curve.breakAt - crossing >= 10,
+        "the hurt threshold sits on top of the break threshold; separate them")
+end)
+
+check("a medium fall costs more health AND the leg, and is survivable", function()
+    loadModules()
+    local curve = shippedCurve()
+    local BAND = Omerta.Injury.FALL_BAND
+    local S = Omerta.Injury.STATE
+
+    assert(Omerta.Injury.FallBand(curve.breakAt, curve) == BAND.MEDIUM,
+        "the leg goes at the height the key is named after")
+
+    local atBreak = Omerta.Injury.FallDamage(curve.breakAt, curve)
+    assert(atBreak > Omerta.Injury.FallDamage(curve.breakAt - 100, curve),
+        "a medium fall has to cost more health than a low one")
+    assert(Omerta.Injury.StateForHealth(100 - atBreak, 100, S.HEALTHY) == S.INJURED,
+        "the cheapest medium fall should hurt without being critical")
+
+    -- Survivable at full health across essentially the whole band. The last
+    -- sliver of it rounds up into lethality because the curve is CONTINUOUS
+    -- with the high band — that is the design, not an edge case, and it is
+    -- what stops the boundary being a cliff.
+    local nearTop = curve.downAt - (curve.downAt - curve.breakAt) * 0.05
+    assert(Omerta.Injury.FallDamage(nearTop, curve) < 100,
+        "a full-health character should survive all but the last stretch of the medium band")
+
+    -- Somewhere in the middle it stops being survivable twice over.
+    local critical = nil
+    for height = math.floor(curve.breakAt), math.floor(curve.downAt) do
+        local left = 100 - Omerta.Injury.FallDamage(height, curve)
+        if Omerta.Injury.StateForHealth(left, 100, S.HEALTHY) == S.CRITICAL then
+            critical = height
+            break
+        end
+    end
+    assert(critical, "no medium fall ever leaves anybody bleeding badly")
+    assert(critical - curve.breakAt > 50 and curve.downAt - critical > 50,
+        "the critical crossing should sit in the middle of the band, not on an edge")
+end)
+
+-- The project lead's requirement, in one check: "there will be a point where a
+-- fall will incapacitate you even if you were full health if high enough."
+check("a high enough fall puts a character down from full health", function()
+    loadModules()
+    local curve = shippedCurve()
+    local BAND = Omerta.Injury.FALL_BAND
+
+    -- FallBand is given a HEIGHT and nothing else. There is no health, no
+    -- damage number and no player in its arguments, so there is nothing for a
+    -- full health bar — or a damage filter, or a heavy coat — to argue with.
+    assert(Omerta.Injury.FallBand(curve.downAt, curve) == BAND.HIGH,
+        "the down height must be the height you go down at")
+    assert(Omerta.Injury.FallBand(curve.downAt * 4, curve) == BAND.HIGH)
+
+    -- And the arithmetic agrees with the rule rather than merely coexisting
+    -- with it: at the same height the curve has taken a whole health bar, so
+    -- the last unit of the medium band and the first of the high one are the
+    -- same fall. An operator who lowers fall_down_damage breaks the agreement
+    -- and not the guarantee — the module takes the terminal path directly.
+    assert(Omerta.Injury.FallDamage(curve.downAt, curve) >= 100,
+        "the curve and the band disagree about what a fatal fall costs")
+
+    -- A high fall breaks the leg too, so somebody treated back onto their feet
+    -- gets up still limping. A condition outliving a state is the point of it
+    -- being a condition.
+    assert(Omerta.Injury.FallBand(curve.downAt, curve) ~= BAND.LOW,
+        "the high band must be past the break height, not beside it")
+    assert(curve.downAt > curve.breakAt)
+end)
+
+-- Why this module cannot use GAMEMODE:GetFallDamage, asserted rather than
+-- explained: the engine only reaches that hook above its own hardcoded safe
+-- fall speed, so a threshold below it would be a config key that did nothing.
+check("the safe height is below the engine's own, so the engine cannot report it", function()
+    loadModules()
+    local ENGINE_SAFE_SPEED = 580 -- PLAYER_MAX_SAFE_FALL_SPEED
+    local engineFloor = Omerta.Injury.FallHeight(ENGINE_SAFE_SPEED,
+        Omerta.Injury.FALL_GRAVITY)
+    assert(Omerta.Config.Get("injury.fall_safe_height") < engineFloor,
+        "the configured safe height is above the engine's, so this hook choice " ..
+        "is no longer load-bearing — but OnPlayerHitGround is still the only " ..
+        "one that sees every landing")
+end)
+
+--------------------------------------------------------------------------------
+suite("injury.leg")
+--------------------------------------------------------------------------------
+
+check("a broken leg is a condition, not an eighth state", function()
+    loadModules()
+    -- Adding it to the ladder would multiply the transition table and break
+    -- IsDown/IsIncapable/StateForHealth, all of which read the ladder as one
+    -- linear situation. M19 §9 said impairments attach beside the states.
+    for _, state in ipairs(Omerta.Injury.ORDER) do
+        assert(state ~= "leg" and state ~= "broken_leg" and state ~= "limping",
+            "a condition has been promoted into the state machine")
+    end
+    assert(Omerta.Injury.IMPAIRMENT.LEG == "leg", "the vocabulary is named, not boolean")
+    assert(type(Omerta.Injury.BreakLeg) == "function")
+    assert(type(Omerta.Injury.HealLeg) == "function")
+    assert(type(Omerta.Injury.HasBrokenLeg) == "function")
+end)
+
+check("a broken leg survives a restart, because its deadline is a moment", function()
+    loadModules()
+    Omerta.Module.FinishLoading()
+    local def = Omerta.DB.Internal.GetTableDef("character_impairments")
+    assert(def, "impairments are not persisted at all — a reconnect would mend them")
+
+    local sawExpires, sawKey = false, false
+    for _, col in ipairs(def.columns) do
+        if col.name == "expires_at" then
+            sawExpires = true
+            assert(col.type == "timestamp",
+                "a stored countdown would restart on boot and mend every leg")
+        end
+        if col.name == "impairment" then sawKey = true end
+        assert(col.name ~= "seconds_left" and col.name ~= "remaining",
+            "a stored countdown is the bug this column exists to avoid")
+    end
+    assert(sawExpires, "no deadline column at all")
+    assert(sawKey, "a named impairment is what makes the second one a row, not a migration")
+end)
+
+check("migration 14 creates the impairment record", function()
+    loadModules()
+    Omerta.Module.FinishLoading()
+
+    local mock = { dialect = "sqlite", heuristic = true, log = {}, nextInsertId = 1 }
+    function mock.Connect(_, cb) cb(nil) end
+    function mock.RunQuery(sqlStr, _, cb)
+        mock.log[#mock.log + 1] = sqlStr
+        if sqlStr:find("SELECT version") then cb({}, nil) return end
+        local id = mock.nextInsertId
+        mock.nextInsertId = mock.nextInsertId + 1
+        cb({}, nil, id)
+    end
+    function mock.RunTransaction(_, cb) cb(true, nil) end
+    Omerta.DB.Internal.Drivers = Omerta.DB.Internal.Drivers or {}
+    Omerta.DB.Internal.Drivers.sqlite = mock
+    Omerta.Module.EnableAll()
+
+    local seen = false
+    for _, statement in ipairs(mock.log) do
+        if statement:find("CREATE TABLE IF NOT EXISTS omerta_character_impairments",
+                1, true) then
+            seen = true
+        end
+    end
+    assert(seen, "impairments DDL missing")
+end)
+
+check("there are exactly three snaps, and every one is a file on disk", function()
+    loadModules()
+    assert(Omerta.Injury.LEG_BREAK_SOUNDS == 3, "the lead supplied three variations")
+
+    local seen = {}
+    for index = 1, Omerta.Injury.LEG_BREAK_SOUNDS do
+        local path = Omerta.Injury.LegBreakSound(index)
+        assert(not seen[path], "two variations resolve to the same file: " .. path)
+        seen[path] = true
+        -- A registered path and a played path that differ by one character is a
+        -- sound nobody ever hears and nothing ever reports. Both come from this
+        -- function; this is the check that the function is right about disk.
+        local handle = io.open("gamemodes/omertarp/content/sound/" .. path, "rb")
+        assert(handle, "no such sound file: " .. path)
+        handle:close()
+    end
+
+    -- Out of range must land on something real rather than on a silent path.
+    assert(Omerta.Injury.LegBreakSound(0) == Omerta.Injury.LegBreakSound(1))
+    assert(Omerta.Injury.LegBreakSound(99) == Omerta.Injury.LegBreakSound(1))
+    assert(Omerta.Injury.LegBreakSound(nil) == Omerta.Injury.LegBreakSound(1))
+end)
+
+check("the sound is played quietly rather than re-encoded", function()
+    loadModules()
+    local volume = Omerta.Config.Get("injury.leg_break_volume")
+    assert(volume > 0 and volume < 1,
+        "the files are loud; the fix is a volume an operator can turn back up")
+end)
+
+check("a broken leg gets a sentence, and never the loudest one", function()
+    loadModules()
+    local D = Omerta.Injury.Describe
+    local S = Omerta.Injury.STATE
+
+    assert(D(S.HEALTHY) == nil, "an unbroken healthy character still says nothing")
+    assert(D(S.HEALTHY, true) == "Your leg is broken.")
+    assert(D(S.INJURED, true) == "You are hurt. Your leg is broken.",
+        "both are true and the player is entitled to both")
+    -- Bleeding badly outranks a bone, and being on the floor outranks everything.
+    assert(D(S.CRITICAL, true) == D(S.CRITICAL), "the leg is the least of it")
+    assert(D(S.INCAPACITATED, true) == D(S.INCAPACITATED))
+    assert(D(S.STABILIZED, true) == D(S.STABILIZED))
+    assert(D(S.DEAD, true) == D(S.DEAD))
+
+    for _, state in ipairs(Omerta.Injury.ORDER) do
+        local text = D(state, true)
+        assert(text == nil or not text:find("%d"), state .. " leaked a number")
+    end
+end)
+
+--------------------------------------------------------------------------------
+suite("injury.limp")
+--------------------------------------------------------------------------------
+
+-- "Walk slower then faster" — an uneven gait, not a flat penalty. The curve is
+-- pinned here because the thing that makes it read as a limp rather than as lag
+-- is its shape, and a shape is exactly what a later tuning pass can flatten
+-- without noticing.
+
+check("the gait phase comes from distance walked, so standing still cannot limp", function()
+    loadModules()
+    local P = Omerta.Injury.LimpPhase
+    local stride = Omerta.Injury.LIMP.STRIDE
+
+    assert(P(0, stride) == 0, "nobody has moved")
+    assert(math.abs(P(stride * 0.5, stride) - 0.5) < 1e-9, "half a stride, half a cycle")
+    assert(math.abs(P(stride, stride)) < 1e-9, "one stride is one whole cycle")
+    assert(math.abs(P(stride * 7.25, stride) - 0.25) < 1e-9, "and it keeps wrapping")
+
+    -- A stationary character produces the same phase forever, which is what
+    -- makes "does not fire while standing still" a property rather than a
+    -- special case. A clock-driven gait would rock somebody stood at a bar.
+    assert(P(1234.5, stride) == P(1234.5, stride))
+    assert(P(0, 0) == 0, "an impossible stride does not divide by zero")
+end)
+
+check("the stride goes slowest, then fastest, and back — once", function()
+    loadModules()
+    local L = Omerta.Injury.LimpSpeedMultiplier
+    local mid, swing = 0.72, 0.22
+    local push = Omerta.Injury.LIMP.PUSH_SHARE
+
+    assert(math.abs(L(0, mid, swing) - (mid - swing)) < 1e-9,
+        "the stride starts with the weight on the bad leg")
+    assert(math.abs(L(push, mid, swing) - (mid + swing)) < 1e-9,
+        "and is fastest pushing off the good one")
+    assert(math.abs(L(1, mid, swing) - L(0, mid, swing)) < 1e-9,
+        "the cycle has to join up, or every stride starts with a jolt")
+
+    -- Exactly one rise and one fall. Anything else is jitter, and jitter is
+    -- what reads as a dropped packet rather than as a leg.
+    local previous = L(0, mid, swing)
+    for i = 1, 100 do
+        local value = L(push * i / 100, mid, swing)
+        assert(value >= previous - 1e-9, "the shove has to be monotonic")
+        previous = value
+    end
+    previous = L(push, mid, swing)
+    for i = 1, 100 do
+        local value = L(push + (1 - push) * i / 100, mid, swing)
+        assert(value <= previous + 1e-9, "and the settle after it")
+        previous = value
+    end
+
+    -- A limp is a SHORT shove and a LONG settle. Reversing those two is the
+    -- difference between favouring a leg and skipping.
+    assert(push < 0.5, "the shove must be the shorter half of the stride")
+end)
+
+check("the limp never stops anybody dead, however it is configured", function()
+    loadModules()
+    local L = Omerta.Injury.LimpSpeedMultiplier
+    for i = 0, 40 do
+        local phase = i / 40
+        assert(L(phase, 0.72, 0.22) > 0, "a standing stop reads as stuck, not as a limp")
+        -- Swing wider than the middle would take the multiplier through zero.
+        assert(L(phase, 0.5, 5) > 0, "an absurd swing is clamped, not obeyed")
+        assert(L(phase, 0.72, 0) == 0.72, "no swing is a flat penalty and no limp")
+    end
+end)
+
+-- The seam is M8's, and the check that matters is that the limp survives it:
+-- the speed floor is 25% of the walk, and a limp flattened against the floor is
+-- a flat penalty wearing a limp's name.
+check("the limp survives the movement floor, and stacks with recovering", function()
+    loadModules()
+    local mid = Omerta.Config.Get("injury.limp_speed_scale")
+    local swing = Omerta.Config.Get("injury.limp_swing")
+    local worstRecovery = Omerta.Config.Get("injury.recovery_speed_scale")
+    local floor = Omerta.HUD.Internal.MIN_SPEED_FRACTION
+
+    assert(swing > 0, "a swing of zero is a flat penalty and no limp at all")
+    assert(mid - swing > floor,
+        "the slow half of the stride is clamped away by the movement floor")
+    assert((mid - swing) * worstRecovery > floor,
+        "limping while recovering from a shooting clamps, so the limp disappears " ..
+        "exactly when a player is most likely to have one")
+
+    -- End to end against D-034's base: the two ends of one stride have to be
+    -- different speeds after the flooring and the flooring's integer maths, or
+    -- there is nothing to feel.
+    local base = {
+        walk = Omerta.Config.Get("movement.walk_speed"),
+        jog = Omerta.Config.Get("movement.jog_speed"),
+        jump = Omerta.Config.Get("movement.jump_power"),
+        exhaustedJumpScale = Omerta.Config.Get("stamina.exhausted_jump_scale"),
+    }
+    local L = Omerta.Injury.LimpSpeedMultiplier
+    local slow = Omerta.HUD.Internal.MovementFor(base, L(0, mid, swing), false)
+    local fast = Omerta.HUD.Internal.MovementFor(base,
+        L(Omerta.Injury.LIMP.PUSH_SHARE, mid, swing), false)
+    assert(fast > slow, "both ends of the stride land on the same walk speed")
+    assert(fast - slow >= 10,
+        "the difference between the two legs is too small to read as a limp")
+end)
+
+check("the camera bobs with the legs, and not at all while standing still", function()
+    loadModules()
+    local B = Omerta.Injury.LimpBob
+    local L = Omerta.Injury.LIMP
+
+    local dip, roll = B(0, 0)
+    assert(dip == 0 and roll == 0, "a stationary character must not be rocked")
+    dip, roll = B(0.5, 0)
+    assert(dip == 0 and roll == 0, "at any phase, still means still")
+
+    -- Intensity comes from ground speed, so it arrives and leaves with movement
+    -- rather than switching on.
+    local I = Omerta.Injury.LimpIntensity
+    assert(I(0) == 0, "not moving, not bobbing")
+    assert(I(L.FULL_AT) == 1 and I(L.FULL_AT * 10) == 1, "clamped at full")
+    assert(I(L.FULL_AT * 0.5) == 0.5, "and eases in with the pace")
+
+    -- ONE-SIDED, like the heartbeat: the head only ever drops from the resting
+    -- eye line and comes back. A symmetric bob lifts the camera on the good leg
+    -- and reads as a bounce — a man enjoying himself, not one dragging a foot.
+    local lowest, highest = 0, 0
+    for i = 0, 100 do
+        local d = B(i / 100, 1)
+        lowest = math.min(lowest, d)
+        highest = math.max(highest, d)
+    end
+    assert(highest <= 0, "the bob rises above the resting eye line")
+    assert(math.abs(lowest + L.DIP) < 1e-9, "the full dip is never reached")
+
+    -- Deepest where the gait is slowest, level where it pushes off: the camera
+    -- and the speed are the same event seen twice, which is what stops the
+    -- speed change reading as network lag.
+    local atSlow = B(0, 1)
+    local atFast = B(L.PUSH_SHARE, 1)
+    assert(atSlow < atFast, "the head must sink onto the bad leg, not off it")
+    assert(math.abs(atFast) < 1e-9, "and be level at the push")
+
+    -- Slight. The screen belongs to the player.
+    assert(L.DIP <= 4, "that is a ride, not a hint")
+    assert(L.ROLL <= 3, "likewise")
+
+    -- Continuous around the wrap, or every stride ends with a snap.
+    assert(math.abs(select(1, B(1, 1)) - select(1, B(0, 1))) < 1e-9)
+    assert(math.abs(select(2, B(1, 1)) - select(2, B(0, 1))) < 1e-9)
 end)

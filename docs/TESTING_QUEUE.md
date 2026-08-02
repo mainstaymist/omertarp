@@ -2,8 +2,8 @@
 
 **What this is:** everything built but not yet confirmed working in-engine, in the order worth doing it. Kept current as work lands — when you report results, the statuses here get updated and anything that fails becomes a fix before new work starts.
 
-**Last updated:** 2026-08-01, after the third-party weapon pass.
-**Headless suite:** 455 checks passing. `luac -p` clean across the tree. 19 modules resolving.
+**Last updated:** 2026-08-02, after knocking and falling.
+**Headless suite:** 500 checks passing. `luac -p` clean across the tree. 19 modules resolving.
 
 Status key: **☐ untested** · **☑ passed** · **☒ failed** (details inline) · **◐ partly**
 
@@ -21,7 +21,70 @@ If migrations fail, stop and send me the error — everything below depends on t
 
 ---
 
-## 1. Third-party weapons, the period models, and three search bugs (2026-08-01)
+## 1. Knocking, and falling (2026-08-02)
+
+**Migration 14 runs on first boot** (`character_impairments`). It is the first
+new table since 13, and the first written since you confirmed MySQL applies
+12 and 13 — so if a migration is going to fail, it fails here. Send me the
+error and stop.
+
+### Knocking
+
+Empty hands, left click, a door. The sound comes out of the **door**, so
+anybody near it hears it and learns nothing else about who knocked.
+
+| | Check | How | Expect |
+|---|---|---|---|
+| ☐ | **It works at all** | Empty hands, face a door, left click | The knock plays from the door |
+| ☐ | **No overlap** | Click repeatedly as fast as you can | One knock finishes before the next starts (1.44s) |
+| ☐ | **Two people, one door** | Both knock at once | Still no overlap — the lockout is per door, not per player |
+| ☐ | **Locked doors too** | Knock on a locked door | It works. That is the entire point of knocking |
+| ☐ | **Not with a gun out** | Hold a weapon, click at a door | Nothing. Only empty hands knock |
+| ☐ | **E still opens doors** | Press E on a door | Opens normally. Doors were deliberately left out of the interaction registry so this keeps working |
+| ☐ | **The map's doors count** | Try several doors around rp_unioncity | If some do nothing, tell me the class — it is one line to add |
+
+**If knocking does nothing at all**, that is the one failure I predicted: it
+relies on the engine running `PrimaryAttack` server-side for a SWEP that has no
+clip. The weapon base proves that path for guns; hands takes a different branch.
+The fix is known and small, so just say "knocking is dead" and I will land it.
+
+### Falling
+
+Three bands, one continuous curve, all five numbers configurable:
+
+| height | damage | what happens |
+|---|---|---|
+| under 150 | none | a full storey is free |
+| 150 – 340 | 0 → 34 | **low** — hurt, no break |
+| 340 – 700 | 34 → 100 | **medium** — leg breaks |
+| 700+ | 100 | **high** — leg breaks and you go down |
+
+34 damage at the break height is exactly one Model 10 round, so the cheapest
+leg-breaking fall leaves you where one revolver shot would.
+
+| | Check | How | Expect |
+|---|---|---|---|
+| ☐ | **A short drop is free** | Jump off something waist-high | No damage |
+| ☐ | **It scales** | Fall from a few different heights | Damage rises smoothly with height, not in three steps |
+| ☐ | **The leg breaks** | Fall from roughly two storeys | One of three break sounds, and you start limping |
+| ☐ | **Full health does not save you** | Fall from something very high at 100 health | **You go down.** This is the requirement — armour or health must not be able to catch a six-storey fall |
+| ☐ | **The limp reads as a limp** | Walk around with a broken leg | Slower, then faster, in one cycle per stride, with a slight one-sided camera dip. **Watch for rubber-banding** — if it feels like lag rather than a drag, tell me and I will speed up how often it is applied |
+| ☐ | **Standing still does not bob** | Stand still with a broken leg | Camera is still |
+| ☐ | **It survives a reconnect** | Break a leg, disconnect, rejoin | Still limping, with the clock where you left it |
+| ☐ | **It does not survive death** | Break a leg, die, make a new character | No limp |
+| ☐ | **A doctor sets it** | Get treated while down with a broken leg | The break clears with the treatment. A bandage alone does not |
+| ☐ | **The sounds are quiet enough** | Break a leg | They were loud, so they play at about a third. Tell me if that is still wrong |
+
+**One thing needs a ruling.** A medium fall from full health breaks your leg
+without putting you on the floor — and every treatment in the game targets
+somebody who is *down*. So a walking man with a broken leg **cannot currently
+be treated at all**; his only cure is the ten-minute clock. That may well be
+right. If you want a doctor to be able to set a standing man's leg, say so and
+it becomes a real piece of work in the interaction layer.
+
+---
+
+## 1b. Third-party weapons, the period models, and three search bugs (2026-08-01)
 
 ### Install these server-side first
 
@@ -70,7 +133,7 @@ addons' own models. Firing and holding will look right.
 
 ---
 
-## 1b. The fourteen-item pass (2026-08-01)
+## 1c. The fourteen-item pass (2026-08-01)
 
 Two of these were the same bug, and two more were not what they looked like.
 
@@ -171,7 +234,7 @@ Also unseen: whether IBM Plex Mono renders `·` at the drawn size.
 
 ---
 
-## 1c. Motion, and the world outside (2026-07-31)
+## 1d. Motion, and the world outside (2026-07-31)
 
 ### Every window now arrives and leaves
 
@@ -237,7 +300,7 @@ document for you to rule on.
 
 ---
 
-## 1d. The four-item follow-up (2026-07-31)
+## 1e. The four-item follow-up (2026-07-31)
 
 All four were real, and two of them were bugs I had already "fixed" twice by
 changing a number that was never being used.
@@ -285,7 +348,7 @@ a popup panel, with the line still drawn over the world in our own type.
 
 ---
 
-## 1e. The nine-item pass (2026-07-31)
+## 1f. The nine-item pass (2026-07-31)
 
 Your notes after the city let you in. Everything here is new or changed since
 that session, so it is all first-time verification.

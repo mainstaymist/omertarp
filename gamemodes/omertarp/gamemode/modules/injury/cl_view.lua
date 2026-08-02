@@ -137,13 +137,43 @@ hook.Add("CalcView", "omerta.injury.view", function(ply, pos, angles, fov)
     end
 
     -- Down: first person, riding the ragdoll's head.
-    if not Omerta.Injury.IsDown(C.state) then return end
-    local eye, eyeAng = Omerta.Injury.EyesOf(C.Body())
-    if not eye then return end
+    if Omerta.Injury.IsDown(C.state) then
+        local eye, eyeAng = Omerta.Injury.EyesOf(C.Body())
+        if not eye then return end
 
-    -- Not drawing the viewer: the camera is inside the head, and rendering the
-    -- head from inside it is a view of the back of a face.
-    return { origin = eye, angles = eyeAng, fov = fov, drawviewer = false }
+        -- Not drawing the viewer: the camera is inside the head, and rendering
+        -- the head from inside it is a view of the back of a face.
+        return { origin = eye, angles = eyeAng, fov = fov, drawviewer = false }
+    end
+
+    --------------------------------------------------------------------------
+    -- Upright, on a leg that does not work
+    --------------------------------------------------------------------------
+    -- The limp is a server fact — it slows the character down and everybody
+    -- watching sees that. This is the half the person doing the limping gets:
+    -- the head drops as the bad leg takes the weight and leans off it, once per
+    -- stride, so the change in pace has a visible cause instead of reading as a
+    -- dropped connection.
+    --
+    -- It sits AFTER every one of the branches above rather than before them,
+    -- which is what keeps it from fighting M19's own cameras: while dying, dead
+    -- or leaving the death screen this line is never reached at all.
+    --
+    -- And it returns nothing whenever there is nothing to add. That matters
+    -- more than it looks: CalcView takes the first non-nil answer any hook
+    -- gives, so an element that returned a table on every frame would quietly
+    -- outrank the front end's own camera. On an ordinary frame this hook still
+    -- declines, exactly as it did before.
+    if menuUp or not C.LegBroken() then return end
+
+    local dip, roll = Omerta.Injury.LimpBob(C.LimpPhase(), C.LimpIntensity())
+    if dip == 0 and roll == 0 then return end -- standing still; nothing to say
+
+    return {
+        origin = pos + Vector(0, 0, dip),
+        angles = Angle(angles.p, angles.y, angles.r + roll),
+        fov = fov,
+    }
 end)
 
 --------------------------------------------------------------------------------

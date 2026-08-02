@@ -256,6 +256,14 @@ function Internal.RegisterTreatments()
                 actorCharacterId = actor and actor.id or nil,
                 actorSteamId = ply:SteamID64(),
             }, cb)
+            -- And the leg, if there is one. NOT a second treatment to register
+            -- and not a second thing to remember: the patient is already on the
+            -- table and no doctor sets a man on his feet and leaves the bone.
+            --
+            -- A bandage deliberately does NOT do this. Stabilizing buys time,
+            -- and the two-step is what makes the clinic worth walking to; a
+            -- splint out of a coat pocket would collapse it back to one step.
+            Omerta.Injury.HealLeg(characterId, "treated")
         end,
     })
 end

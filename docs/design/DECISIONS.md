@@ -92,6 +92,20 @@ Resolves Q-4. Ending a season automatically retires every living character ("lea
 
 ---
 
+## D-045 — A broken leg is a condition with a row, not an eighth state (DECIDED, 2026-08-02; amends M19 §9)
+
+Falling far enough breaks a leg, and a broken leg is **not** an injury state. M19's seven states describe how close a character is to dying; a limp is not a step on that ladder and a man can be perfectly healthy with a broken leg. It gets its own table — `character_impairments`, migration 14 — keyed by character with an absolute expiry.
+
+**A table rather than the column M19 §9 sketched**, and the reason is the migration runner rather than taste: it offers `CreateTable` and `Query`, and only `CreateTable` is dialect-aware. An `ALTER TABLE` would mean hand-writing a column type that has to mean the same thing on MySQL and SQLite, and it would also have to dodge a fresh database that created the column already. Under D-008, where MySQL is the backend of record, that is not a trade worth making for one impairment — and Tech §17's impairments are a list, so the second one should cost a row and not a migration.
+
+**A high fall bypasses the damage pipeline, and that is the one deliberate exception.** Low and medium falls are ordinary `DMG_FALL` damage through every registered filter, exactly as a bullet is. A high fall calls the same terminal incapacitation the damage handler would, because armour halving a six-storey drop would silently delete the requirement. A coat may soften a fall; it may not catch one. The curve still reaches exactly 100 damage at the high threshold, so the arithmetic and the rule agree rather than merely coexisting.
+
+**The gait is driven by distance walked, not by time.** Three things follow that a clock could not give: standing still cannot limp, one cycle is one stride at any speed, and the client derives the same phase from its own movement — so nothing about the limp goes on the wire beyond one bit and an expiry.
+
+Every threshold and duration is configuration, not a constant, because these are pacing numbers that will be tuned against a real map.
+
+**Affects:** M19 (`docs/design-reviews/M19_injury.md` §15 added, §9 amended); migration 14; `Omerta.Stamina.RegisterSpeedModifier` gains a second registrant.
+
 ## D-044 — A weapon may name somebody else's SWEP; the ammo pool becomes a projection (DECIDED, 2026-08-01; extends D-039, preserves D-004)
 
 The arsenal may say `external = "arc9_bo2_thompson"`, and that line is the whole edit. D-039 promised that adding a gun is one `Register` call; this extends the promise to cover *whose SWEP fires it*. The generated `weapon_omerta_*` class is still built for every weapon, because it is the fallback — a server without the pack gets our own base and a log line, never an empty hand.

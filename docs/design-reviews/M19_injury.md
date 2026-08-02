@@ -362,3 +362,117 @@ The shim gained a minimal `Vector` so the hold-point geometry is testable headle
 **Still outstanding:** `sound/omertarp/confirm.wav` did not come through with the request. The sequence is wired to that path and the loader warns and carries on when a file is missing, so the transition already runs — silently — and dropping the file in is the only remaining step.
 
 Suite: 317 → 323 checks.
+
+---
+
+## 15. Amendment — falling, a broken leg, and a limp (2026-08-02)
+
+A fall is now worth what it was. The state machine is unchanged; what can reach
+it is not, and M19 gains its first **condition** alongside its states.
+
+**A fall is a curve, not a constant.** `Omerta.Injury.FallDamage` is a
+continuous piecewise-linear function of the height fallen, with knots at the
+three configured thresholds, and the thresholds set what KIND of thing happens
+rather than how much: below `injury.fall_safe_height` nothing at all, then
+health only, then health and the leg, then the floor. Damage climbs across every
+one of those bands, so within a band the fall still scales with the distance —
+which is what "these falls are still linear" asked for. Both the curve and the
+band function are pure, live in `sh_injury_falls.lua`, and the headless suite
+pins every edge one unit either side. Shipped calibration, against M19's own
+bands: free below 150 units, hurt at 321, the leg at 340 (34 damage — one Model
+10 round, leaving 66), critical at 512, down at 700.
+
+**The engine's fall damage is off, and could not have been used.** `CBasePlayer`
+only reaches `GAMEMODE:GetFallDamage` above its own hardcoded safe-fall speed of
+580 units/second — about 280 units of height — so more than half the range the
+project lead asked for is invisible from that hook and a config key set below it
+would silently do nothing. `OnPlayerHitGround` sees every landing.
+`GetFallDamage` is hooked too and returns zero, so whichever way the engine
+orders the two, exactly one number reaches the player and it is ours. With
+`injury.enabled` off, both stand down and the engine behaves as it intends.
+
+**Low and medium falls are ORDINARY DAMAGE** — `TakeDamageInfo` with `DMG_FALL`,
+into M19's own `EntityTakeDamage`, through every registered damage filter, and
+into `Omerta.Injury.Set` by exactly the funnel a bullet uses. A man already hurt
+who takes a two-storey drop goes down by the same path and writes the same
+`injury_events` row, with `cause = "fall"` because `CauseOf` reads the damage
+type. **The high band is the one stated exception**: it calls the same terminal
+`Set(INCAPACITATED)` the damage handler calls, with the same clamp of health to
+1, rather than handing the arithmetic a number and hoping. The reason is
+`RegisterDamageFilter`: armour multiplying a fall from six storeys by 0.5 would
+quietly delete the requirement that a high enough fall puts down a character at
+full health. A coat may soften a fall; it may not catch one. The curve still
+reaches a full health bar at exactly that height, so the two agree rather than
+merely coexist, and a test asserts they do.
+
+**A broken leg is a condition, not an eighth state.** §9 called this in advance
+("permanent impairments attach ... with no change to the state machine") and
+this is that entry being cashed — with one correction. It is a **new table**,
+`character_impairments`, keyed `(character_id, impairment)`, not a column:
+Tech §17's impairments are a list and the second one should cost a row rather
+than a migration, and more decisively the migration runner offers only
+`CreateTable` and `Query`, of which only `CreateTable` knows the difference
+between the dialects. An `ALTER TABLE` would have to hardcode a type meaning the
+same thing on both and then dodge a fresh database that had already created the
+column. Under D-008 that is not a trade worth making. Migration 14.
+
+The deadline is **absolute**, like every other clock here: a broken leg survives
+a reconnect and a restart, and one that finished knitting while the server was
+down is cleared on load rather than resurrected. It does not survive death —
+the row is keyed to a character, and D-012 says the next one is a different
+person.
+
+**It is cured three ways and needs no new treatment.** The clock runs out
+(`injury.leg_break_seconds`, ten minutes); or a doctor sets it, as one line
+inside the existing `injury.treat` — the patient is on the table and no doctor
+puts a man on his feet and leaves the bone. A bandage deliberately does not,
+because a splint out of a coat pocket would collapse the two-step medicine back
+to one step. **What this leaves open is recorded below.**
+
+**The limp is a gait, and the gait is driven by distance.** The speed goes
+through `Omerta.Stamina.RegisterSpeedModifier` under its own id, `injury.leg`,
+so it multiplies with the recovery penalty rather than replacing it. The
+multiplier is a warped cosine of a phase taken from how far the character has
+WALKED, not from a clock, and three things follow that would not have followed
+from a timer: standing still cannot limp, one cycle is one stride whatever the
+pace, and the client computes the same phase from its own movement — the
+arrangement the drag rope has used since §14c, with nothing about the gait on
+the wire. At the shipped numbers the walk runs 50..93 units/second across a
+1.08-second stride: a short shove off the sound leg and a long settle back onto
+the bad one. Reversing those two durations is the difference between favouring a
+leg and skipping.
+
+**The camera is the same event seen twice.** A one-sided dip of 1.6 units and a
+0.9° lean, deepest where the gait is slowest and level at the push, scaled by
+ground speed so it arrives and leaves with movement. One-sided for the reason
+the heartbeat is (§14b): a symmetric bob lifts the camera on the good leg and
+reads as a bounce. It is drawn from the existing `CalcView` hook, after every
+downed and death branch, and returns nothing on any frame it has nothing to add
+— which is what stops it outranking the front end's own camera, since `CalcView`
+takes the first non-nil answer any hook gives.
+
+**Nothing new on screen.** The leg speaks through M8's existing injury provider
+— "You are hurt. Your leg is broken." — because that seam is exactly a line of
+prose about your own condition. Bleeding badly outranks it and being on the
+floor silences it. No element, no bar, no number.
+
+**Three sounds, one at random, quieter.** Registered for download from the same
+pure function that plays them, so a registered path and a played path cannot
+disagree — the failure mode being a sound nobody ever hears and nothing ever
+reports. The suite asserts all three resolve to files that exist.
+`injury.leg_break_volume` defaults to 0.35 rather than the files being
+re-encoded, so turning them back up is a config change.
+
+**Open, and wanted from the project lead:**
+
+- **Can a walking man have his leg set?** Today he cannot: `Omerta.Injury.Perform`
+  requires a body entity, so every treatment targets somebody on the floor, and a
+  character who took a medium fall from full health never goes down. His only
+  cure is the clock. Reaching him needs either `Perform` generalised to accept a
+  standing player, or an interaction registered against players rather than
+  bodies — both small, neither free, and the second lands in another engineer's
+  module. Ten minutes of limping may well be the right answer on its own.
+- **Ten minutes** (`injury.leg_break_seconds`) is a guess calibrated against the
+  480-second recovery window, not a play-tested number.
+
+Suite: 481 → 500 checks.

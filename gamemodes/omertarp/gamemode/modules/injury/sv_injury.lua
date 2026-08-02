@@ -393,6 +393,9 @@ function Internal.Tick()
         end
     end
 
+    -- Conditions expire on the same clock as states, from the same tick, so
+    -- there is one place in the module where a deadline comes due.
+    Internal.TickLegs()
 end
 
 --------------------------------------------------------------------------------
@@ -486,6 +489,9 @@ function Internal.LoadStates()
             Omerta.Log.Info("injury", "%d character(s) still hurt from before the restart", #rows)
         end
         Internal.LoadBodies()
+        -- Conditions load beside states, and for the same reason: a broken leg
+        -- that a reconnect or a restart mended would not be a consequence.
+        Internal.LoadImpairments()
     end)
 end
 
@@ -539,6 +545,10 @@ function MODULE:OnLoad()
         m:CreateTable("bodies")
         m:CreateTable("injury_events")
     end)
+
+    -- Lasting conditions (a broken leg). Declared in sv_falls.lua and called
+    -- from here because a module may define each lifecycle method exactly once.
+    Internal.DefineFallSchema()
 end
 
 function MODULE:OnEnable()
@@ -551,8 +561,18 @@ function MODULE:OnEnable()
     resource.AddFile("sound/omertarp/death-piano.wav")
     resource.AddFile("sound/omertarp/confirm.wav")
     resource.AddFile("sound/omertarp/ui/searching-rustle.wav")
+    -- The three bone breaks, registered from the SAME function that plays them
+    -- rather than as three more literals. A registered path and a played path
+    -- that differ by one character is a sound nobody ever hears and nothing
+    -- ever reports; deriving both from Omerta.Injury.LegBreakSound makes them
+    -- incapable of disagreeing. (Note the "sound/" prefix, which the playback
+    -- path does not carry — content/README.md, and a trap of its own.)
+    for index = 1, Omerta.Injury.LEG_BREAK_SOUNDS do
+        resource.AddFile("sound/" .. Omerta.Injury.LegBreakSound(index))
+    end
 
     Internal.RegisterModifiers()
+    Internal.RegisterFalls()
     Internal.RegisterSpeechLimits()
     Internal.RegisterInteractions()
     Internal.RegisterTreatments()
@@ -572,6 +592,9 @@ function MODULE:OnEnable()
     hook.Add("Think", "omerta.injury.drag", function()
         Internal.TickDrags()
         Internal.TickActions()
+        -- A gait is physics too: the stride phase is measured from movement,
+        -- so it is sampled at the rate the movement happens at.
+        Internal.TickGait()
     end)
 
     -- Damage interception. EntityTakeDamage is the only hook that can stop the
@@ -601,6 +624,9 @@ function MODULE:OnEnable()
         local character = Omerta.Characters.Get(ply)
         if not character then return end
         Internal.SendState(character.id)
+        -- And whatever is still wrong with them that is not a state. A leg that
+        -- mended itself over a reconnect would make reconnecting the treatment.
+        Internal.SendLeg(character.id)
         -- Somebody reconnecting to a body already on the floor goes straight
         -- back into it, rather than standing up somewhere else.
         if Omerta.Injury.IsDown(Omerta.Injury.GetByCharacter(character.id)) then

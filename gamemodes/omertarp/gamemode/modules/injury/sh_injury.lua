@@ -139,8 +139,28 @@ local DESCRIPTIONS = {
     [S.DEAD]          = "You are dead.",
 }
 
-function Omerta.Injury.Describe(state)
-    return DESCRIPTIONS[state]
+-- `legBroken` is the one CONDITION that has a sentence of its own, and it is
+-- passed in rather than looked up because this file is shared and pure — the
+-- server reads it from a row, the client reads it from one networked bit, and
+-- neither has to be the other.
+--
+-- Three rules, and each is a judgement about what a character would actually be
+-- thinking about:
+--
+--   * on the floor, the leg does not get a mention. You are bleeding out; the
+--     bone is not what is going to kill you, and the centred prose below the
+--     crosshair already says the thing that is.
+--   * bleeding badly outranks it for the same reason, upright or not.
+--   * otherwise it is appended, so "You are hurt." becomes "You are hurt. Your
+--     leg is broken." rather than replacing it. Both are true and the player is
+--     entitled to both.
+function Omerta.Injury.Describe(state, legBroken)
+    local text = DESCRIPTIONS[state]
+    if not legBroken then return text end
+    if Omerta.Injury.IsIncapable(state) then return text end
+    if state == S.CRITICAL then return text end
+    if not text then return "Your leg is broken." end
+    return text .. " Your leg is broken."
 end
 
 --------------------------------------------------------------------------------

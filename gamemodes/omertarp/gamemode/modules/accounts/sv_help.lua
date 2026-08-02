@@ -76,6 +76,7 @@ local COMMANDS = {
     -- Injury and death
     ["omerta_injury_state"] = { usage = "<state> [characterId]", what = "Force an injury state (healthy, injured, critical, incapacitated, stabilized, recovering, dead).", area = "Injury" },
     ["omerta_injury_list"] = { usage = "", what = "Everyone currently hurt, with clocks.", area = "Injury" },
+    ["omerta_injury_leg"] = { usage = "<break|heal> [characterId]", what = "Break or set a leg without finding a roof to jump off. Breaking plays the snap and starts the limp; healing is what a doctor at a clinic does. Defaults to breaking your own.", area = "Injury" },
     ["omerta_injury_history"] = { usage = "<characterId>", what = "A character's injury event history.", area = "Injury" },
     ["omerta_death_kill"] = { usage = "<characterId>", what = "Staff-kill a character through the death funnel.", area = "Injury" },
     ["omerta_events"] = { usage = "[count]", what = "Recent durable events (death.confirmed and the rest).", area = "Injury" },
