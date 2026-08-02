@@ -15,13 +15,64 @@ local Internal = Omerta.HUD.Internal
 --
 -- Configured rather than constant, so a server operator tunes the feel of the
 -- city from data/omertarp/config/server.txt without touching code.
+--
+-- There are THREE gaits: the walk, the fast walk on ALT, and the jog on sprint
+-- (100 / 130 / 175). All three are decided in one place, Internal.MovementFor,
+-- from one modifier stack, and all three are written to the player by
+-- applySpeeds and by nothing else.
 Omerta.Config.Define("movement.walk_speed", {
     type = "number", default = 100, min = 20, max = 600, scope = "server",
     description = "Normal movement speed. The engine default is 200.",
 })
+-- LOWERED FROM D-034's 200 (2026-08-02, project lead: "lower the runspeed
+-- overall by a little bit"). 175 rather than a rounder number, argued against
+-- the one figure that constrains it — the engine's 150:
+--
+--   * 150 is where the base gamemode stops playing the walk animation and
+--     starts playing the run (sh_gait.lua). A jog has to stay clearly above it
+--     or a running man stops LOOKING like one, and 175 keeps 25 units of that
+--     clearance. Anything under about 160 would put a healthy character on the
+--     wrong side of it the moment any modifier at all touched him.
+--   * it leaves the fast walk somewhere to live. Walk 100, fast walk 130, jog
+--     175: three gaits with real gaps, and the two the eye can actually read —
+--     a change of pace at 100→130, a change of animation at 130→175 — fall
+--     where they should.
+--   * as a ratio it takes the jog from twice the walk to one and three
+--     quarters. The stamina drain did not move, so the same thirteen seconds of
+--     wind now buys 12.5% less ground: the "a chase is a decision" pressure
+--     D-034 wanted, applied once more without touching the drain rate.
+--
+-- The WALK is deliberately NOT lowered. D-034's argument is about how long a
+-- character takes to cross a street in front of somebody watching from a
+-- window, and that is the walk — it is already the number that decision picked.
+-- Slowing it further would tax every ordinary trip across a room to answer a
+-- complaint that was about the run.
 Omerta.Config.Define("movement.jog_speed", {
-    type = "number", default = 200, min = 20, max = 1000, scope = "server",
+    type = "number", default = 175, min = 20, max = 1000, scope = "server",
     description = "Speed while holding sprint. The engine default is 400.",
+})
+
+-- THE THIRD GAIT (2026-08-02, project lead: holding ALT should be a fast walk
+-- "without initiating the running animation").
+--
+-- Source only really has two gaits, and the honest way to get a third is to
+-- notice that the engine has three SPEEDS — walk, slow-walk (+walk, bound to
+-- ALT) and sprint — and only two ANIMATIONS, chosen purely by ground speed.
+-- So the third gait is the slow-walk slot, set FASTER than the walk instead of
+-- slower, at a speed the animation code still reads as a walk. Nothing has to
+-- police the animation, and nothing on the client decides anything: the server
+-- sets all three speeds and the engine's own movement code picks between them
+-- from the key that is held.
+--
+-- 1.3 puts it at 130 against D-034's walk of 100 — a third quicker, which is
+-- the difference between strolling and being somewhere to be, and 20 units
+-- clear of the 150 line so that a slope or a shove cannot tip it into a run.
+-- Held to that line by Omerta.HUD.FastWalkSpeed however high it is set.
+Omerta.Config.Define("movement.fast_walk_scale", {
+    type = "number", default = 1.3, min = 1, max = 3, scope = "server",
+    description = "How much quicker than a walk holding ALT is, as a multiple " ..
+        "of movement.walk_speed. Capped so the gait never reaches the speed " ..
+        "at which the engine plays the running animation. 1 turns it off.",
 })
 Omerta.Config.Define("movement.jump_power", {
     type = "number", default = 200, min = 50, max = 500, scope = "server",
@@ -100,16 +151,33 @@ end
 -- Expressed as a fraction, the base moves and the calibration does not.
 Internal.MIN_SPEED_FRACTION = 0.25
 
--- All three movement values together, because they are decided together: the
--- jog may never drop below the walk, and both share one modifier stack.
+-- Every movement value together, because they are decided together: they share
+-- one modifier stack, and THE GAITS ARE ORDERED — walk <= fast walk <= jog, at
+-- every factor, exhausted or not. That ordering is a rule and not an accident
+-- of the defaults: a key that makes a character slower than not pressing it is
+-- the one outcome a player reads as broken rather than as a penalty.
 function Internal.MovementFor(base, factor, isExhausted)
     local walk = math.max(math.floor(base.walk * Internal.MIN_SPEED_FRACTION),
         math.floor(base.walk * factor))
-    -- Exhaustion does not slow the walk, it takes the jog away: that is what
-    -- makes it a limit on fleeing rather than a general punishment.
-    local jog = isExhausted and walk or math.max(walk, math.floor(base.jog * factor))
+
+    -- The fast walk takes the same modifier stack as everything else: holding
+    -- ALT is a way of walking, not a way out of being starved, overloaded or
+    -- lame. Floored at the walk so the clamp above propagates into it — a
+    -- character pinned to the movement floor is pinned in every gait.
+    local fastWalk = math.max(walk,
+        math.floor((base.fastWalk or base.walk) * factor))
+
+    -- Exhaustion does not slow the walk, it takes the JOG away: that is what
+    -- makes it a limit on fleeing rather than a general punishment. It collapses
+    -- to the fast walk rather than to the walk, because the fast walk costs no
+    -- stamina and is not a run — a man who has blown his wind can still put his
+    -- back into walking, and taking that away as well would mean ALT silently
+    -- stops working at the exact moment a player is mashing keys.
+    local jog = isExhausted and fastWalk
+        or math.max(fastWalk, math.floor(base.jog * factor))
+
     local jump = Internal.JumpPower(base.jump, factor, isExhausted, base.exhaustedJumpScale)
-    return walk, jog, jump
+    return walk, fastWalk, jog, jump
 end
 
 -- Modifiers multiply rather than add, so two systems that each halve a value
@@ -133,7 +201,7 @@ end
 local stamina = {}   -- sid -> 0..100
 local exhausted = {} -- sid -> bool
 local lastSent = {}  -- sid -> last value networked
-local lastSpeeds = {} -- sid -> { walk = , jog = , jump = }
+local lastSpeeds = {} -- sid -> { walk = , fastWalk = , jog = , jump = }
 
 --------------------------------------------------------------------------------
 -- Movement speed
@@ -153,8 +221,14 @@ function Omerta.Stamina.RegisterRegenModifier(id, fn) regenModifiers[id] = fn en
 -- Read fresh each time rather than cached, so an operator editing the config
 -- and reloading does not have to reconnect every player to see it.
 function Internal.BaseMovement()
+    local walk = Omerta.Config.Get("movement.walk_speed")
     return {
-        walk = Omerta.Config.Get("movement.walk_speed"),
+        walk = walk,
+        -- Derived rather than configured directly, so the cap that keeps it out
+        -- of the running animation is applied once, here, and an operator
+        -- cannot reach past it by typing a bigger number.
+        fastWalk = Omerta.HUD.FastWalkSpeed(walk,
+            Omerta.Config.Get("movement.fast_walk_scale")),
         jog = Omerta.Config.Get("movement.jog_speed"),
         jump = Omerta.Config.Get("movement.jump_power"),
         exhaustedJumpScale = Omerta.Config.Get("stamina.exhausted_jump_scale"),
@@ -162,16 +236,25 @@ function Internal.BaseMovement()
 end
 
 local function applySpeeds(ply, sid, isExhausted)
-    local walk, jog, jump = Internal.MovementFor(Internal.BaseMovement(),
+    local walk, fastWalk, jog, jump = Internal.MovementFor(Internal.BaseMovement(),
         Internal.CombineModifiers(speedModifiers, ply), isExhausted)
 
-    -- SetRunSpeed is the engine's name for the sprint speed; the design calls
-    -- it a jog, because at 200 that is what it is.
+    -- Three engine slots, three gaits, and the ENGINE picks between them from
+    -- the key the player is holding — we never watch IN_WALK ourselves. That is
+    -- what keeps the fast walk server-authoritative for free: a client can hold
+    -- whatever it likes, and every speed it could possibly select was written
+    -- by this function from this modifier stack.
+    --
+    -- SetRunSpeed is the engine's name for the sprint speed; the design calls it
+    -- a jog, because at 175 that is what it is. SetSlowWalkSpeed is the +walk
+    -- (ALT) slot, which the engine intends to be SLOWER than the walk and which
+    -- we deliberately set faster — see movement.fast_walk_scale.
     local last = lastSpeeds[sid]
     if not last or last.walk ~= walk then ply:SetWalkSpeed(walk) end
+    if not last or last.fastWalk ~= fastWalk then ply:SetSlowWalkSpeed(fastWalk) end
     if not last or last.jog ~= jog then ply:SetRunSpeed(jog) end
     if not last or last.jump ~= jump then ply:SetJumpPower(jump) end
-    lastSpeeds[sid] = { walk = walk, jog = jog, jump = jump }
+    lastSpeeds[sid] = { walk = walk, fastWalk = fastWalk, jog = jog, jump = jump }
 end
 
 function Omerta.Stamina.Get(ply)
@@ -186,6 +269,9 @@ function Omerta.Stamina.Drain(ply, amount)
     stamina[sid] = math.max(0, (stamina[sid] or 100) - amount)
 end
 
+-- IN_SPEED, not speed: the fast walk (ALT) is deliberately outside this, so it
+-- costs no wind and cannot exhaust anybody. That is what makes it a gait rather
+-- than a cheaper sprint — the only thing stamina has ever governed is the jog.
 local function isSprinting(ply)
     return ply:KeyDown(IN_SPEED)
         and ply:OnGround()
@@ -265,9 +351,10 @@ function MODULE:OnEnable()
     -- Spawning restores the engine's own player-class speeds, so the cache of
     -- "what we last applied" is stale the moment it happens. This was invisible
     -- until D-034: our numbers used to be the engine's numbers, so a spawn that
-    -- silently reset them changed nothing. At 100/200 it would leave a
-    -- respawned character walking at the default 200 until a modifier happened
-    -- to change. Drop the cache and re-apply.
+    -- silently reset them changed nothing. At 100/130/175 it would leave a
+    -- respawned character walking at the default 200 — and, worse for the third
+    -- gait, holding ALT at the engine's own SLOW walk — until a modifier
+    -- happened to change. Drop the cache and re-apply.
     hook.Add("PlayerSpawn", "omerta.hud.stamina_respeed", function(ply)
         local sid = ply:SteamID64() or ""
         lastSpeeds[sid] = nil

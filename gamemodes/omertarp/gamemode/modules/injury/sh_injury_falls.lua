@@ -186,9 +186,12 @@ end
 -- with the legs. How SLOW and how UNEVEN — the gameplay half — is configuration
 -- and lives on the server alone, where it is applied.
 Omerta.Injury.LIMP = {
-    -- Units of ground covered per gait cycle. At a limping ~72 units/second
+    -- Units of ground covered per gait cycle. At a limping ~68 units/second
     -- that is a cycle a little over a second long, which is the cadence of
-    -- somebody favouring a leg rather than somebody marching.
+    -- somebody favouring a leg rather than somebody marching. Measured in
+    -- GROUND, so retuning how slow a limp is (injury.limp_speed_scale) changes
+    -- how long a cycle takes and never how far it covers — one stride stays
+    -- one stride.
     STRIDE = 78,
     -- How much of the stride it takes to get from the slowest point up to the
     -- push. Well under a half on purpose: a limp is a SHORT SHOVE off the sound

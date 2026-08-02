@@ -29,13 +29,34 @@ Omerta.Config.Define("inventory.max_stream", {
 -- tuned against a real map, so both are configuration; the curve they feed and
 -- the reasoning behind these defaults are in sh_inventory.lua's
 -- OverloadSpeedMultiplier.
+--
+-- THE PENALTY WAS SHARPENED ON 2026-08-02 (project lead: "make the runspeed
+-- lower when you are overloaded in your inventory") by moving the REACH from
+-- 0.5 to 0.35 and leaving the floor alone. Both halves of that are deliberate:
+--
+--   * the floor was not the thing anybody was feeling. You cannot reach it by
+--     picking things up, because the gate stops you the instant you are over —
+--     the only way past the line is to REMOVE capacity, and the design's own
+--     worked example (take the coat off with a Thompson under it) lands 30%
+--     over, which sat at 0.73 on the old ramp and never went further. The
+--     penalty a player actually meets lives on the ramp; the floor is where it
+--     stops, and lowering a number nobody reaches would have read as no change.
+--   * the same 30% now lands at 0.61, and the floor is reached at 35% over
+--     instead of 50% — so an ordinary bad decision reaches it and an absurd one
+--     is not needed. That is a sixth off the speed of the exact case the design
+--     wrote down, from the number that governs it.
+--   * the floor stays at 0.55 because it is not a feel number, it is the
+--     CALIBRATION number. It multiplies against starvation and M19's limp, and
+--     0.75 × 0.68 × 0.55 = 0.28 sits just above M8's MIN_SPEED_FRACTION of
+--     0.25. Lowering it puts the three-penalty stack onto that clamp, where
+--     three penalties stop being distinguishable from one.
 Omerta.Config.Define("inventory.overload_speed_floor", {
     type = "number", default = 0.55, min = 0.2, max = 1, scope = "server",
     description = "The slowest an over-capacity character moves, as a " ..
         "movement multiplier. 1 turns the penalty off entirely.",
 })
 Omerta.Config.Define("inventory.overload_reach", {
-    type = "number", default = 0.5, min = 0.05, max = 4, scope = "server",
+    type = "number", default = 0.35, min = 0.05, max = 4, scope = "server",
     description = "How far over the limit — as a fraction of the limit — the " ..
         "movement penalty takes to ramp from nothing to its floor.",
 })

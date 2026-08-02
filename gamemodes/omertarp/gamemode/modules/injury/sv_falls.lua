@@ -124,13 +124,44 @@ Omerta.Config.Define("injury.leg_break_volume", {
         "config change and not an asset pass.",
 })
 
+-- THE LIMP WAS SLOWED ON 2026-08-02 (project lead: "lower the runspeed when you
+-- have a broken leg"), from 0.72 ± 0.22 to 0.68 ± 0.21. Which of the two ends
+-- of the stride moved, and why, because those read as different injuries:
+--
+--   * THE AVERAGE CAME DOWN, not the floor of the stride. A limp that is slower
+--     only at its slowest is a MORE UNEVEN limp — a lurch — and the unevenness
+--     is not the part anybody complained about. It is also the part that was
+--     tuned in the field against the one failure this feature has (§the limp,
+--     in sh_injury_falls: a speed that changes for no visible reason reads as
+--     network lag), so it is the last thing to move on a request about pace.
+--   * THE SWING CAME DOWN WITH IT, by just enough to hold the SHAPE of the
+--     gait: the ratio between the shove and the settle was 0.94/0.50 = 1.88 and
+--     is now 0.89/0.47 = 1.89. The man is slower; he is not limping differently.
+--   * The slowest point of the stride therefore barely moved (0.50 → 0.47), and
+--     that is deliberate for a second reason as well. The bottom of a limping
+--     stride is where the WHOLE modifier stack is closest to M8's
+--     MIN_SPEED_FRACTION, and anything clamped there stops being a limp and
+--     becomes a flat penalty wearing a limp's name.
+--
+-- WHY NOT LOWER: 0.68 is where the arithmetic runs out. The stack multiplies —
+-- starving 0.75, this, and M9's overload floor 0.55 — and 0.75 × 0.68 × 0.55 =
+-- 0.28, against a clamp at 0.25. That is 28 units of walk against a floor of
+-- 25: still three legible penalties rather than one crawl, but the headroom is
+-- now about a fiftieth and there is none left for a fourth. Any further cut
+-- here has to be argued together with that floor and with the clamp itself,
+-- which is a D-034 number.
+--
+-- Compounding, which is the other half of the answer the lead actually asked
+-- for: the jog came down to 175 in the same pass, so a limping man's run is
+-- 0.68 × 175 = 119 where it was 0.72 × 200 = 144 — 17% slower in the ground he
+-- covers, from a multiplier that only moved 5.5%.
 Omerta.Config.Define("injury.limp_speed_scale", {
-    type = "number", default = 0.72, min = 0.3, max = 1, scope = "server",
+    type = "number", default = 0.68, min = 0.3, max = 1, scope = "server",
     description = "The middle of a limping gait, as a movement multiplier. " ..
         "The stride swings either side of it (injury.limp_swing).",
 })
 Omerta.Config.Define("injury.limp_swing", {
-    type = "number", default = 0.22, min = 0, max = 0.6, scope = "server",
+    type = "number", default = 0.21, min = 0, max = 0.6, scope = "server",
     description = "How uneven the limp is: the multiplier runs from " ..
         "scale-swing on the bad leg to scale+swing on the good one, once per " ..
         "stride. Zero is a flat penalty and no limp at all.",

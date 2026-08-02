@@ -327,20 +327,26 @@ end
 -- hundredth of a bulk over is not a thing anybody should be able to feel.
 --
 -- THE FLOOR IS 0.55, chosen against the numbers already on this stack rather
--- than in the abstract. Starvation is 0.75; a limp runs 0.50 to 0.94 around
--- 0.72; modifiers MULTIPLY. At 0.55 a limping overloaded man moves at 0.40 of
--- base and a starving limping overloaded one at 0.30 — both still clear of
+-- than in the abstract. Starvation is 0.75; a limp runs 0.47 to 0.89 around
+-- 0.68; modifiers MULTIPLY. At 0.55 a limping overloaded man moves at 0.37 of
+-- base and a starving limping overloaded one at 0.28 — both still clear of
 -- M8's MIN_SPEED_FRACTION of 0.25, so each penalty stays individually legible
 -- instead of the whole stack landing on the clamp and reading as one
 -- undifferentiated crawl. Much below 0.55 and the ordinary combinations sit on
--- that clamp; much above it and it is not a consequence.
+-- that clamp; much above it and it is not a consequence. The headroom is now
+-- about a fiftieth (0.28 against 0.25), so this number and M19's limp cannot
+-- both be lowered again without re-deciding the clamp, which is a D-034 number.
 --
--- THE REACH IS HALF YOUR CAPACITY AGAIN, expressed as a fraction of the limit
--- rather than an absolute bulk so it means the same thing to a man in a coat
--- as to one without. The design's own worked example — take the coat off with
--- a Thompson under it — lands about 30% over and therefore around 0.73: a
--- stagger, not a crawl. The floor is reserved for somebody who kept picking
--- things up after being told to stop.
+-- THE REACH IS A THIRD OF YOUR CAPACITY AGAIN, expressed as a fraction of the
+-- limit rather than an absolute bulk so it means the same thing to a man in a
+-- coat as to one without. It was half, and it was moved on 2026-08-02 because
+-- the ramp — not the floor — is the whole of what a player experiences:
+-- MayReceive refuses every pick-up the instant you are over, so the only way
+-- past the line is to REMOVE capacity, and the depth you land at is whatever
+-- that one move cost you. The design's own worked example — take the coat off
+-- with a Thompson under it — is about 30% over, which was 0.73 and is now 0.61.
+-- The floor now arrives at 35% over rather than 50%, which is to say it is
+-- reachable by a bad decision instead of reserved for an absurd one.
 function Omerta.Inventory.OverloadSpeedMultiplier(usedUnits, limitUnits, floor, reach)
     floor = tonumber(floor) or 1
     reach = tonumber(reach) or 0
